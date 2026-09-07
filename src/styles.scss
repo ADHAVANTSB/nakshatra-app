@@ -1,1 +1,279 @@
-/* You can add global styles to this file, and also import other style files */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: #f6f8f7;
+}
+
+body {
+  margin: 0;
+
+  min-width: 320px;
+  min-height: 100vh;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  background: #f6f8f7;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* =====================================
+   NAKSHATRA PAGE DESIGN SYSTEM
+===================================== */
+
+.page {
+  width: 100%;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  margin-bottom: 28px;
+}
+
+.eyebrow {
+  color: #117c6d;
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.page-header h1 {
+  margin: 5px 0 4px;
+
+  color: #183b34;
+
+  font-size: clamp(25px, 3vw, 34px);
+  line-height: 1.15;
+}
+
+.page-header p {
+  margin: 0;
+
+  color: #71827e;
+
+  font-size: 14px;
+}
+
+.primary-button {
+  min-height: 42px;
+
+  padding: 0 17px;
+
+  border: 0;
+  border-radius: 9px;
+
+  background: #117c6d;
+  color: #ffffff;
+
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  box-shadow: 0 5px 14px rgba(17, 124, 109, 0.18);
+}
+
+.welcome-card {
+  min-height: 190px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 32px;
+
+  border-radius: 16px;
+
+  background: linear-gradient(
+    135deg,
+    #117c6d,
+    #0d6d60
+  );
+
+  color: #ffffff;
+
+  box-shadow: 0 12px 30px rgba(17, 124, 109, 0.12);
+}
+
+.welcome-card span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.welcome-card h2 {
+  margin: 7px 0;
+
+  font-size: 24px;
+}
+
+.welcome-card p {
+  max-width: 620px;
+
+  margin: 0;
+
+  font-size: 13px;
+  line-height: 1.6;
+
+  opacity: 0.8;
+}
+
+.welcome-icon {
+  width: 80px;
+  height: 80px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 22px;
+
+  background: rgba(255, 255, 255, 0.1);
+
+  font-size: 34px;
+}
+
+.stats-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 16px;
+
+  margin-top: 20px;
+}
+
+.stat-card {
+  min-height: 140px;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: 22px;
+
+  border: 1px solid #e7eeeb;
+  border-radius: 14px;
+
+  background: #ffffff;
+}
+
+.stat-card span {
+  color: #71827e;
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stat-card strong {
+  margin-top: 14px;
+
+  color: #183b34;
+
+  font-size: 28px;
+}
+
+.stat-card small {
+  margin-top: 5px;
+
+  color: #9aa8a4;
+
+  font-size: 11px;
+}
+
+.section-card {
+  margin-top: 20px;
+
+  padding: 24px;
+
+  border: 1px solid #e7eeeb;
+  border-radius: 14px;
+
+  background: #ffffff;
+}
+
+.section-card h3 {
+  margin: 0;
+
+  color: #183b34;
+
+  font-size: 16px;
+}
+
+.section-card p {
+  margin: 8px 0 0;
+
+  color: #71827e;
+
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+
+@media (max-width: 900px) {
+
+  .stats-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+}
+
+
+@media (max-width: 600px) {
+
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .primary-button {
+    width: 100%;
+  }
+
+  .welcome-card {
+    padding: 24px;
+
+    align-items: flex-start;
+  }
+
+  .welcome-icon {
+    display: none;
+  }
+
+  .welcome-card h2 {
+    font-size: 20px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
