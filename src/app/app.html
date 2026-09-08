@@ -1,79 +1,248 @@
-<div class="app-shell">
+<!-- =========================================================
+     NAKSHATRA EVENT MANAGEMENT
+     MASTER APPLICATION SHELL
+     ========================================================= -->
 
-  <!-- Mobile Overlay -->
-  @if (isMobileMenuOpen) {
+<!-- =========================================================
+     DESKTOP SIDEBAR TOGGLE
+     Unchecked = collapsed
+     Checked   = expanded
+     ========================================================= -->
+
+<input
+  id="sidebar-toggle"
+  class="layout-toggle"
+  type="checkbox"
+  aria-hidden="true"
+/>
+
+
+<div class="nk-shell">
+
+  <!-- =======================================================
+       DESKTOP SIDEBAR
+       ======================================================= -->
+
+  <aside class="nk-sidebar">
+
+    <!-- =====================================================
+         BRAND AREA
+         ===================================================== -->
+
+    <div class="nk-sidebar-brand">
+
+      <!-- Logo -->
+
+      <div class="nk-sidebar-logo-wrapper">
+
+        <img
+          src="/logo/nakshatra-logo.png"
+          alt="Nakshatra"
+          class="nk-logo nk-logo--full"
+        />
+
+      </div>
+
+
+      <!-- Hamburger -->
+
+      <label
+        for="sidebar-toggle"
+        class="nk-sidebar-toggle"
+        title="Toggle navigation"
+        aria-label="Toggle navigation"
+      >
+
+        <span></span>
+        <span></span>
+        <span></span>
+
+      </label>
+
+    </div>
+
+
+    <!-- =====================================================
+         DESKTOP NAVIGATION
+         ===================================================== -->
+
+    <nav
+      class="nk-sidebar-nav"
+      aria-label="Main navigation"
+    >
+
+      @for (item of navItems; track item.route) {
+
+        <a
+          class="nk-nav-item"
+          [routerLink]="item.route"
+          routerLinkActive="nk-nav-item--active"
+          [routerLinkActiveOptions]="{
+            exact: item.route === '/dashboard'
+          }"
+          (click)="closeMobileMenu()"
+        >
+
+          <span class="nk-nav-icon">
+            {{ item.icon }}
+          </span>
+
+          <span class="nk-nav-text">
+            {{ item.label }}
+          </span>
+
+        </a>
+
+      }
+
+    </nav>
+
+
+    <!-- =====================================================
+         SIDEBAR BOTTOM
+         ===================================================== -->
+
+    <div class="nk-sidebar-bottom">
+
+      <div class="nk-sidebar-separator"></div>
+
+      <a
+        class="nk-nav-item nk-nav-item--settings"
+        routerLink="/settings"
+        routerLinkActive="nk-nav-item--active"
+        (click)="closeMobileMenu()"
+      >
+
+        <span class="nk-nav-icon">
+          ⚙
+        </span>
+
+        <span class="nk-nav-text">
+          Settings
+        </span>
+
+      </a>
+
+    </div>
+
+  </aside>
+
+
+  <!-- =======================================================
+       DESKTOP OUTSIDE CLICK
+       Clicking anywhere outside expanded sidebar
+       collapses it.
+       ======================================================= -->
+
+  <label
+    for="sidebar-toggle"
+    class="nk-sidebar-backdrop"
+    aria-label="Close sidebar"
+  ></label>
+
+
+  <!-- =======================================================
+       MOBILE OVERLAY
+       ======================================================= -->
+
+  @if (mobileMenuOpen) {
+
     <button
-      class="mobile-overlay"
+      class="nk-mobile-overlay"
+      type="button"
       aria-label="Close navigation"
-      (click)="closeMobileMenu()">
-    </button>
+      (click)="closeMobileMenu()"
+    ></button>
+
   }
 
-  <!-- Sidebar -->
+
+  <!-- =======================================================
+       MOBILE DRAWER
+       ======================================================= -->
+
   <aside
-    class="sidebar"
-    [class.sidebar--open]="isMobileMenuOpen">
+    class="nk-mobile-drawer"
+    [class.nk-mobile-drawer--open]="mobileMenuOpen"
+  >
 
-    <!-- Brand -->
-    <div class="brand">
+    <!-- Mobile drawer header -->
 
-      <div class="brand-mark">
-        N
+    <div class="nk-mobile-drawer-header">
+
+      <div class="nk-mobile-logo-wrapper">
+
+        <img
+          src="/logo/nakshatra-logo.png"
+          alt="Nakshatra"
+          class="nk-mobile-logo"
+        />
+
       </div>
 
-      <div class="brand-copy">
-        <span class="brand-name">NAKSHATRA</span>
-        <span class="brand-subtitle">Event Management</span>
-      </div>
 
       <button
-        class="mobile-close"
-        aria-label="Close menu"
-        (click)="closeMobileMenu()">
+        class="nk-mobile-close"
+        type="button"
+        aria-label="Close navigation"
+        (click)="closeMobileMenu()"
+      >
         ×
       </button>
 
     </div>
 
-    <!-- Navigation -->
-    <nav class="navigation">
 
-      <div class="navigation-section">
-        <span class="navigation-title">MAIN MENU</span>
+    <!-- Mobile navigation -->
 
-        @for (item of navigationItems; track item.route) {
+    <nav
+      class="nk-mobile-nav"
+      aria-label="Mobile navigation"
+    >
 
-          <a
-            class="navigation-item"
-            [routerLink]="item.route"
-            routerLinkActive="navigation-item--active"
-            [routerLinkActiveOptions]="{ exact: true }"
-            (click)="closeMobileMenu()">
-
-            <span class="navigation-icon">
-              {{ item.icon }}
-            </span>
-
-            <span>{{ item.label }}</span>
-
-          </a>
-
-        }
-      </div>
-
-      <div class="navigation-bottom">
+      @for (item of navItems; track item.route) {
 
         <a
-          class="navigation-item"
-          [routerLink]="settingsItem.route"
-          routerLinkActive="navigation-item--active"
-          (click)="closeMobileMenu()">
+          class="nk-nav-item"
+          [routerLink]="item.route"
+          routerLinkActive="nk-nav-item--active"
+          [routerLinkActiveOptions]="{
+            exact: item.route === '/dashboard'
+          }"
+          (click)="closeMobileMenu()"
+        >
 
-          <span class="navigation-icon">
-            {{ settingsItem.icon }}
+          <span class="nk-nav-icon">
+            {{ item.icon }}
           </span>
 
-          <span>{{ settingsItem.label }}</span>
+          <span class="nk-nav-text">
+            {{ item.label }}
+          </span>
+
+        </a>
+
+      }
+
+
+      <!-- Mobile Settings -->
+
+      <div class="nk-mobile-settings">
+
+        <a
+          class="nk-nav-item"
+          routerLink="/settings"
+          routerLinkActive="nk-nav-item--active"
+          (click)="closeMobileMenu()"
+        >
+
+          <span class="nk-nav-icon">
+            ⚙
+          </span>
+
+          <span class="nk-nav-text">
+            Settings
+          </span>
 
         </a>
 
@@ -81,35 +250,34 @@
 
     </nav>
 
-    <!-- Event Status -->
-    <div class="event-card">
-
-      <div class="event-card-icon">
-        ✦
-      </div>
-
-      <div>
-        <strong>Nakshatra 2026</strong>
-        <span>Event Management</span>
-      </div>
-
-    </div>
-
   </aside>
 
 
-  <!-- Main Application -->
-  <main class="main-area">
+  <!-- =======================================================
+       MAIN APPLICATION
+       ======================================================= -->
 
-    <!-- Desktop / Mobile Header -->
-    <header class="topbar">
+  <div class="nk-main">
 
-      <div class="topbar-left">
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="nk-header">
+
+      <!-- ===================================================
+           MOBILE HEADER
+           =================================================== -->
+
+      <div class="nk-mobile-header-left">
 
         <button
-          class="menu-button"
+          class="nk-menu-button"
+          type="button"
           aria-label="Open navigation"
-          (click)="toggleMobileMenu()">
+          (click)="toggleMobileMenu()"
+        >
 
           <span></span>
           <span></span>
@@ -117,50 +285,166 @@
 
         </button>
 
-        <div class="page-brand">
-          <span class="page-brand-name">NAKSHATRA</span>
-          <span class="page-brand-divider"></span>
-          <span class="page-brand-context">
-            Event Management
+
+        <div class="nk-mobile-header-brand">
+
+          <span>
+            NAKSHATRA
           </span>
+
         </div>
 
       </div>
 
-      <div class="topbar-actions">
+
+      <!-- ===================================================
+           DESKTOP HEADER CONTEXT
+           =================================================== -->
+
+      <div class="nk-header-context">
+
+        <span class="nk-header-accent"></span>
+
+        <div>
+
+          <span class="nk-header-title">
+            Event Management
+          </span>
+
+          <span class="nk-header-subtitle">
+            Nakshatra 2026
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <!-- ===================================================
+           HEADER ACTIONS
+           =================================================== -->
+
+      <div class="nk-header-actions">
+
+
+        <!-- Notification -->
 
         <button
-          class="icon-button"
-          aria-label="Notifications">
-          ♧
-          <span class="notification-dot"></span>
+          class="nk-notification"
+          type="button"
+          aria-label="Notifications"
+        >
+
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+
+            <path
+              d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"
+            />
+
+            <path d="M10 21h4" />
+
+          </svg>
+
+          <span class="nk-notification-dot"></span>
+
         </button>
 
-        <div class="user-profile">
 
-          <div class="user-avatar">
+        <!-- User -->
+
+        <button
+          class="nk-user"
+          type="button"
+          aria-label="User profile"
+        >
+
+          <div class="nk-user-avatar">
             A
           </div>
 
-          <div class="user-details">
-            <strong>Admin</strong>
-            <span>Administrator</span>
+          <div class="nk-user-details">
+
+            <strong>
+              Admin
+            </strong>
+
+            <span>
+              Administrator
+            </span>
+
           </div>
 
-        </div>
+          <span class="nk-user-chevron">
+            ▾
+          </span>
+
+        </button>
 
       </div>
 
     </header>
 
 
-    <!-- Page -->
-    <section class="page-container">
+    <!-- =====================================================
+         CONTENT
+         ===================================================== -->
 
-      <router-outlet />
+    <main class="nk-content">
 
-    </section>
+      <div class="nk-content-inner">
 
-  </main>
+        <router-outlet></router-outlet>
+
+      </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         FOOTER
+         ===================================================== -->
+
+    <footer class="nk-footer">
+
+      <div class="nk-footer-left">
+
+        <span class="nk-footer-brand">
+          NAKSHATRA
+        </span>
+
+        <span class="nk-footer-divider"></span>
+
+        <span>
+          Event Management Platform
+        </span>
+
+      </div>
+
+
+      <div class="nk-footer-center">
+        Nakshatra 2026
+      </div>
+
+
+      <div class="nk-footer-right">
+
+        <span>
+          © 2026 Nakshatra
+        </span>
+
+        <span class="nk-footer-divider"></span>
+
+        <span>
+          Bhumi
+        </span>
+
+      </div>
+
+    </footer>
+
+  </div>
 
 </div>

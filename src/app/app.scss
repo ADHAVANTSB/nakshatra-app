@@ -1,566 +1,1754 @@
+/* =========================================================
+   NAKSHATRA EVENT MANAGEMENT
+   APP COMPONENT STYLES
+   ========================================================= */
+
+
+/* =========================================================
+   NAKSHATRA BRAND COLORS
+   ========================================================= */
+
 :host {
+
+  /* =======================================================
+     NAKSHATRA COLOR CHANGE
+     -------------------------------------------------------
+     Main brand palette
+     ======================================================= */
+
+  --nk-navy: #172b4d;
+  --nk-navy-light: #243b5a;
+  --nk-navy-hover: #2d4668;
+
+  --nk-blue: #159ed0;
+  --nk-blue-dark: #087caf;
+  --nk-blue-light: #eaf8fd;
+
+  --nk-purple: #6c3df5;
+  --nk-purple-dark: #5428d4;
+  --nk-purple-light: #f1edff;
+
+  --nk-yellow: #ffc83d;
+
+  --nk-pink: #e83e8c;
+
+  --nk-white: #ffffff;
+
+  --nk-page: #f6fafc;
+  --nk-card: #ffffff;
+
+  --nk-text: #17324d;
+  --nk-text-soft: #60798f;
+  --nk-muted: #8aa0b0;
+
+  --nk-border: #dfebf1;
+
+  /* Sidebar */
+
+  --nk-sidebar-collapsed: 96px;
+  --nk-sidebar-expanded: 270px;
+
+  /* Header */
+
+  --nk-header-height: 104px;
+
+  /* Footer */
+
+  --nk-footer-height: 72px;
+
   display: block;
+
+  width: 100%;
   min-height: 100vh;
 }
 
-.app-shell {
-  min-height: 100vh;
-  display: flex;
-  background: #f6f8f7;
-  color: #193a34;
+
+/* =========================================================
+   RESET
+   ========================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-/* ================================
+
+/* =========================================================
+   SIDEBAR TOGGLE
+   ========================================================= */
+
+.layout-toggle {
+
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+
+  opacity: 0;
+
+  pointer-events: none;
+}
+
+
+/* =========================================================
+   SHELL
+   ========================================================= */
+
+.nk-shell {
+
+  width: 100%;
+  min-height: 100vh;
+
+  background:
+    var(--nk-page);
+
+  color:
+    var(--nk-text);
+}
+
+
+/* =========================================================
    SIDEBAR
-================================ */
+   ========================================================= */
 
-.sidebar {
-  width: 260px;
-  min-width: 260px;
-  min-height: 100vh;
-
-  display: flex;
-  flex-direction: column;
-
-  background: #117c6d;
-  color: #ffffff;
+.nk-sidebar {
 
   position: fixed;
-  inset: 0 auto 0 0;
 
-  z-index: 100;
+  top: 0;
+  left: 0;
 
-  box-shadow: 8px 0 30px rgba(18, 63, 56, 0.08);
+  width:
+    var(--nk-sidebar-collapsed);
 
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease;
-}
+  height: 100vh;
 
-/* Brand */
-
-.brand {
-  min-height: 92px;
+  z-index: 1000;
 
   display: flex;
-  align-items: center;
 
-  padding: 20px 22px;
+  flex-direction: column;
 
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+
+  /* =======================================================
+     NAKSHATRA COLOR CHANGE
+     -------------------------------------------------------
+     Deep navy makes the colorful logo stand out.
+     ======================================================= */
+
+  background:
+    linear-gradient(
+      180deg,
+      #172b4d 0%,
+      #1d3555 55%,
+      #233d5f 100%
+    );
+
+  color:
+    #ffffff;
+
+  border-right:
+    1px solid rgba(255,255,255,.08);
+
+  box-shadow:
+    4px 0 24px rgba(23,43,77,.12);
+
+  transition:
+    width .22s cubic-bezier(.4,0,.2,1);
 }
 
-.brand-mark {
-  width: 42px;
+
+/* =========================================================
+   EXPANDED SIDEBAR
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell .nk-sidebar {
+
+  width:
+    var(--nk-sidebar-expanded);
+}
+
+
+/* =========================================================
+   SIDEBAR BRAND
+   ========================================================= */
+
+.nk-sidebar-brand {
+
+  height: 188px;
+
+  min-height: 188px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 18px;
+
+  padding:
+    18px 12px;
+
+  border-bottom:
+    1px solid rgba(255,255,255,.10);
+}
+
+
+/* =========================================================
+   LOGO WHITE CONTAINER
+   ========================================================= */
+
+.nk-sidebar-logo-wrapper {
+
+  width: 68px;
+  height: 68px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 18px;
+
+  background:
+    #ffffff;
+
+  box-shadow:
+    0 8px 20px rgba(0,0,0,.12);
+
+  overflow: hidden;
+}
+
+
+/* =========================================================
+   LOGO
+   ========================================================= */
+
+.nk-logo {
+
+  display: block;
+
+  width: 58px;
+  height: 58px;
+
+  object-fit: contain;
+}
+
+
+/* =========================================================
+   HAMBURGER
+   ========================================================= */
+
+.nk-sidebar-toggle {
+
+  width: 48px;
   height: 42px;
 
-  display: grid;
-  place-items: center;
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 5px;
 
   border-radius: 12px;
 
-  background: #ffffff;
-  color: #117c6d;
-
-  font-size: 22px;
-  font-weight: 800;
-
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.12);
-}
-
-.brand-copy {
-  display: flex;
-  flex-direction: column;
-
-  margin-left: 12px;
-}
-
-.brand-name {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-}
-
-.brand-subtitle {
-  margin-top: 3px;
-
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-/* Navigation */
-
-.navigation {
-  flex: 1;
-
-  display: flex;
-  flex-direction: column;
-
-  padding: 26px 14px 18px;
-}
-
-.navigation-section {
-  display: flex;
-  flex-direction: column;
-}
-
-.navigation-title {
-  padding: 0 14px 12px;
-
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.2px;
-
-  opacity: 0.55;
-}
-
-.navigation-item {
-  height: 46px;
-
-  display: flex;
-  align-items: center;
-
-  padding: 0 14px;
-  margin-bottom: 5px;
-
-  border-radius: 10px;
-
-  color: rgba(255, 255, 255, 0.78);
-
-  text-decoration: none;
-
-  font-size: 14px;
-  font-weight: 500;
-
-  transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
-}
-
-.navigation-item:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.09);
-
-  transform: translateX(2px);
-}
-
-.navigation-item--active {
-  color: #117c6d;
-  background: #ffffff;
-
-  font-weight: 700;
-
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-
-.navigation-icon {
-  width: 28px;
-
-  margin-right: 8px;
-
-  font-size: 18px;
-  text-align: center;
-}
-
-.navigation-bottom {
-  margin-top: auto;
-
-  padding-top: 16px;
-
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-/* Event card */
-
-.event-card {
-  margin: 0 14px 18px;
-  padding: 13px;
-
-  display: flex;
-  align-items: center;
-
-  border-radius: 12px;
-
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.event-card-icon {
-  width: 32px;
-  height: 32px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 9px;
-
-  background: rgba(255, 255, 255, 0.12);
-
-  margin-right: 10px;
-}
-
-.event-card div:last-child {
-  display: flex;
-  flex-direction: column;
-}
-
-.event-card strong {
-  font-size: 12px;
-}
-
-.event-card span {
-  margin-top: 3px;
-
-  font-size: 10px;
-  opacity: 0.6;
-}
-
-/* ================================
-   MAIN AREA
-================================ */
-
-.main-area {
-  width: calc(100% - 260px);
-
-  margin-left: 260px;
-
-  min-height: 100vh;
-
-  display: flex;
-  flex-direction: column;
-}
-
-/* Header */
-
-.topbar {
-  height: 76px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  padding: 0 30px;
-
-  background: #ffffff;
-
-  border-bottom: 1px solid #e8eeec;
-
-  position: sticky;
-  top: 0;
-
-  z-index: 50;
-}
-
-.topbar-left,
-.topbar-actions {
-  display: flex;
-  align-items: center;
-}
-
-.page-brand {
-  display: flex;
-  align-items: center;
-}
-
-.page-brand-name {
-  display: none;
-
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-}
-
-.page-brand-divider {
-  width: 1px;
-  height: 20px;
-
-  margin: 0 12px;
-
-  background: #dce5e2;
-}
-
-.page-brand-context {
-  color: #6d817c;
-
-  font-size: 13px;
-}
-
-/* User */
-
-.topbar-actions {
-  gap: 18px;
-}
-
-.icon-button {
-  width: 40px;
-  height: 40px;
-
-  display: grid;
-  place-items: center;
-
-  border: 0;
-  border-radius: 10px;
-
-  background: #f4f7f6;
-
-  color: #365c54;
+  background:
+    rgba(255,255,255,.10);
+
+  border:
+    1px solid rgba(255,255,255,.12);
 
   cursor: pointer;
 
+  transition:
+    background .15s ease,
+    transform .15s ease,
+    box-shadow .15s ease;
+}
+
+
+.nk-sidebar-toggle:hover {
+
+  background:
+    rgba(255,255,255,.20);
+
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.15);
+}
+
+
+.nk-sidebar-toggle:active {
+
+  transform:
+    scale(.94);
+}
+
+
+.nk-sidebar-toggle span {
+
+  display: block;
+
+  width: 22px;
+  height: 2.5px;
+
+  border-radius: 10px;
+
+  background:
+    #ffffff;
+
+  transition:
+    transform .18s ease,
+    opacity .18s ease;
+}
+
+
+/* =========================================================
+   HAMBURGER → X
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-sidebar-toggle span:nth-child(1) {
+
+  transform:
+    translateY(7.5px)
+    rotate(45deg);
+}
+
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-sidebar-toggle span:nth-child(2) {
+
+  opacity: 0;
+}
+
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-sidebar-toggle span:nth-child(3) {
+
+  transform:
+    translateY(-7.5px)
+    rotate(-45deg);
+}
+
+
+/* =========================================================
+   SIDEBAR NAV
+   ========================================================= */
+
+.nk-sidebar-nav {
+
+  flex: 1;
+
+  min-height: 0;
+
+  padding:
+    18px 10px;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  scrollbar-width: thin;
+
+  scrollbar-color:
+    rgba(255,255,255,.25)
+    transparent;
+}
+
+
+/* =========================================================
+   NAV ITEM
+   ========================================================= */
+
+.nk-nav-item {
+
   position: relative;
 
-  font-size: 18px;
+  width: 100%;
+
+  min-height: 54px;
+
+  margin:
+    5px 0;
+
+  padding:
+    0 13px;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 15px;
+
+  border-radius: 13px;
+
+  color:
+    #ffffff;
+
+  text-decoration: none;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  cursor: pointer;
+
+  transition:
+    background .15s ease,
+    color .15s ease,
+    transform .15s ease;
 }
 
-.notification-dot {
-  width: 7px;
-  height: 7px;
+
+/* =========================================================
+   COLLAPSED NAV
+   ========================================================= */
+
+.nk-sidebar:not(:has(.nk-sidebar-toggle:focus))
+.nk-nav-item {
+  justify-content: center;
+}
+
+
+/* =========================================================
+   HOVER
+   ========================================================= */
+
+.nk-nav-item:hover {
+
+  background:
+    rgba(255,255,255,.12);
+
+  color:
+    #ffffff;
+
+  transform:
+    translateX(2px);
+}
+
+
+.nk-nav-item:hover .nk-nav-icon {
+
+  color:
+    #ffffff;
+
+  transform:
+    scale(1.06);
+}
+
+
+.nk-nav-item:hover .nk-nav-text {
+
+  color:
+    #ffffff;
+}
+
+
+/* =========================================================
+   ICON
+   ========================================================= */
+
+.nk-nav-icon {
+
+  width: 34px;
+
+  min-width: 34px;
+
+  height: 34px;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  color:
+    #ffffff;
+
+  font-size: 21px;
+
+  line-height: 1;
+
+  flex-shrink: 0;
+
+  transition:
+    color .15s ease,
+    transform .15s ease;
+}
+
+
+/* =========================================================
+   TEXT
+   ========================================================= */
+
+.nk-nav-text {
+
+  width: 0;
+
+  opacity: 0;
+
+  overflow: hidden;
+
+  color:
+    #ffffff;
+
+  font-size: 15px;
+
+  font-weight: 600;
+
+  line-height: 1;
+
+  transition:
+    width .18s ease,
+    opacity .15s ease;
+}
+
+
+/* =========================================================
+   EXPANDED NAV TEXT
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-nav-text {
+
+  width: auto;
+
+  opacity: 1;
+}
+
+
+/* =========================================================
+   EXPANDED NAV ALIGNMENT
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-nav-item {
+
+  justify-content: flex-start;
+
+  padding-left: 15px;
+}
+
+
+/* =========================================================
+   ACTIVE ITEM
+   ========================================================= */
+
+.nk-nav-item--active {
+
+  background:
+    #ffffff;
+
+  color:
+    var(--nk-purple);
+
+  box-shadow:
+    0 6px 18px rgba(0,0,0,.12);
+}
+
+
+.nk-nav-item--active .nk-nav-icon {
+
+  color:
+    var(--nk-purple);
+}
+
+
+.nk-nav-item--active .nk-nav-text {
+
+  color:
+    var(--nk-purple);
+}
+
+
+/* =========================================================
+   ACTIVE HOVER
+   ========================================================= */
+
+.nk-nav-item--active:hover {
+
+  background:
+    #ffffff;
+
+  color:
+    var(--nk-purple);
+
+  transform:
+    translateX(2px);
+}
+
+
+.nk-nav-item--active:hover .nk-nav-icon {
+
+  color:
+    var(--nk-purple);
+}
+
+
+.nk-nav-item--active:hover .nk-nav-text {
+
+  color:
+    var(--nk-purple);
+}
+
+
+/* =========================================================
+   ACTIVE ACCENT
+   ========================================================= */
+
+.nk-nav-item--active::before {
+
+  content: '';
 
   position: absolute;
-  top: 8px;
-  right: 8px;
 
-  border-radius: 50%;
+  left: 0;
 
-  background: #d12d68;
+  top: 9px;
+  bottom: 9px;
 
-  border: 2px solid #ffffff;
+  width: 4px;
+
+  border-radius:
+    0 5px 5px 0;
+
+  /* NAKSHATRA COLOR CHANGE */
+
+  background:
+    var(--nk-yellow);
 }
 
-.user-profile {
+
+/* =========================================================
+   SIDEBAR BOTTOM
+   ========================================================= */
+
+.nk-sidebar-bottom {
+
+  flex-shrink: 0;
+
+  padding:
+    8px 10px 18px;
+}
+
+
+/* =========================================================
+   SIDEBAR SEPARATOR
+   ========================================================= */
+
+.nk-sidebar-separator {
+
+  height: 1px;
+
+  margin:
+    5px 8px 12px;
+
+  background:
+    rgba(255,255,255,.15);
+}
+
+
+/* =========================================================
+   OUTSIDE CLICK BACKDROP
+   ========================================================= */
+
+.nk-sidebar-backdrop {
+
+  position: fixed;
+
+  inset: 0;
+
+  z-index: 950;
+
+  display: none;
+
+  background:
+    rgba(23,43,77,.08);
+}
+
+
+/*
+   Only visible when sidebar is expanded.
+*/
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-sidebar-backdrop {
+
+  display: block;
+
+  left:
+    var(--nk-sidebar-expanded);
+
+  background:
+    transparent;
+
+  pointer-events: auto;
+}
+
+
+/* =========================================================
+   MAIN
+   ========================================================= */
+
+.nk-main {
+
+  min-height: 100vh;
+
+  margin-left:
+    var(--nk-sidebar-collapsed);
+
   display: flex;
-  align-items: center;
-  gap: 10px;
+
+  flex-direction: column;
+
+  background:
+    var(--nk-page);
+
+  transition:
+    margin-left .22s cubic-bezier(.4,0,.2,1);
 }
 
-.user-avatar {
-  width: 38px;
-  height: 38px;
 
-  display: grid;
-  place-items: center;
+/* =========================================================
+   MAIN WHEN SIDEBAR EXPANDED
+   ========================================================= */
 
-  border-radius: 50%;
+#sidebar-toggle:checked ~ .nk-shell
+.nk-main {
 
-  background: #e4f0ed;
-  color: #117c6d;
+  margin-left:
+    var(--nk-sidebar-expanded);
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.nk-header {
+
+  position: fixed;
+
+  top: 0;
+
+  left:
+    var(--nk-sidebar-collapsed);
+
+  right: 0;
+
+  height:
+    var(--nk-header-height);
+
+  z-index: 900;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  padding:
+    0 38px;
+
+  background:
+    rgba(255,255,255,.98);
+
+  border-bottom:
+    1px solid var(--nk-border);
+
+  transition:
+    left .22s cubic-bezier(.4,0,.2,1);
+}
+
+
+/* =========================================================
+   HEADER WHEN EXPANDED
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-header {
+
+  left:
+    var(--nk-sidebar-expanded);
+}
+
+
+/* =========================================================
+   HEADER CONTEXT
+   ========================================================= */
+
+.nk-header-context {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 16px;
+}
+
+
+/* =========================================================
+   HEADER ACCENT
+   ========================================================= */
+
+.nk-header-accent {
+
+  width: 5px;
+
+  height: 56px;
+
+  border-radius: 8px;
+
+  /* NAKSHATRA COLOR CHANGE */
+
+  background:
+    linear-gradient(
+      180deg,
+      var(--nk-blue),
+      var(--nk-purple)
+    );
+}
+
+
+/* =========================================================
+   HEADER TITLE
+   ========================================================= */
+
+.nk-header-title {
+
+  display: block;
+
+  color:
+    var(--nk-navy);
+
+  font-size: 20px;
+
+  font-weight: 750;
+
+  line-height: 1.2;
+}
+
+
+/* =========================================================
+   HEADER SUBTITLE
+   ========================================================= */
+
+.nk-header-subtitle {
+
+  display: block;
+
+  margin-top: 6px;
+
+  color:
+    var(--nk-muted);
 
   font-size: 14px;
+}
+
+
+/* =========================================================
+   HEADER ACTIONS
+   ========================================================= */
+
+.nk-header-actions {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 18px;
+}
+
+
+/* =========================================================
+   NOTIFICATION
+   ========================================================= */
+
+.nk-notification {
+
+  position: relative;
+
+  width: 58px;
+  height: 58px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border:
+    1px solid var(--nk-border);
+
+  border-radius: 17px;
+
+  background:
+    #ffffff;
+
+  cursor: pointer;
+
+  transition:
+    background .15s ease,
+    border-color .15s ease,
+    transform .15s ease;
+}
+
+
+.nk-notification:hover {
+
+  background:
+    var(--nk-purple-light);
+
+  border-color:
+    rgba(108,61,245,.20);
+
+  transform:
+    translateY(-1px);
+}
+
+
+/* =========================================================
+   NOTIFICATION ICON
+   ========================================================= */
+
+.nk-notification svg {
+
+  width: 27px;
+  height: 27px;
+
+  fill: none;
+
+  stroke:
+    var(--nk-purple);
+
+  stroke-width: 1.7;
+
+  stroke-linecap: round;
+
+  stroke-linejoin: round;
+}
+
+
+/* =========================================================
+   NOTIFICATION DOT
+   ========================================================= */
+
+.nk-notification-dot {
+
+  position: absolute;
+
+  top: 12px;
+  right: 12px;
+
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  /* NAKSHATRA COLOR CHANGE */
+
+  background:
+    var(--nk-pink);
+
+  border:
+    2px solid #ffffff;
+}
+
+
+/* =========================================================
+   USER
+   ========================================================= */
+
+.nk-user {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 13px;
+
+  padding: 4px;
+
+  border: 0;
+
+  background:
+    transparent;
+
+  cursor: pointer;
+}
+
+
+/* =========================================================
+   USER AVATAR
+   ========================================================= */
+
+.nk-user-avatar {
+
+  width: 58px;
+  height: 58px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  /* NAKSHATRA COLOR CHANGE */
+
+  background:
+    linear-gradient(
+      135deg,
+      #e9f8fd,
+      #f0ebff
+    );
+
+  color:
+    var(--nk-purple);
+
+  font-size: 22px;
+
   font-weight: 800;
 }
 
-.user-details {
+
+/* =========================================================
+   USER DETAILS
+   ========================================================= */
+
+.nk-user-details {
+
   display: flex;
+
   flex-direction: column;
+
+  gap: 5px;
+
+  align-items: flex-start;
 }
 
-.user-details strong {
+
+.nk-user-details strong {
+
+  color:
+    var(--nk-navy);
+
+  font-size: 17px;
+
+  line-height: 1;
+}
+
+
+.nk-user-details span {
+
+  color:
+    var(--nk-muted);
+
   font-size: 13px;
+
+  line-height: 1;
 }
 
-.user-details span {
-  margin-top: 2px;
 
-  color: #879793;
+/* =========================================================
+   CHEVRON
+   ========================================================= */
 
-  font-size: 10px;
+.nk-user-chevron {
+
+  color:
+    var(--nk-muted);
+
+  font-size: 12px;
 }
 
-/* Mobile menu */
 
-.menu-button,
-.mobile-close {
-  display: none;
-}
+/* =========================================================
+   CONTENT
+   ========================================================= */
 
-/* Page */
+.nk-content {
 
-.page-container {
   flex: 1;
 
-  width: 100%;
-  max-width: 1600px;
+  min-width: 0;
 
-  margin: 0 auto;
+  padding-top:
+    var(--nk-header-height);
 
-  padding: 30px;
+  padding-bottom:
+    var(--nk-footer-height);
+
+  background:
+    linear-gradient(
+      180deg,
+      #f7fbfd 0%,
+      #f4fafc 100%
+    );
 }
 
 
-/* ================================
-   MOBILE
-================================ */
+/* =========================================================
+   CONTENT INNER
+   ========================================================= */
 
-.mobile-overlay {
+.nk-content-inner {
+
+  width: 100%;
+
+  max-width: 1900px;
+
+  margin:
+    0 auto;
+
+  padding:
+    38px 52px 44px;
+}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.nk-footer {
+
+  position: fixed;
+
+  left:
+    var(--nk-sidebar-collapsed);
+
+  right: 0;
+
+  bottom: 0;
+
+  height:
+    var(--nk-footer-height);
+
+  z-index: 900;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  padding:
+    0 40px;
+
+  background:
+    #ffffff;
+
+  border-top:
+    1px solid var(--nk-border);
+
+  color:
+    var(--nk-muted);
+
+  font-size: 13px;
+
+  transition:
+    left .22s cubic-bezier(.4,0,.2,1);
+}
+
+
+/* =========================================================
+   FOOTER EXPANDED
+   ========================================================= */
+
+#sidebar-toggle:checked ~ .nk-shell
+.nk-footer {
+
+  left:
+    var(--nk-sidebar-expanded);
+}
+
+
+/* =========================================================
+   FOOTER LEFT
+   ========================================================= */
+
+.nk-footer-left {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+
+.nk-footer-brand {
+
+  color:
+    var(--nk-blue);
+
+  font-weight: 800;
+
+  letter-spacing:
+    .05em;
+}
+
+
+/* =========================================================
+   FOOTER CENTER
+   ========================================================= */
+
+.nk-footer-center {
+
+  color:
+    var(--nk-purple);
+
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   FOOTER RIGHT
+   ========================================================= */
+
+.nk-footer-right {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+
+/* =========================================================
+   FOOTER DIVIDER
+   ========================================================= */
+
+.nk-footer-divider {
+
+  width: 1px;
+
+  height: 16px;
+
+  background:
+    var(--nk-border);
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+.nk-mobile-header-left,
+.nk-mobile-drawer,
+.nk-mobile-overlay {
+
   display: none;
 }
 
 
-/* ================================
+/* =========================================================
    TABLET
-================================ */
+   ========================================================= */
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
 
-  .sidebar {
-    width: 230px;
-    min-width: 230px;
+  :host {
+
+    --nk-sidebar-collapsed: 88px;
+    --nk-sidebar-expanded: 250px;
+
+    --nk-header-height: 88px;
+    --nk-footer-height: 64px;
   }
 
-  .main-area {
-    width: calc(100% - 230px);
-    margin-left: 230px;
+
+  .nk-header {
+
+    padding:
+      0 26px;
   }
 
-  .page-container {
-    padding: 24px;
+
+  .nk-content-inner {
+
+    padding:
+      30px 28px 38px;
   }
 
+
+  .nk-footer {
+
+    padding:
+      0 28px;
+  }
 }
 
 
-/* ================================
+/* =========================================================
+   SMALL LAPTOP
+   ========================================================= */
+
+@media (max-width: 900px) {
+
+  .nk-content-inner {
+
+    padding:
+      26px 22px 32px;
+  }
+
+
+  .nk-user-details {
+
+    display: none;
+  }
+
+
+  .nk-user-chevron {
+
+    display: none;
+  }
+
+
+  .nk-footer-center {
+
+    display: none;
+  }
+}
+
+
+/* =========================================================
    MOBILE
-================================ */
+   ========================================================= */
 
-@media (max-width: 768px) {
+@media (max-width: 700px) {
 
-  .sidebar {
-    width: 280px;
-    min-width: 280px;
+  :host {
 
-    transform: translateX(-100%);
-
-    box-shadow: none;
+    --nk-header-height: 72px;
+    --nk-footer-height: 0px;
   }
 
-  .sidebar--open {
-    transform: translateX(0);
 
-    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.18);
+  /* -------------------------------------------------------
+     Desktop sidebar disabled
+     ------------------------------------------------------- */
+
+  .nk-sidebar,
+  .nk-sidebar-backdrop {
+
+    display: none !important;
   }
 
-  .mobile-overlay {
-    display: block;
 
-    position: fixed;
-    inset: 0;
+  /* -------------------------------------------------------
+     Main
+     ------------------------------------------------------- */
 
-    width: 100%;
-    height: 100%;
+  .nk-main {
 
-    padding: 0;
-    border: 0;
-
-    background: rgba(0, 0, 0, 0.35);
-
-    z-index: 90;
+    margin-left:
+      0 !important;
   }
 
-  .mobile-close {
-    display: grid;
-    place-items: center;
 
-    width: 34px;
-    height: 34px;
+  /* -------------------------------------------------------
+     Header
+     ------------------------------------------------------- */
 
-    margin-left: auto;
+  .nk-header {
 
-    border: 0;
-    border-radius: 8px;
+    left: 0 !important;
 
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    height:
+      var(--nk-header-height);
 
-    font-size: 22px;
-
-    cursor: pointer;
+    padding:
+      0 16px;
   }
 
-  .main-area {
-    width: 100%;
-    margin-left: 0;
+
+  .nk-header-context {
+
+    display: none;
   }
 
-  .topbar {
-    height: 64px;
 
-    padding: 0 16px;
-  }
-
-  .menu-button {
-    width: 40px;
-    height: 40px;
+  .nk-mobile-header-left {
 
     display: flex;
+
+    align-items: center;
+
+    gap: 12px;
+  }
+
+
+  /* -------------------------------------------------------
+     Mobile hamburger
+     ------------------------------------------------------- */
+
+  .nk-menu-button {
+
+    width: 42px;
+    height: 42px;
+
+    display: flex;
+
     flex-direction: column;
+
+    align-items: center;
+
     justify-content: center;
+
     gap: 5px;
 
-    margin-right: 10px;
-
-    padding: 9px;
-
     border: 0;
-    border-radius: 10px;
 
-    background: #f2f6f5;
+    border-radius: 11px;
+
+    background:
+      var(--nk-purple);
 
     cursor: pointer;
   }
 
-  .menu-button span {
-    display: block;
 
-    width: 100%;
+  .nk-menu-button span {
+
+    width: 20px;
     height: 2px;
 
-    border-radius: 2px;
+    border-radius: 10px;
 
-    background: #117c6d;
+    background:
+      #ffffff;
   }
 
-  .page-brand-name {
-    display: inline;
+
+  .nk-mobile-header-brand {
+
+    color:
+      var(--nk-navy);
+
+    font-size: 15px;
+
+    font-weight: 800;
+
+    letter-spacing:
+      .04em;
   }
 
-  .page-brand-divider,
-  .page-brand-context {
+
+  /* -------------------------------------------------------
+     Header actions
+     ------------------------------------------------------- */
+
+  .nk-header-actions {
+
+    gap: 8px;
+  }
+
+
+  .nk-notification {
+
+    width: 44px;
+    height: 44px;
+
+    border-radius: 12px;
+  }
+
+
+  .nk-user-avatar {
+
+    width: 44px;
+    height: 44px;
+
+    font-size: 17px;
+  }
+
+
+  /* -------------------------------------------------------
+     Content
+     ------------------------------------------------------- */
+
+  .nk-content {
+
+    padding-top:
+      var(--nk-header-height);
+
+    padding-bottom:
+      0;
+  }
+
+
+  .nk-content-inner {
+
+    padding:
+      22px 16px 30px;
+  }
+
+
+  /* -------------------------------------------------------
+     Footer
+     ------------------------------------------------------- */
+
+  .nk-footer {
+
     display: none;
   }
 
-  .user-details {
-    display: none;
+
+  /* -------------------------------------------------------
+     Mobile overlay
+     ------------------------------------------------------- */
+
+  .nk-mobile-overlay {
+
+    position: fixed;
+
+    inset: 0;
+
+    z-index: 1900;
+
+    display: block;
+
+    border: 0;
+
+    background:
+      rgba(23,43,77,.45);
+
+    backdrop-filter:
+      blur(2px);
   }
 
-  .topbar-actions {
-    gap: 7px;
+
+  /* -------------------------------------------------------
+     Mobile drawer
+     ------------------------------------------------------- */
+
+  .nk-mobile-drawer {
+
+    position: fixed;
+
+    top: 0;
+    left: 0;
+
+    width:
+      min(300px, 86vw);
+
+    height: 100vh;
+
+    z-index: 2000;
+
+    display: flex;
+
+    flex-direction: column;
+
+    background:
+      linear-gradient(
+        180deg,
+        #172b4d 0%,
+        #1d3555 55%,
+        #233d5f 100%
+      );
+
+    transform:
+      translateX(-105%);
+
+    transition:
+      transform .22s cubic-bezier(.4,0,.2,1);
+
+    box-shadow:
+      10px 0 35px rgba(23,43,77,.22);
   }
 
-  .icon-button {
-    width: 38px;
-    height: 38px;
+
+  .nk-mobile-drawer--open {
+
+    transform:
+      translateX(0);
   }
 
-  .page-container {
-    padding: 20px 16px;
+
+  /* -------------------------------------------------------
+     Mobile drawer header
+     ------------------------------------------------------- */
+
+  .nk-mobile-drawer-header {
+
+    height: 100px;
+
+    min-height: 100px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    padding:
+      16px 18px;
+
+    border-bottom:
+      1px solid rgba(255,255,255,.12);
+  }
+
+
+  .nk-mobile-logo-wrapper {
+
+    width: 60px;
+    height: 60px;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 15px;
+
+    background:
+      #ffffff;
+  }
+
+
+  .nk-mobile-logo {
+
+    width: 52px;
+    height: 52px;
+
+    object-fit: contain;
+  }
+
+
+  .nk-mobile-close {
+
+    width: 42px;
+    height: 42px;
+
+    border: 0;
+
+    border-radius: 11px;
+
+    background:
+      rgba(255,255,255,.12);
+
+    color:
+      #ffffff;
+
+    font-size: 27px;
+
+    cursor: pointer;
+  }
+
+
+  .nk-mobile-close:hover {
+
+    background:
+      rgba(255,255,255,.22);
+  }
+
+
+  /* -------------------------------------------------------
+     Mobile navigation
+     ------------------------------------------------------- */
+
+  .nk-mobile-nav {
+
+    flex: 1;
+
+    overflow-y: auto;
+
+    padding:
+      14px 10px;
+  }
+
+
+  .nk-mobile-nav .nk-nav-item {
+
+    justify-content:
+      flex-start;
+
+    padding:
+      0 14px;
+  }
+
+
+  .nk-mobile-nav .nk-nav-text {
+
+    width:
+      auto;
+
+    opacity:
+      1;
+  }
+
+
+  .nk-mobile-settings {
+
+    margin-top: 10px;
+
+    padding-top: 10px;
+
+    border-top:
+      1px solid rgba(255,255,255,.12);
   }
 }
 
 
-/* ================================
+/* =========================================================
    SMALL MOBILE
-================================ */
+   ========================================================= */
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
 
-  .topbar {
-    padding: 0 12px;
+  .nk-content-inner {
+
+    padding:
+      18px 12px 24px;
   }
 
-  .page-container {
-    padding: 16px 12px;
-  }
 
+  .nk-notification {
+
+    display: none;
+  }
+}
+
+
+/* =========================================================
+   ACCESSIBILITY
+   ========================================================= */
+
+.nk-sidebar-toggle:focus-visible,
+.nk-nav-item:focus-visible,
+.nk-notification:focus-visible,
+.nk-user:focus-visible,
+.nk-menu-button:focus-visible,
+.nk-mobile-close:focus-visible {
+
+  outline:
+    3px solid rgba(255,200,61,.75);
+
+  outline-offset:
+    2px;
+}
+
+
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+
+    transition-duration:
+      .01ms !important;
+  }
 }

@@ -5,15 +5,14 @@ import {
   RouterOutlet
 } from '@angular/router';
 
-interface NavigationItem {
+interface NavItem {
   label: string;
   route: string;
   icon: string;
 }
 
 @Component({
-  selector: 'nk-root',
-  standalone: true,
+  selector: 'app-root',
   imports: [
     RouterOutlet,
     RouterLink,
@@ -23,9 +22,19 @@ interface NavigationItem {
   styleUrl: './app.scss'
 })
 export class App {
-  isMobileMenuOpen = false;
 
-  navigationItems: NavigationItem[] = [
+  /**
+   * Controls the mobile navigation drawer.
+   */
+  //mobileMenuOpen = false;
+
+  /**
+   * Main application navigation.
+   *
+   * Keeping this in one place means the same navigation
+   * can be reused by desktop and mobile layouts.
+   */
+  navItems: NavItem[] = [
     {
       label: 'Dashboard',
       route: '/dashboard',
@@ -39,7 +48,7 @@ export class App {
     {
       label: 'Participants',
       route: '/participants',
-      icon: '◉'
+      icon: '○'
     },
     {
       label: 'Events',
@@ -59,7 +68,7 @@ export class App {
     {
       label: 'Certificates',
       route: '/certificates',
-      icon: '▣'
+      icon: '□'
     },
     {
       label: 'Reports',
@@ -68,17 +77,48 @@ export class App {
     }
   ];
 
-  settingsItem: NavigationItem = {
-    label: 'Settings',
-    route: '/settings',
-    icon: '⚙'
-  };
 
-  closeMobileMenu(): void {
-    this.isMobileMenuOpen = false;
+sidebarExpanded = false;
+mobileMenuOpen = false;
+
+  /**
+   * Open or close the mobile navigation drawer.
+   */
+  // toggleMobileMenu(): void {
+  //   this.mobileMenuOpen = !this.mobileMenuOpen;
+  // }
+
+  /**
+   * Close the mobile navigation drawer.
+   */
+  // closeMobileMenu(): void {
+  //   this.mobileMenuOpen = false;
+  // }
+
+  toggleSidebar(event?: Event): void {
+  event?.stopPropagation();
+
+  this.sidebarExpanded = !this.sidebarExpanded;
+}
+
+onShellClick(event: MouseEvent): void {
+  if (!this.sidebarExpanded) {
+    return;
   }
 
-  toggleMobileMenu(): void {
-    this.isMobileMenuOpen = !this.isMobileMenuOpen;
+  const target = event.target as HTMLElement;
+
+  if (!target.closest('.nk-sidebar')) {
+    this.sidebarExpanded = false;
   }
+}
+
+toggleMobileMenu(): void {
+  this.mobileMenuOpen = !this.mobileMenuOpen;
+}
+
+closeMobileMenu(): void {
+  this.mobileMenuOpen = false;
+}
+
 }
