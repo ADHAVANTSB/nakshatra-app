@@ -1,22 +1,232 @@
 <div class="page">
 
+  <!-- PAGE HEADER -->
   <div class="page-header">
     <div>
       <span class="eyebrow">REGISTRATION</span>
+
       <h1>Shelter Homes</h1>
-      <p>Manage participating shelter homes and their details.</p>
+
+      <p>
+        Manage participating shelter homes and their details.
+      </p>
     </div>
 
-    <button class="primary-button">+ Add Home</button>
+    <button
+      class="primary-button"
+      type="button">
+      + Add Home
+    </button>
   </div>
 
+
+  <!-- MANAGEMENT CARD -->
   <div class="section-card">
+
     <h3>Shelter Home Management</h3>
+
     <p>
       Home registration, contact information, location,
       participation status and Google Sheet configuration
       will be managed here.
     </p>
+
   </div>
+
+
+<!-- HOME LIST -->
+@if (homes().length > 0) {
+
+  <div class="home-list">
+
+    @for (home of homes(); track home.id) {
+
+      <div class="home-card">
+
+        <!-- HOME INFORMATION -->
+        <div class="home-card-main">
+
+          <div class="home-card-title">
+
+            <span class="home-code">
+              {{ home.homeCode }}
+            </span>
+
+            <h4>
+              {{ home.name }}
+            </h4>
+
+          </div>
+
+
+          <!-- DETAILS -->
+          <div class="home-details">
+
+            <div class="home-detail">
+
+              <span class="detail-label">
+                Address
+              </span>
+
+              <span class="detail-value">
+                {{ home.address }}
+              </span>
+
+            </div>
+
+
+            <div class="home-detail">
+
+              <span class="detail-label">
+                Contact
+              </span>
+
+              <span class="detail-value">
+                {{ home.contactPhone }}
+              </span>
+
+            </div>
+
+
+            <div class="home-detail">
+
+              <span class="detail-label">
+                Participants
+              </span>
+
+              <span class="detail-value">
+
+                {{ getParticipantCount(home.id) }}
+                /
+                35
+
+              </span>
+
+            </div>
+
+
+            <div class="home-detail">
+
+              <span class="detail-label">
+                Boys / Girls
+              </span>
+
+              <span class="detail-value">
+
+                {{ getMaleCount(home.id) }}
+                /
+                {{ getFemaleCount(home.id) }}
+
+              </span>
+
+            </div>
+
+
+            <div class="home-detail">
+
+              <span class="detail-label">
+                Transportation
+              </span>
+
+              <span class="detail-value">
+
+                @if (
+                  home.transportationType ===
+                  'OWN_TRANSPORT'
+                ) {
+
+                  Own Transport
+
+                } @else {
+
+                  To Be Arranged
+
+                }
+
+              </span>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- RIGHT SIDE -->
+        <div class="home-card-status">
+
+          <!-- APPROVAL STATUS -->
+          <span
+            class="status-badge"
+            [class.status-approved]="
+              home.approvalStatus === 'APPROVED'
+            "
+            [class.status-pending]="
+              home.approvalStatus === 'PENDING'
+            "
+            [class.status-rejected]="
+              home.approvalStatus === 'REJECTED'
+            "
+          >
+
+            {{ home.approvalStatus }}
+
+          </span>
+
+
+          <!-- VALIDATION -->
+          <span class="validation-status">
+
+            @if (
+              home.validationStatus === 'PASSED'
+            ) {
+
+              ✓ Validated
+
+            } @else if (
+              home.validationStatus === 'FAILED'
+            ) {
+
+              ⚠ Validation Failed
+
+            } @else {
+
+              {{ home.validationStatus }}
+
+            }
+
+          </span>
+
+
+          <!-- ACTIONS -->
+          <div class="home-card-actions">
+
+            <button
+              type="button"
+              class="secondary-action"
+              (click)="viewParticipants(home.id)"
+            >
+              Participants
+            </button>
+
+            <button
+              type="button"
+              class="secondary-action"
+              (click)="viewHome(home.id)"
+            >
+              View
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    }
+
+  </div>
+
+}
 
 </div>
