@@ -1,0 +1,413 @@
+/* =========================================================
+   PARTICIPANT MANAGEMENT
+   ========================================================= */
+
+.home-select {
+  width: 100%;
+  max-width: 620px;
+
+  padding: 0.75rem 0.9rem;
+
+  border: 1px solid #dce5ef;
+  border-radius: 9px;
+
+  background: #ffffff;
+  color: #314b68;
+
+  font-family: inherit;
+  font-size: 0.88rem;
+
+  cursor: pointer;
+}
+
+.home-select:focus {
+  outline: none;
+  border-color: #9fb4cb;
+}
+
+
+/* =========================================================
+   CAPACITY
+   ========================================================= */
+
+.participant-capacity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+
+  margin-top: 1rem;
+
+  color: #7b8da0;
+  font-size: 0.8rem;
+}
+
+.participant-capacity strong {
+  color: #1d3557;
+  font-size: 0.95rem;
+}
+
+
+/* =========================================================
+   ALERTS
+   ========================================================= */
+
+.validation-alert {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+
+  border: 1px solid #f0cccc;
+  border-radius: 10px;
+
+  background: #fff7f7;
+  color: #a33f3f;
+
+  font-size: 0.84rem;
+}
+
+.validation-alert ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.validation-alert li {
+  margin-bottom: 0.25rem;
+}
+
+.success-alert {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+
+  border: 1px solid #ccebd9;
+  border-radius: 10px;
+
+  background: #f3fbf6;
+  color: #27734a;
+
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   ADD PARTICIPANT FORM
+   ========================================================= */
+
+.add-participant-card {
+  margin-bottom: 1rem;
+}
+
+.participant-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-field label {
+  color: #526a82;
+
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 0.75rem 0.85rem;
+
+  border: 1px solid #dce5ef;
+  border-radius: 9px;
+
+  background: #ffffff;
+  color: #314b68;
+
+  font-family: inherit;
+  font-size: 0.86rem;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  outline: none;
+  border-color: #9fb4cb;
+}
+
+
+/* =========================================================
+   RULE INFO
+   ========================================================= */
+
+.rule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+
+  border-radius: 9px;
+
+  background: #f7f9fc;
+
+  font-size: 0.78rem;
+  color: #7b8da0;
+}
+
+.rule-info strong {
+  color: #536b83;
+}
+
+
+/* =========================================================
+   FORM ACTIONS
+   ========================================================= */
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+
+  margin-top: 1.25rem;
+}
+
+.close-button {
+  border: 0;
+  background: transparent;
+
+  color: #8294a8;
+
+  font-size: 1.5rem;
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+.close-button:hover {
+  color: #314b68;
+}
+
+
+/* =========================================================
+   PARTICIPANT COUNT
+   ========================================================= */
+
+.participant-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 2.25rem;
+  height: 2.25rem;
+
+  padding: 0 0.65rem;
+
+  border-radius: 999px;
+
+  background: #eef2ff;
+  color: #5b45d6;
+
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   PARTICIPANT TABLE
+   ========================================================= */
+
+.participant-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.participant-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  font-size: 0.82rem;
+}
+
+.participant-table th {
+  padding: 0.8rem 0.75rem;
+
+  border-bottom: 1px solid #e5ebf2;
+
+  color: #8a9caf;
+
+  font-size: 0.7rem;
+  font-weight: 700;
+
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.participant-table td {
+  padding: 0.9rem 0.75rem;
+
+  border-bottom: 1px solid #edf1f5;
+
+  color: #536b83;
+
+  vertical-align: middle;
+}
+
+.participant-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.participant-table tbody tr:hover {
+  background: #fafcff;
+}
+
+
+/* =========================================================
+   PARTICIPANT NAME
+   ========================================================= */
+
+.participant-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.participant-name strong {
+  color: #314b68;
+  font-weight: 700;
+}
+
+.participant-name span {
+  color: #9aa9ba;
+  font-size: 0.7rem;
+}
+
+
+/* =========================================================
+   LEVEL
+   ========================================================= */
+
+.level-badge {
+  display: inline-flex;
+
+  padding: 0.35rem 0.6rem;
+
+  border-radius: 999px;
+
+  background: #f1f4ff;
+  color: #5b45d6;
+
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   PARTICIPANT STATUS
+   ========================================================= */
+
+.participant-status {
+  display: inline-flex;
+
+  padding: 0.35rem 0.6rem;
+
+  border-radius: 999px;
+
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.participant-status.status-approved {
+  background: #eaf8f0;
+  color: #20804d;
+}
+
+.participant-status.status-pending {
+  background: #fff6df;
+  color: #9a6a00;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 700px) {
+
+  .participant-form {
+    grid-template-columns: 1fr;
+  }
+
+  .participant-capacity {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .form-actions button {
+    width: 100%;
+  }
+
+}
+
+/* =========================================================
+   PARTICIPANT TABLE ACTIONS
+   ========================================================= */
+
+.participant-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.table-action {
+  border: 1px solid #dce5ef;
+  border-radius: 7px;
+
+  background: #ffffff;
+  color: #536b83;
+
+  padding: 0.4rem 0.6rem;
+
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.table-action:hover {
+  background: #f7f9fc;
+  border-color: #cbd8e6;
+  color: #314b68;
+}
+
+.locked-label {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 0.35rem 0.55rem;
+
+  border-radius: 999px;
+
+  background: #f2f4f7;
+  color: #7a8795;
+
+  font-size: 0.68rem;
+  font-weight: 700;
+}

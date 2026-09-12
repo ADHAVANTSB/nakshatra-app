@@ -1,21 +1,770 @@
 <div class="page">
 
+  <!-- =====================================================
+       PAGE HEADER
+       ====================================================== -->
+
   <div class="page-header">
+
     <div>
-      <span class="eyebrow">PARTICIPATION</span>
-      <h1>Participants</h1>
-      <p>Manage and validate participating children.</p>
+
+      <span class="eyebrow">
+        PARTICIPATION
+      </span>
+
+      <h1>
+        Participants
+      </h1>
+
+      <p>
+        Manage and validate participating children.
+      </p>
+
     </div>
 
-    <button class="primary-button">+ Add Participant</button>
+
+    <button
+      class="primary-button"
+      type="button"
+      (click)="openAddForm()"
+      [disabled]="
+        !selectedHomeId() ||
+        getRemainingSlots() === 0
+      "
+    >
+      + Add Participant
+    </button>
+
   </div>
 
+
+  <!-- =====================================================
+       MANAGEMENT CARD
+       ====================================================== -->
+
   <div class="section-card">
-    <h3>Participant Management</h3>
+
+    <h3>
+      Participant Management
+    </h3>
+
     <p>
       Participant data, name validation, age, category,
-      event participation and registration status will appear here.
+      event participation and registration status will
+      appear here.
     </p>
+
+  </div>
+
+
+  <!-- =====================================================
+       HOME FILTER
+       ====================================================== -->
+
+  <div class="section-card">
+
+    <div class="section-card-header">
+
+      <div>
+
+        <span class="eyebrow">
+          SHELTER HOME
+        </span>
+
+        <h3>
+          Select Shelter Home
+        </h3>
+
+      </div>
+
+    </div>
+
+
+    <select
+      class="home-select"
+      [ngModel]="selectedHomeId() ?? ''"
+      (ngModelChange)="selectHome($event)"
+    >
+
+      <option value="">
+        All Shelter Homes
+      </option>
+
+      @for (home of homes(); track home.id) {
+
+        <option [value]="home.id">
+          {{ home.homeCode }} — {{ home.name }}
+        </option>
+
+      }
+
+    </select>
+
+
+    @if (selectedHomeId()) {
+
+      <div class="participant-capacity">
+
+        <span>
+          Participants
+        </span>
+
+        <strong>
+          {{ participants().length }} / 35
+        </strong>
+
+        <span>
+          {{ getRemainingSlots() }} slots remaining
+        </span>
+
+      </div>
+
+    }
+
+  </div>
+
+
+  <!-- =====================================================
+       VALIDATION ERRORS
+       ====================================================== -->
+
+  @if (validationErrors().length > 0) {
+
+    <div class="validation-alert">
+
+      <strong>
+        Please fix the following:
+      </strong>
+
+      <ul>
+
+        @for (
+          error of validationErrors();
+          track error
+        ) {
+
+          <li>
+            {{ error }}
+          </li>
+
+        }
+
+      </ul>
+
+    </div>
+
+  }
+
+
+  <!-- =====================================================
+       SUCCESS MESSAGE
+       ====================================================== -->
+
+  @if (successMessage()) {
+
+    <div class="success-alert">
+
+      ✓ {{ successMessage() }}
+
+    </div>
+
+  }
+
+
+  <!-- =====================================================
+       ADD / EDIT PARTICIPANT FORM
+       ====================================================== -->
+
+  @if (showAddForm()) {
+
+    <div class="section-card add-participant-card">
+
+      <!-- FORM HEADER -->
+
+      <div class="section-card-header">
+
+        <div>
+
+          <span class="eyebrow">
+
+            @if (editingParticipant()) {
+              EDIT PARTICIPANT
+            } @else {
+              NEW PARTICIPANT
+            }
+
+          </span>
+
+
+          <h3>
+
+            @if (editingParticipant()) {
+              Edit Participant
+            } @else {
+              Add Participant
+            }
+
+          </h3>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="close-button"
+          (click)="
+            editingParticipant()
+              ? cancelEdit()
+              : closeAddForm()
+          "
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <!-- FORM -->
+
+      <div class="participant-form">
+
+        <!-- =================================================
+             NAME
+             ================================================== -->
+
+        <div class="form-field">
+
+          <label for="participantName">
+            Participant Name
+          </label>
+
+          <input
+            id="participantName"
+            type="text"
+            [(ngModel)]="participantName"
+            placeholder="Enter participant name"
+            autocomplete="off"
+          />
+
+        </div>
+
+
+        <!-- =================================================
+             GENDER
+             ================================================== -->
+
+        <div class="form-field">
+
+          <label for="gender">
+            Gender
+          </label>
+
+          <select
+            id="gender"
+            [(ngModel)]="gender"
+          >
+
+            <option value="">
+              Select gender
+            </option>
+
+            <option value="MALE">
+              Male
+            </option>
+
+            <option value="FEMALE">
+              Female
+            </option>
+
+          </select>
+
+        </div>
+
+
+        <!-- =================================================
+             AGE
+             ================================================== -->
+
+        <div class="form-field">
+
+          <label for="age">
+            Age
+          </label>
+
+          <input
+            id="age"
+            type="number"
+            min="1"
+            max="19"
+            [(ngModel)]="age"
+            placeholder="1 - 19"
+          />
+
+          <small>
+            Allowed age: 1–19
+          </small>
+
+        </div>
+
+
+        <!-- =================================================
+             STANDARD
+             ================================================== -->
+
+        <div class="form-field">
+
+          <label for="standard">
+            Standard
+          </label>
+
+          <input
+            id="standard"
+            type="number"
+            min="1"
+            max="12"
+            [(ngModel)]="standard"
+            placeholder="1 - 12"
+          />
+
+          <small>
+            Allowed standard: 1–12
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================
+           ELIGIBILITY INFORMATION
+           ================================================== -->
+
+      <div class="rule-info">
+
+        <strong>
+          Eligibility
+        </strong>
+
+        <span>
+          Level is automatically calculated from Age
+          and Standard.
+        </span>
+
+        <span>
+          Sub Juniors: Classes 1–3, age up to 10
+        </span>
+
+        <span>
+          Juniors: Classes 4–6, age up to 13
+        </span>
+
+        <span>
+          Seniors: Classes 7–9, age up to 16
+        </span>
+
+        <span>
+          Super Seniors: Classes 10–12, age up to 19
+        </span>
+
+      </div>
+
+
+      <!-- =================================================
+           EDIT WARNING
+           ================================================== -->
+
+      @if (editingParticipant()) {
+
+        <div class="edit-warning">
+
+          <strong>
+            Approval will be required again
+          </strong>
+
+          <span>
+            Saving changes will reset this participant's
+            approval status and keep the record unlocked
+            until it is reviewed again.
+          </span>
+
+        </div>
+
+      }
+
+
+      <!-- =================================================
+           FORM ACTIONS
+           ================================================== -->
+
+      <div class="form-actions">
+
+        <button
+          type="button"
+          class="secondary-action"
+          (click)="
+            editingParticipant()
+              ? cancelEdit()
+              : closeAddForm()
+          "
+        >
+          Cancel
+        </button>
+
+
+        <button
+          type="button"
+          class="primary-button"
+          (click)="
+            editingParticipant()
+              ? saveEditedParticipant()
+              : addParticipant()
+          "
+        >
+
+          @if (editingParticipant()) {
+            Save Changes
+          } @else {
+            Add Participant
+          }
+
+        </button>
+
+      </div>
+
+    </div>
+
+  }
+
+
+  <!-- =====================================================
+       PARTICIPANT LIST
+       ====================================================== -->
+
+  <div class="section-card">
+
+    <!-- LIST HEADER -->
+
+    <div class="section-card-header">
+
+      <div>
+
+        <span class="eyebrow">
+          REGISTERED PARTICIPANTS
+        </span>
+
+
+        <h3>
+
+          @if (selectedHomeId()) {
+
+            {{ getHomeName(selectedHomeId()!) }}
+
+          } @else {
+
+            All Participants
+
+          }
+
+        </h3>
+
+      </div>
+
+
+      <span class="participant-count">
+        {{ participants().length }}
+      </span>
+
+    </div>
+
+
+    <!-- ===================================================
+         EMPTY STATE
+         ==================================================== -->
+
+    @if (participants().length === 0) {
+
+      <div class="empty-state">
+
+        <h4>
+          No participants found
+        </h4>
+
+        <p>
+          Add a participant or select another shelter home.
+        </p>
+
+      </div>
+
+    }
+
+
+    <!-- ===================================================
+         PARTICIPANT TABLE
+         ==================================================== -->
+
+    @if (participants().length > 0) {
+
+      <div class="participant-table-wrapper">
+
+        <table class="participant-table">
+
+          <thead>
+
+            <tr>
+
+              <th>
+                #
+              </th>
+
+              <th>
+                Participant
+              </th>
+
+              <th>
+                Gender
+              </th>
+
+              <th>
+                Age
+              </th>
+
+              <th>
+                Standard
+              </th>
+
+              <th>
+                Level
+              </th>
+
+              <th>
+                Validation
+              </th>
+
+              <th>
+                Approval
+              </th>
+
+              <th>
+                Lock
+              </th>
+
+              <th>
+                Actions
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            @for (
+              participant of participants();
+              track participant.id;
+              let i = $index
+            ) {
+
+              <tr>
+
+                <!-- =======================================
+                     NUMBER
+                     ======================================== -->
+
+                <td>
+                  {{ i + 1 }}
+                </td>
+
+
+                <!-- =======================================
+                     PARTICIPANT
+                     ======================================== -->
+
+                <td>
+
+                  <div class="participant-name">
+
+                    <strong>
+                      {{ participant.fullName }}
+                    </strong>
+
+                    <span>
+                      {{ participant.participantCode }}
+                    </span>
+
+                  </div>
+
+                </td>
+
+
+                <!-- =======================================
+                     GENDER
+                     ======================================== -->
+
+                <td>
+                  {{ participant.gender }}
+                </td>
+
+
+                <!-- =======================================
+                     AGE
+                     ======================================== -->
+
+                <td>
+                  {{ participant.age }}
+                </td>
+
+
+                <!-- =======================================
+                     STANDARD
+                     ======================================== -->
+
+                <td>
+                  {{ participant.standard }}
+                </td>
+
+
+                <!-- =======================================
+                     LEVEL
+                     ======================================== -->
+
+                <td>
+
+                  <span class="level-badge">
+
+                    {{ getLevelLabel(
+                      participant.level
+                    ) }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- =======================================
+                     VALIDATION
+                     ======================================== -->
+
+                <td>
+
+                  <span
+                    class="participant-status"
+                    [class.status-approved]="
+                      participant.validationStatus === 'PASSED'
+                    "
+                  >
+
+                    {{ participant.validationStatus }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- =======================================
+                     APPROVAL
+                     ======================================== -->
+
+                <td>
+
+                  <span
+                    class="participant-status"
+                    [class.status-approved]="
+                      participant.approvalStatus === 'APPROVED'
+                    "
+                    [class.status-pending]="
+                      participant.approvalStatus === 'PENDING'
+                    "
+                  >
+
+                    {{ participant.approvalStatus }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- =======================================
+                     LOCK STATUS
+                     ======================================== -->
+
+                <td>
+
+                  @if (
+                    participant.lockStatus === 'LOCKED'
+                  ) {
+
+                    <span class="locked-label">
+                      🔒 Locked
+                    </span>
+
+                  } @else {
+
+                    <span class="unlocked-label">
+                      Unlocked
+                    </span>
+
+                  }
+
+                </td>
+
+
+                <!-- =======================================
+                     ACTIONS
+                     ======================================== -->
+
+                <td>
+
+                  <div class="participant-actions">
+
+                    @if (
+                      participant.lockStatus === 'LOCKED'
+                    ) {
+
+                      <span class="locked-action">
+                        Locked
+                      </span>
+
+                    } @else {
+
+                      <button
+                        type="button"
+                        class="table-action"
+                        (click)="editParticipant(participant)"
+                      >
+                        Edit
+                      </button>
+
+
+                      <button
+                        type="button"
+                        class="table-action"
+                        (click)="lockParticipant(
+                          participant.id
+                        )"
+                      >
+                        Lock
+                      </button>
+
+                    }
+
+                  </div>
+
+                </td>
+
+              </tr>
+
+            }
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    }
+
   </div>
 
 </div>

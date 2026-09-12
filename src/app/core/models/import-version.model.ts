@@ -1,4 +1,10 @@
-export type ImportStatus = 'IMPORTED' | 'VALIDATION_FAILED' | 'READY_FOR_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
+export type ImportStatus =
+  | 'IMPORTED'
+  | 'VALIDATION_FAILED'
+  | 'READY_FOR_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SUPERSEDED';
 
 export interface ImportVersion {
   id: string;

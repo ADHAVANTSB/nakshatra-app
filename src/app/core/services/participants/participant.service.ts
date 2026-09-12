@@ -10,6 +10,23 @@ import {
 })
 export class ParticipantService {
 
+  // =========================================================
+  // RULES
+  // =========================================================
+
+  readonly MAX_PARTICIPANTS_PER_HOME = 35;
+
+  readonly MIN_AGE = 1;
+  readonly MAX_AGE = 19;
+
+  readonly MIN_STANDARD = 1;
+  readonly MAX_STANDARD = 12;
+
+
+  // =========================================================
+  // TEMPORARY DEVELOPMENT DATA
+  // =========================================================
+
   private readonly participants =
     signal<Participant[]>([
 
@@ -71,29 +88,28 @@ export class ParticipantService {
     ]);
 
 
-  // ---------------------------------------------------------
-  // READ ONLY SIGNAL
-  // ---------------------------------------------------------
+  // =========================================================
+  // READ-ONLY SIGNAL
+  // =========================================================
 
   readonly participants$ =
     this.participants.asReadonly();
 
 
-  // ---------------------------------------------------------
-  // GET ALL PARTICIPANTS
-  // ---------------------------------------------------------
+  // =========================================================
+  // GET ALL
+  // =========================================================
 
-  getParticipants():
-    Participant[] {
+  getParticipants(): Participant[] {
 
     return this.participants();
 
   }
 
 
-  // ---------------------------------------------------------
-  // GET PARTICIPANTS BY HOME
-  // ---------------------------------------------------------
+  // =========================================================
+  // GET BY HOME
+  // =========================================================
 
   getParticipantsByHomeId(
     shelterHomeId: string
@@ -109,9 +125,9 @@ export class ParticipantService {
   }
 
 
-  // ---------------------------------------------------------
-  // GET PARTICIPANT
-  // ---------------------------------------------------------
+  // =========================================================
+  // GET BY ID
+  // =========================================================
 
   getParticipantById(
     id: string
@@ -126,60 +142,9 @@ export class ParticipantService {
   }
 
 
-  // ---------------------------------------------------------
-  // ADD PARTICIPANT
-  // ---------------------------------------------------------
-
-  addParticipant(
-    participant: Participant
-  ): void {
-
-    this.participants.update(
-      current => [
-        ...current,
-        participant
-      ]
-    );
-
-  }
-
-
-  // ---------------------------------------------------------
-  // UPDATE PARTICIPANT
-  // ---------------------------------------------------------
-
-  updateParticipant(
-    updatedParticipant: Participant
-  ): void {
-
-    this.participants.update(
-      current =>
-        current.map(
-          participant =>
-
-            participant.id ===
-            updatedParticipant.id
-
-              ? {
-                  ...updatedParticipant,
-
-                  version:
-                    participant.version + 1,
-
-                  updatedAt:
-                    new Date().toISOString()
-                }
-
-              : participant
-        )
-    );
-
-  }
-
-
-  // ---------------------------------------------------------
-  // PARTICIPANT COUNT
-  // ---------------------------------------------------------
+  // =========================================================
+  // COUNT
+  // =========================================================
 
   getParticipantCount(
     shelterHomeId: string
@@ -194,9 +159,9 @@ export class ParticipantService {
   }
 
 
-  // ---------------------------------------------------------
-  // BOYS COUNT
-  // ---------------------------------------------------------
+  // =========================================================
+  // MALE COUNT
+  // =========================================================
 
   getMaleCount(
     shelterHomeId: string
@@ -208,17 +173,16 @@ export class ParticipantService {
       )
       .filter(
         participant =>
-          participant.gender ===
-          'MALE'
+          participant.gender === 'MALE'
       )
       .length;
 
   }
 
 
-  // ---------------------------------------------------------
-  // GIRLS COUNT
-  // ---------------------------------------------------------
+  // =========================================================
+  // FEMALE COUNT
+  // =========================================================
 
   getFemaleCount(
     shelterHomeId: string
@@ -230,23 +194,55 @@ export class ParticipantService {
       )
       .filter(
         participant =>
-          participant.gender ===
-          'FEMALE'
+          participant.gender === 'FEMALE'
       )
       .length;
 
   }
 
 
-  // ---------------------------------------------------------
-  // DETERMINE PARTICIPANT LEVEL
-  // ---------------------------------------------------------
+  // =========================================================
+  // CHECK HOME CAPACITY
+  // =========================================================
+
+  canAddParticipant(
+    shelterHomeId: string
+  ): boolean {
+
+    return this.getParticipantCount(
+      shelterHomeId
+    ) < this.MAX_PARTICIPANTS_PER_HOME;
+
+  }
+
+
+  // =========================================================
+  // REMAINING SLOTS
+  // =========================================================
+
+  getRemainingSlots(
+    shelterHomeId: string
+  ): number {
+
+    return Math.max(
+      0,
+      this.MAX_PARTICIPANTS_PER_HOME -
+      this.getParticipantCount(shelterHomeId)
+    );
+
+  }
+
+
+  // =========================================================
+  // DETERMINE LEVEL
+  // =========================================================
 
   determineLevel(
     age: number,
     standard: number
   ): ParticipantLevel | null {
 
+    // Sub Juniors
     if (
       standard >= 1 &&
       standard <= 3 &&
@@ -258,6 +254,7 @@ export class ParticipantService {
     }
 
 
+    // Juniors
     if (
       standard >= 4 &&
       standard <= 6 &&
@@ -269,6 +266,7 @@ export class ParticipantService {
     }
 
 
+    // Seniors
     if (
       standard >= 7 &&
       standard <= 9 &&
@@ -280,6 +278,7 @@ export class ParticipantService {
     }
 
 
+    // Super Seniors
     if (
       standard >= 10 &&
       standard <= 12 &&
@@ -296,9 +295,9 @@ export class ParticipantService {
   }
 
 
-  // ---------------------------------------------------------
+  // =========================================================
   // VALIDATE PARTICIPANT
-  // ---------------------------------------------------------
+  // =========================================================
 
   validateParticipant(
     participant: Participant
@@ -307,7 +306,9 @@ export class ParticipantService {
     const errors: string[] = [];
 
 
+    // Name
     if (
+      !participant.fullName ||
       !participant.fullName.trim()
     ) {
 
@@ -318,38 +319,54 @@ export class ParticipantService {
     }
 
 
+    // Gender
     if (
-      participant.age < 1 ||
-      participant.age > 19
+      participant.gender !== 'MALE' &&
+      participant.gender !== 'FEMALE'
     ) {
 
       errors.push(
-        'Age must be between 1 and 19.'
+        'Gender is required.'
       );
 
     }
 
 
+    // Age
     if (
-      participant.standard < 1 ||
-      participant.standard > 12
+      participant.age < this.MIN_AGE ||
+      participant.age > this.MAX_AGE
     ) {
 
       errors.push(
-        'Standard must be between 1 and 12.'
+        `Age must be between ${this.MIN_AGE} and ${this.MAX_AGE}.`
       );
 
     }
 
 
-    const calculatedLevel =
+    // Standard
+    if (
+      participant.standard < this.MIN_STANDARD ||
+      participant.standard > this.MAX_STANDARD
+    ) {
+
+      errors.push(
+        `Standard must be between ${this.MIN_STANDARD} and ${this.MAX_STANDARD}.`
+      );
+
+    }
+
+
+    // Level
+    const level =
       this.determineLevel(
         participant.age,
         participant.standard
       );
 
 
-    if (!calculatedLevel) {
+    if (!level) {
 
       errors.push(
         'Age and Standard combination is not eligible.'
@@ -359,6 +376,271 @@ export class ParticipantService {
 
 
     return errors;
+
+  }
+
+
+  // =========================================================
+  // PREPARE PARTICIPANT
+  // =========================================================
+
+  prepareParticipant(
+    participant: Participant
+  ): Participant {
+
+    const level =
+      this.determineLevel(
+        participant.age,
+        participant.standard
+      );
+
+    return {
+      ...participant,
+      level,
+      eligibilityStatus:
+        level ? 'ELIGIBLE' : 'INELIGIBLE'
+    };
+
+  }
+
+
+  // =========================================================
+  // ADD PARTICIPANT
+  // =========================================================
+
+  addParticipant(
+    participant: Participant
+  ): {
+    success: boolean;
+    errors: string[];
+  } {
+
+    const errors =
+      this.validateParticipant(
+        participant
+      );
+
+
+    if (errors.length > 0) {
+
+      return {
+        success: false,
+        errors
+      };
+
+    }
+
+
+    if (
+      !this.canAddParticipant(
+        participant.shelterHomeId
+      )
+    ) {
+
+      return {
+        success: false,
+        errors: [
+          'This shelter home already has the maximum of 35 participants.'
+        ]
+      };
+
+    }
+
+
+    const prepared =
+      this.prepareParticipant(
+        participant
+      );
+
+
+    this.participants.update(
+      current => [
+        ...current,
+        prepared
+      ]
+    );
+
+
+    return {
+      success: true,
+      errors: []
+    };
+
+  }
+
+
+  // =========================================================
+  // UPDATE PARTICIPANT
+  // =========================================================
+
+  updateParticipant(
+    updatedParticipant: Participant
+  ): {
+    success: boolean;
+    errors: string[];
+  } {
+
+    const errors =
+      this.validateParticipant(
+        updatedParticipant
+      );
+
+
+    if (errors.length > 0) {
+
+      return {
+        success: false,
+        errors
+      };
+
+    }
+
+
+    const existing =
+      this.getParticipantById(
+        updatedParticipant.id
+      );
+
+
+    if (!existing) {
+
+      return {
+        success: false,
+        errors: [
+          'Participant could not be found.'
+        ]
+      };
+
+    }
+
+
+    const prepared =
+      this.prepareParticipant(
+        updatedParticipant
+      );
+
+
+    this.participants.update(
+      current =>
+        current.map(
+          participant =>
+
+            participant.id ===
+            prepared.id
+
+              ? {
+                  ...prepared,
+
+                  version:
+                    participant.version + 1,
+
+                  updatedAt:
+                    new Date().toISOString()
+                }
+
+              : participant
+        )
+    );
+
+
+    return {
+      success: true,
+      errors: []
+    };
+
+  }
+    // =========================================================
+  // LOCK PARTICIPANT
+  // =========================================================
+
+  lockParticipant(
+    participantId: string
+  ): boolean {
+
+    const participant =
+      this.getParticipantById(
+        participantId
+      );
+
+    if (!participant) {
+
+      return false;
+
+    }
+
+    this.participants.update(
+      current =>
+        current.map(
+          item =>
+
+            item.id === participantId
+
+              ? {
+                  ...item,
+
+                  lockStatus:
+                    'LOCKED',
+
+                  updatedAt:
+                    new Date().toISOString(),
+
+                  updatedBy:
+                    'ADMIN'
+                }
+
+              : item
+        )
+    );
+
+    return true;
+
+  }
+
+
+  // =========================================================
+  // UNLOCK PARTICIPANT
+  // =========================================================
+
+  unlockParticipant(
+    participantId: string
+  ): boolean {
+
+    const participant =
+      this.getParticipantById(
+        participantId
+      );
+
+    if (!participant) {
+
+      return false;
+
+    }
+
+    this.participants.update(
+      current =>
+        current.map(
+          item =>
+
+            item.id === participantId
+
+              ? {
+                  ...item,
+
+                  lockStatus:
+                    'UNLOCKED',
+
+                  updatedAt:
+                    new Date().toISOString(),
+
+                  updatedBy:
+                    'ADMIN'
+                }
+
+              : item
+        )
+    );
+
+    return true;
 
   }
 

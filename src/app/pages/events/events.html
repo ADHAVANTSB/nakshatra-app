@@ -1,21 +1,1365 @@
-<div class="page">
+<div class="events-page">
+
+  <!-- =====================================================
+       HEADER
+       ===================================================== -->
 
   <div class="page-header">
+
     <div>
-      <span class="eyebrow">EVENT MANAGEMENT</span>
+      <div class="eyebrow">
+        NAKSHATRA 2026
+      </div>
+
       <h1>Events</h1>
-      <p>Configure and manage Nakshatra events.</p>
+
+      <p>
+        Manage event categories, participation modes and eligibility
+        for the Nakshatra Arts event.
+      </p>
     </div>
 
-    <button class="primary-button">+ Add Event</button>
+    <button
+      type="button"
+      class="primary-button"
+      (click)="openAddForm()">
+
+      <span class="button-icon">+</span>
+      Add Event
+
+    </button>
+
   </div>
 
-  <div class="section-card">
-    <h3>Event Configuration</h3>
-    <p>
-      Event rules, participant categories, restrictions,
-      guidelines and event-specific configurations will be managed here.
-    </p>
+
+  <!-- =====================================================
+       SUMMARY
+       ===================================================== -->
+
+  <div class="summary-grid">
+
+    <div class="summary-card">
+      <div class="summary-icon">◈</div>
+
+      <div>
+        <span class="summary-label">
+          Total Events
+        </span>
+
+        <strong>
+          {{ totalEvents() }}
+        </strong>
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-icon">✓</div>
+
+      <div>
+        <span class="summary-label">
+          Active Events
+        </span>
+
+        <strong>
+          {{ activeEvents() }}
+        </strong>
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-icon">◎</div>
+
+      <div>
+        <span class="summary-label">
+          Individual
+        </span>
+
+        <strong>
+          {{ soloEvents() }}
+        </strong>
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-icon">◉</div>
+
+      <div>
+        <span class="summary-label">
+          Group
+        </span>
+
+        <strong>
+          {{ groupEvents() }}
+        </strong>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       FILTERS
+       ===================================================== -->
+
+  <div class="filter-card">
+
+    <div class="search-wrapper">
+
+      <span class="search-icon">⌕</span>
+
+      <input
+        type="text"
+        placeholder="Search by event name or code..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="setSearch($event)" />
+
+    </div>
+
+
+    <select
+      [ngModel]="categoryFilter()"
+      (ngModelChange)="setCategory($event)">
+
+      <option value="ALL">
+        All Categories
+      </option>
+
+      <option value="ARTS">
+        Arts
+      </option>
+
+      <option value="LITERARY">
+        Literary
+      </option>
+
+      <option value="CULTURAL">
+        Cultural
+      </option>
+
+    </select>
+
+
+    <select
+      [ngModel]="modeFilter()"
+      (ngModelChange)="setMode($event)">
+
+      <option value="ALL">
+        All Modes
+      </option>
+
+      <option value="SOLO">
+        Individual
+      </option>
+
+      <option value="GROUP">
+        Group
+      </option>
+
+    </select>
+
+
+    <select
+      [ngModel]="statusFilter()"
+      (ngModelChange)="setStatus($event)">
+
+      <option value="ALL">
+        All Status
+      </option>
+
+      <option value="ACTIVE">
+        Active
+      </option>
+
+      <option value="CANCELLED">
+        Cancelled
+      </option>
+
+      <option value="INACTIVE">
+        Inactive
+      </option>
+
+    </select>
+
+  </div>
+
+
+  <!-- =====================================================
+       EVENT TABLE
+       ===================================================== -->
+
+  <div class="table-card">
+
+    <div class="table-header">
+
+      <div>
+        <h2>Event Master</h2>
+
+        <span>
+          {{ filteredEvents().length }}
+          event{{ filteredEvents().length === 1 ? '' : 's' }}
+        </span>
+      </div>
+
+    </div>
+
+
+    @if (filteredEvents().length > 0) {
+
+      <div class="table-wrapper">
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>Event</th>
+              <th>Category</th>
+              <th>Mode</th>
+              <th>Eligible Levels</th>
+              <th>Team Size</th>
+              <th>Status</th>
+              <th class="actions-column">
+                Actions
+              </th>
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            @for (
+              event of filteredEvents();
+              track event.id
+            ) {
+
+              <tr>
+
+                <!-- Event -->
+
+                <td>
+
+                  <div class="event-cell">
+
+                    <div class="event-code">
+                      {{ event.eventCode }}
+                    </div>
+
+                    <div>
+
+                      <strong>
+                        {{ event.name }}
+                      </strong>
+
+                      @if (
+                        event.venue ||
+                        event.schedule
+                      ) {
+
+                        <small>
+
+                          @if (event.schedule) {
+                            {{ event.schedule }}
+                          }
+
+                          @if (
+                            event.schedule &&
+                            event.venue
+                          ) {
+                            ·
+                          }
+
+                          @if (event.venue) {
+                            {{ event.venue }}
+                          }
+
+                        </small>
+
+                      }
+
+                    </div>
+
+                  </div>
+
+                </td>
+
+
+                <!-- Category -->
+
+                <td>
+
+                  <span
+                    class="category-badge"
+                    [class.arts]="
+                      event.category === 'ARTS'
+                    "
+                    [class.literary]="
+                      event.category === 'LITERARY'
+                    "
+                    [class.cultural]="
+                      event.category === 'CULTURAL'
+                    ">
+
+                    {{ categoryLabel(event.category) }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- Mode -->
+
+                <td>
+
+                  <span class="mode-badge">
+
+                    @if (event.mode === 'SOLO') {
+                      Individual
+                    } @else {
+                      Group
+                    }
+
+                  </span>
+
+                </td>
+
+
+                <!-- Levels -->
+
+                <td>
+
+                  <div class="level-list">
+
+                    @for (
+                      level of event.eligibleLevels;
+                      track level
+                    ) {
+
+                      <span class="level-chip">
+                        {{ levelLabel(level) }}
+                      </span>
+
+                    }
+
+                  </div>
+
+                </td>
+
+
+                <!-- Team size -->
+
+                <td>
+
+                  @if (event.mode === 'GROUP') {
+
+                    <span class="team-size">
+
+                      @if (event.minimumTeamSize) {
+                        {{ event.minimumTeamSize }}
+                      } @else {
+                        -
+                      }
+
+                      <span>–</span>
+
+                      @if (event.maximumTeamSize) {
+                        {{ event.maximumTeamSize }}
+                      } @else {
+                        -
+                      }
+
+                    </span>
+
+                  } @else {
+
+                    <span class="solo-label">
+                      1 participant
+                    </span>
+
+                  }
+
+                </td>
+
+
+                <!-- Status -->
+
+                <td>
+
+                  <span
+                    class="status-badge"
+                    [class.active]="
+                      event.status === 'ACTIVE'
+                    "
+                    [class.cancelled]="
+                      event.status === 'CANCELLED'
+                    "
+                    [class.inactive]="
+                      event.status === 'INACTIVE'
+                    ">
+
+                    <span class="status-dot"></span>
+
+                    {{ statusLabel(event.status) }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- Actions -->
+
+                <td class="actions-column">
+
+                  <div class="row-actions">
+
+                    <!-- PARTICIPANTS -->
+
+                    <button
+                      type="button"
+                      class="action-button participant-action"
+                      title="View participants"
+                      (click)="openParticipants(event)">
+
+                      👥
+                      Participants
+
+                    </button>
+
+
+                    <!-- EDIT -->
+
+                    <button
+                      type="button"
+                      class="action-button"
+                      title="Edit event"
+                      (click)="openEditForm(event)">
+
+                      Edit
+
+                    </button>
+
+
+                    <!-- CANCEL / ACTIVATE -->
+
+                    @if (event.status === 'ACTIVE') {
+
+                      <button
+                        type="button"
+                        class="action-button danger"
+                        title="Cancel event"
+                        (click)="cancelEvent(event)">
+
+                        Cancel
+
+                      </button>
+
+                    } @else {
+
+                      <button
+                        type="button"
+                        class="action-button success"
+                        title="Activate event"
+                        (click)="activateEvent(event)">
+
+                        Activate
+
+                      </button>
+
+                    }
+
+                  </div>
+
+                </td>
+
+              </tr>
+
+            }
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    } @else {
+
+      <div class="empty-state">
+
+        <div class="empty-icon">
+          ◈
+        </div>
+
+        <h3>
+          No events found
+        </h3>
+
+        <p>
+          Try changing your filters or add a new event.
+        </p>
+
+        <button
+          type="button"
+          class="primary-button"
+          (click)="openAddForm()">
+
+          + Add Event
+
+        </button>
+
+      </div>
+
+    }
+
   </div>
 
 </div>
+
+
+<!-- =========================================================
+     ADD / EDIT EVENT DRAWER
+     ========================================================= -->
+
+@if (showAddForm()) {
+
+  <div
+    class="drawer-backdrop"
+    (click)="closeForm()">
+
+    <aside
+      class="event-drawer"
+      (click)="$event.stopPropagation()">
+
+      <div class="drawer-header">
+
+        <div>
+
+          <span class="eyebrow">
+            EVENT MASTER
+          </span>
+
+          <h2>
+            {{
+              editingEvent()
+                ? 'Edit Event'
+                : 'Add Event'
+            }}
+          </h2>
+
+        </div>
+
+        <button
+          type="button"
+          class="close-button"
+          (click)="closeForm()">
+
+          ×
+
+        </button>
+
+      </div>
+
+
+      <div class="drawer-body">
+
+        <div class="form-group">
+
+          <label>
+            Event Name
+            <span>*</span>
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="eventName"
+            placeholder="Enter event name" />
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Event Code
+            <span>*</span>
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="eventCode"
+            placeholder="Example: ART-001" />
+
+        </div>
+
+
+        <div class="form-row">
+
+          <div class="form-group">
+
+            <label>
+              Category
+            </label>
+
+            <select
+              [(ngModel)]="category">
+
+              @for (
+                item of categories;
+                track item
+              ) {
+
+                <option [value]="item">
+                  {{ categoryLabel(item) }}
+                </option>
+
+              }
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label>
+              Mode
+            </label>
+
+            <select
+              [(ngModel)]="mode">
+
+              @for (
+                item of modes;
+                track item
+              ) {
+
+                <option [value]="item">
+                  {{ modeLabel(item) }}
+                </option>
+
+              }
+
+            </select>
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Eligible Levels
+            <span>*</span>
+          </label>
+
+          <div class="level-selector">
+
+            @for (
+              level of levels;
+              track level
+            ) {
+
+              <button
+                type="button"
+                class="level-option"
+                [class.selected]="
+                  isLevelSelected(level)
+                "
+                (click)="toggleLevel(level)">
+
+                <span class="check-box">
+
+                  @if (
+                    isLevelSelected(level)
+                  ) {
+                    ✓
+                  }
+
+                </span>
+
+                {{ levelLabel(level) }}
+
+              </button>
+
+            }
+
+          </div>
+
+        </div>
+
+
+        @if (mode === 'GROUP') {
+
+          <div class="form-row">
+
+            <div class="form-group">
+
+              <label>
+                Minimum Team Size
+              </label>
+
+              <input
+                type="number"
+                min="1"
+                [(ngModel)]="minimumTeamSize"
+                placeholder="Minimum" />
+
+            </div>
+
+
+            <div class="form-group">
+
+              <label>
+                Maximum Team Size
+              </label>
+
+              <input
+                type="number"
+                min="1"
+                [(ngModel)]="maximumTeamSize"
+                placeholder="Maximum" />
+
+            </div>
+
+          </div>
+
+        }
+
+
+        <div class="form-group">
+
+          <label>
+            Schedule
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="schedule"
+            placeholder="Example: 10:00 AM - 11:00 AM" />
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Venue
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="venue"
+            placeholder="Example: Main Hall" />
+
+        </div>
+
+
+        <div class="info-box">
+
+          <strong>
+            Event eligibility
+          </strong>
+
+          <p>
+            Only participants whose level is included
+            in the selected eligible levels can register
+            for this event.
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <div class="drawer-footer">
+
+        <button
+          type="button"
+          class="secondary-button"
+          (click)="closeForm()">
+
+          Cancel
+
+        </button>
+
+        <button
+          type="button"
+          class="primary-button"
+          [disabled]="
+            !eventName.trim() ||
+            !eventCode.trim() ||
+            eligibleLevels.length === 0
+          "
+          (click)="saveEvent()">
+
+          {{
+            editingEvent()
+              ? 'Save Changes'
+              : 'Create Event'
+          }}
+
+        </button>
+
+      </div>
+
+    </aside>
+
+  </div>
+
+}
+
+
+<!-- =========================================================
+     EVENT PARTICIPANTS DRAWER
+     ========================================================= -->
+
+@if (showParticipantsDrawer()) {
+
+  <div
+    class="drawer-backdrop"
+    (click)="closeParticipants()">
+
+    <aside
+      class="event-drawer participant-drawer"
+      (click)="$event.stopPropagation()">
+
+      <!-- HEADER -->
+
+      <div class="drawer-header">
+
+        <div>
+
+          <span class="eyebrow">
+            EVENT PARTICIPANTS
+          </span>
+
+          <h2>
+            {{ selectedEvent()?.name }}
+          </h2>
+
+          @if (selectedEvent()) {
+
+            <div class="drawer-subtitle">
+
+              <span>
+                {{ selectedEvent()?.eventCode }}
+              </span>
+
+              <span>·</span>
+
+              <span>
+                {{ categoryLabel(selectedEvent()!.category) }}
+              </span>
+
+              <span>·</span>
+
+              <span>
+                {{ modeLabel(selectedEvent()!.mode) }}
+              </span>
+
+            </div>
+
+          }
+
+        </div>
+
+
+        <button
+          type="button"
+          class="close-button"
+          (click)="closeParticipants()">
+
+          ×
+
+        </button>
+
+      </div>
+
+
+      <!-- BODY -->
+
+      <div class="drawer-body participant-drawer-body">
+
+
+        <!-- REGISTRATION SUMMARY -->
+
+        <div class="registration-summary">
+
+          <div>
+
+            <span>
+              Registered Participants
+            </span>
+
+            <strong>
+              {{ registeredCount() }}
+            </strong>
+
+          </div>
+
+
+          <div class="registration-limit">
+
+            <span>
+              Maximum per participant
+            </span>
+
+            <strong>
+              6 events
+            </strong>
+
+          </div>
+
+        </div>
+
+
+        <!-- SUCCESS -->
+
+        @if (registrationSuccess()) {
+
+          <div class="success-message">
+
+            <span>✓</span>
+
+            Participant registered successfully.
+
+          </div>
+
+        }
+
+
+        <!-- REGISTERED PARTICIPANTS -->
+
+        <div class="section-heading">
+
+          <div>
+
+            <h3>
+              Registered Participants
+            </h3>
+
+            <span>
+              {{ registeredCount() }}
+              participant{{ registeredCount() === 1 ? '' : 's' }}
+            </span>
+
+          </div>
+
+
+          @if (
+            selectedEvent()?.status === 'ACTIVE'
+          ) {
+
+            <button
+              type="button"
+              class="primary-button small-button"
+              (click)="openAddParticipant()">
+
+              + Add Participant
+
+            </button>
+
+          }
+
+        </div>
+
+
+        @if (registeredParticipants().length > 0) {
+
+          <div class="registered-list">
+
+            @for (
+              item of registeredParticipants();
+              track item.registration.id
+            ) {
+
+              <div class="registered-card">
+
+                <div class="participant-avatar">
+                  {{ item.participant.fullName.charAt(0).toUpperCase() }}
+                </div>
+
+
+                <div class="participant-main">
+
+                  <strong>
+                    {{ item.participant.fullName }}
+                  </strong>
+
+                  <span>
+                    {{ item.participant.participantCode }}
+                  </span>
+
+                  <small>
+
+                    {{ getHomeName(item.participant.shelterHomeId) }}
+
+                    ·
+
+                    {{
+                      item.participant.level
+                        ? levelLabel(item.participant.level)
+                        : 'No level'
+                    }}
+
+                  </small>
+
+                </div>
+
+
+                <div class="participant-actions">
+
+                  <span class="registered-badge">
+                    Registered
+                  </span>
+
+                  <button
+                    type="button"
+                    class="mini-action danger"
+                    (click)="cancelRegistration(item.registration)">
+
+                    Cancel
+
+                  </button>
+
+                </div>
+
+              </div>
+
+            }
+
+          </div>
+
+        } @else {
+
+          <div class="participant-empty">
+
+            <div class="participant-empty-icon">
+              👥
+            </div>
+
+            <strong>
+              No participants registered
+            </strong>
+
+            <span>
+              Add eligible participants to this event.
+            </span>
+
+          </div>
+
+        }
+
+
+        <!-- ADD PARTICIPANT -->
+
+        @if (showAddParticipant()) {
+
+          <div class="add-participant-panel">
+
+            <div class="panel-header">
+
+              <div>
+
+                <span class="eyebrow">
+                  REGISTRATION
+                </span>
+
+                <h3>
+                  Add Participant
+                </h3>
+
+              </div>
+
+              <button
+                type="button"
+                class="panel-close"
+                (click)="closeAddParticipant()">
+
+                ×
+
+              </button>
+
+            </div>
+
+
+            <!-- FILTERS -->
+
+            <div class="participant-filters">
+
+              <div class="search-wrapper">
+
+                <span class="search-icon">
+                  ⌕
+                </span>
+
+                <input
+                  type="text"
+                  placeholder="Search participant..."
+                  [ngModel]="participantSearch()"
+                  (ngModelChange)="setParticipantSearch($event)" />
+
+              </div>
+
+
+              <select
+                [ngModel]="participantHomeFilter()"
+                (ngModelChange)="setParticipantHome($event)">
+
+                <option value="ALL">
+                  All Shelter Homes
+                </option>
+
+                @for (
+                  home of homes();
+                  track home.id
+                ) {
+
+                  <option [value]="home.id">
+                    {{ home.name }}
+                  </option>
+
+                }
+
+              </select>
+
+            </div>
+
+
+            <!-- PARTICIPANT SELECTOR -->
+
+            <div class="participant-selector">
+
+              <label>
+                Select Participant
+              </label>
+
+
+              @if (
+                availableParticipants().length > 0
+              ) {
+
+                <div class="candidate-list">
+
+                  @for (
+                    participant of availableParticipants();
+                    track participant.id
+                  ) {
+
+                    <button
+                      type="button"
+                      class="candidate-card"
+                      [class.selected]="
+                        selectedParticipantId() === participant.id
+                      "
+                      (click)="
+                        setSelectedParticipant(participant.id)
+                      ">
+
+                      <div class="candidate-avatar">
+
+                        {{
+                          participant.fullName
+                            .charAt(0)
+                            .toUpperCase()
+                        }}
+
+                      </div>
+
+
+                      <div class="candidate-info">
+
+                        <strong>
+                          {{ participant.fullName }}
+                        </strong>
+
+                        <span>
+                          {{ participant.participantCode }}
+                        </span>
+
+                        <small>
+
+                          {{ getHomeName(participant.shelterHomeId) }}
+
+                          ·
+
+                          {{
+                            participant.level
+                              ? levelLabel(participant.level)
+                              : 'No level'
+                          }}
+
+                        </small>
+
+                      </div>
+
+
+                      <div class="candidate-check">
+
+                        @if (
+                          selectedParticipantId() === participant.id
+                        ) {
+                          ✓
+                        }
+
+                      </div>
+
+                    </button>
+
+                  }
+
+                </div>
+
+              } @else {
+
+                <div class="no-candidates">
+
+                  <strong>
+                    No participants available
+                  </strong>
+
+                  <span>
+                    Try changing the search or shelter-home filter.
+                  </span>
+
+                </div>
+
+              }
+
+            </div>
+
+
+            <!-- VALIDATION -->
+
+            @if (registrationValidation(); as validation) {
+
+              @if (validation.errors.length > 0) {
+
+                <div class="validation-box error">
+
+                  <div class="validation-title">
+                    <span>!</span>
+                    Registration cannot continue
+                  </div>
+
+                  <ul>
+
+                    @for (
+                      error of validation.errors;
+                      track error
+                    ) {
+
+                      <li>
+                        {{ error }}
+                      </li>
+
+                    }
+
+                  </ul>
+
+                </div>
+
+              }
+
+
+              @if (validation.warnings.length > 0) {
+
+                <div class="validation-box warning">
+
+                  <div class="validation-title">
+                    <span>⚠</span>
+                    Warning
+                  </div>
+
+                  <ul>
+
+                    @for (
+                      warning of validation.warnings;
+                      track warning
+                    ) {
+
+                      <li>
+                        {{ warning }}
+                      </li>
+
+                    }
+
+                  </ul>
+
+                </div>
+
+              }
+
+
+              @if (
+                validation.valid &&
+                validation.errors.length === 0
+              ) {
+
+                <div class="validation-box valid">
+
+                  <div class="validation-title">
+                    <span>✓</span>
+                    Participant is eligible
+                  </div>
+
+                  <p>
+                    This participant can be registered
+                    for this event.
+                  </p>
+
+                </div>
+
+              }
+
+            }
+
+
+          </div>
+
+        }
+
+      </div>
+
+
+      <!-- FOOTER -->
+
+      @if (showAddParticipant()) {
+
+        <div class="drawer-footer">
+
+          <button
+            type="button"
+            class="secondary-button"
+            (click)="closeAddParticipant()">
+
+            Cancel
+
+          </button>
+
+
+          <button
+            type="button"
+            class="primary-button"
+            [disabled]="
+              !selectedParticipantId() ||
+              !registrationValidation()?.valid
+            "
+            (click)="registerSelectedParticipant()">
+
+            Register Participant
+
+          </button>
+
+        </div>
+
+      }
+
+    </aside>
+
+  </div>
+
+}
