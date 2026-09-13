@@ -428,6 +428,20 @@
 
                     </button>
 
+                    @if (event.mode === 'GROUP') {
+
+                      <button
+                        type="button"
+                        class="action-button team-action"
+                        title="Manage teams"
+                        (click)="openTeams(event)">
+
+                        Teams
+
+                      </button>
+
+                    }
+
 
                     <!-- EDIT -->
 
@@ -802,6 +816,277 @@
           }}
 
         </button>
+
+      </div>
+
+    </aside>
+
+  </div>
+
+}
+
+
+<!-- =========================================================
+     TEAM MANAGEMENT DRAWER
+     ========================================================= -->
+
+@if (showTeamsDrawer()) {
+
+  <div
+    class="drawer-backdrop"
+    (click)="closeTeams()">
+
+    <aside
+      class="event-drawer team-drawer"
+      (click)="$event.stopPropagation()">
+
+      <div class="drawer-header">
+
+        <div>
+
+          <span class="eyebrow">EVENT TEAMS</span>
+
+          <h2>{{ selectedTeamEvent()?.name }}</h2>
+
+          @if (selectedTeamEvent(); as event) {
+
+            <div class="drawer-subtitle">
+              <span>{{ categoryLabel(event.category) }}</span>
+              <span>·</span>
+              <span>{{ modeLabel(event.mode) }}</span>
+              <span>·</span>
+              <span>{{ teamRegisteredCount() }} registered</span>
+            </div>
+
+          }
+
+        </div>
+
+        <button
+          type="button"
+          class="close-button"
+          (click)="closeTeams()">
+          ×
+        </button>
+
+      </div>
+
+      <div class="drawer-body participant-drawer-body">
+
+        @if (selectedTeamEvent(); as event) {
+
+          <div class="team-event-summary">
+            <div>
+              <span>Eligible levels</span>
+              <strong>
+                @for (level of event.eligibleLevels; track level) {
+                  <span class="level-chip">{{ levelLabel(level) }}</span>
+                }
+              </strong>
+            </div>
+            <div>
+              <span>Teams</span>
+              <strong>{{ teamsForSelectedEvent().length }}</strong>
+            </div>
+            <div>
+              <span>Team-size rule</span>
+              <strong>{{ teamSizeRule(event) }}</strong>
+            </div>
+          </div>
+
+          @if (event.minimumTeamSize === undefined || event.maximumTeamSize === undefined) {
+            <div class="team-rule-note">
+              Team-size values are only enforced when configured for this event.
+            </div>
+          }
+
+          @if (teamSuccessMessage()) {
+            <div class="success-message"><span>✓</span>{{ teamSuccessMessage() }}</div>
+          }
+
+          @if (teamFormError()) {
+            <div class="validation-box error">
+              <div class="validation-title"><span>!</span>{{ teamFormError() }}</div>
+            </div>
+          }
+
+          @if (teamValidation(); as validation) {
+
+            @if (validation.errors.length > 0) {
+              <div class="validation-box error">
+                <div class="validation-title"><span>!</span>Team validation needs attention</div>
+                <ul>
+                  @for (error of validation.errors; track error.message) {
+                    <li>{{ error.message }}</li>
+                  }
+                </ul>
+              </div>
+            }
+
+            @if (validation.warnings.length > 0) {
+              <div class="validation-box warning">
+                <div class="validation-title"><span>⚠</span>Warnings</div>
+                <ul>
+                  @for (warning of validation.warnings; track warning) {
+                    <li>{{ warning }}</li>
+                  }
+                </ul>
+              </div>
+            }
+
+          }
+
+          <div class="section-heading team-section-heading">
+            <div>
+              <h3>Teams</h3>
+              <span>{{ teamsForSelectedEvent().length }} team{{ teamsForSelectedEvent().length === 1 ? '' : 's' }}</span>
+            </div>
+            <button
+              type="button"
+              class="primary-button small-button"
+              [disabled]="event.status !== 'ACTIVE'"
+              (click)="openCreateTeam()">
+              + Create Team
+            </button>
+          </div>
+
+          @if (showCreateTeam()) {
+            <div class="team-form-card">
+              <label for="team-name">Team name</label>
+              <input id="team-name" type="text" [(ngModel)]="teamName" placeholder="Enter team name" />
+              <div class="team-form-actions">
+                <button type="button" class="secondary-button small-button" (click)="closeCreateTeam()">Cancel</button>
+                <button type="button" class="primary-button small-button" (click)="createTeam()">Create Team</button>
+              </div>
+            </div>
+          }
+
+          @if (teamsForSelectedEvent().length > 0) {
+            <div class="team-list">
+              @for (team of teamsForSelectedEvent(); track team.id) {
+                <article class="team-card">
+                  <div class="team-card-main">
+                    <span class="team-code">{{ team.teamCode }}</span>
+                    <strong>{{ team.name }}</strong>
+                    <small>{{ getTeamMemberCount(team.id) }} member{{ getTeamMemberCount(team.id) === 1 ? '' : 's' }}</small>
+                  </div>
+                  <div class="team-card-statuses">
+                    <span class="team-status" [class.ready]="team.status === 'READY'" [class.locked]="team.status === 'LOCKED'" [class.cancelled]="team.status === 'CANCELLED'">
+                      {{ teamStatusLabel(team) }}
+                    </span>
+                    <span class="team-validation" [class.passed]="team.validationStatus === 'PASSED'">
+                      {{ team.validationStatus }}
+                    </span>
+                  </div>
+                  <div class="team-actions">
+                    <button type="button" class="mini-action" (click)="viewTeamMembers(team)">Members</button>
+                    <button type="button" class="mini-action" (click)="validateTeam(team)">Validate</button>
+                    @if (team.status === 'DRAFT') {
+                      <button type="button" class="mini-action success" (click)="markTeamReady(team)">Ready</button>
+                    }
+                    @if (team.status !== 'LOCKED' && team.status !== 'CANCELLED') {
+                      <button type="button" class="mini-action" (click)="lockTeam(team)">Lock</button>
+                      <button type="button" class="mini-action danger" (click)="cancelTeam(team)">Cancel</button>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          } @else {
+            <div class="participant-empty">
+              <div class="participant-empty-icon">◉</div>
+              <strong>No teams yet</strong>
+              <span>Create a team after participants are registered for this group event.</span>
+            </div>
+          }
+
+          @if (showTeamMembers() && selectedTeam(); as team) {
+            <section class="team-members-panel">
+              <div class="section-heading">
+                <div>
+                  <h3>{{ team.name }}</h3>
+                  <span>{{ team.teamCode }} · {{ teamStatusLabel(team) }}</span>
+                </div>
+                <button type="button" class="close-button" (click)="closeTeamMembers()">×</button>
+              </div>
+
+              @if (canModifyTeam(team)) {
+                <button type="button" class="primary-button small-button" (click)="openAddTeamMember()">+ Add Participant</button>
+              } @else {
+                <div class="team-rule-note">Locked and cancelled teams cannot be edited.</div>
+              }
+
+              @if (selectedTeamMembers().length > 0) {
+                <div class="team-member-list">
+                  @for (participant of selectedTeamMembers(); track participant.id) {
+                    <div class="team-member-card">
+                      <div>
+                        <strong>{{ participant.fullName }}</strong>
+                        <span>{{ participant.participantCode }} · {{ getHomeName(participant.shelterHomeId) }}</span>
+                        <small>{{ participant.gender }} · Age {{ participant.age }} · Class {{ participant.standard }} · {{ participant.level ? levelLabel(participant.level) : 'No level' }}</small>
+                      </div>
+                      @if (canModifyTeam(team)) {
+                        <button type="button" class="mini-action danger" (click)="removeTeamMember(participant.id)">Remove</button>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="participant-empty">
+                  <strong>This team has no members</strong>
+                  <span>Add registered, eligible participants to compose the team.</span>
+                </div>
+              }
+
+              @if (showAddTeamMember()) {
+                <div class="team-add-panel">
+                  <div class="section-heading">
+                    <div><h3>Add participant</h3><span>Only registered, eligible participants can be added.</span></div>
+                    <button type="button" class="close-button" (click)="closeAddTeamMember()">×</button>
+                  </div>
+                  <div class="participant-filters">
+                    <div class="search-wrapper">
+                      <span class="search-icon">⌕</span>
+                      <input type="text" placeholder="Search name or code" [ngModel]="teamParticipantSearch()" (ngModelChange)="setTeamParticipantSearch($event)" />
+                    </div>
+                    <select [ngModel]="teamParticipantHomeFilter()" (ngModelChange)="setTeamParticipantHome($event)">
+                      <option value="ALL">All shelter homes</option>
+                      @for (home of homes(); track home.id) {
+                        <option [value]="home.id">{{ home.name }}</option>
+                      }
+                    </select>
+                  </div>
+                  @if (teamCandidates().length > 0) {
+                    <div class="team-candidate-list">
+                      @for (candidate of teamCandidates(); track candidate.participant.id) {
+                        <div class="team-candidate-card">
+                          <div>
+                            <strong>{{ candidate.participant.fullName }}</strong>
+                            <span>{{ candidate.participant.participantCode }} · {{ getHomeName(candidate.participant.shelterHomeId) }}</span>
+                            <small>{{ candidate.participant.level ? levelLabel(candidate.participant.level) : 'No level' }} · {{ candidate.isRegistered ? 'Registered' : 'Not registered' }} · {{ candidate.isEligible ? 'Eligible' : 'Not eligible' }}</small>
+                            @if (candidate.assignedTeam) {
+                              <small>Already assigned to {{ candidate.assignedTeam.name }}.</small>
+                            }
+                          </div>
+                          <button
+                            type="button"
+                            class="mini-action"
+                            [disabled]="!candidate.isRegistered || !candidate.isEligible || !!candidate.assignedTeam"
+                            (click)="addTeamMember(candidate.participant.id)">
+                            Add
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="no-candidates"><strong>No participants found</strong><span>Try another search or shelter-home filter.</span></div>
+                  }
+                </div>
+              }
+            </section>
+          }
+
+        }
 
       </div>
 

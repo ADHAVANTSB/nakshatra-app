@@ -9,7 +9,9 @@ import {
   Participant,
   ParticipantLevel,
   ParticipantEvent,
-  ShelterHome
+  ShelterHome,
+  Team,
+  TeamValidationResult
 } from '../../core/models';
 
 import { EventService } from '../../core/services/events/event.service';
@@ -20,6 +22,7 @@ import {
 
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
+import { TeamService } from '../../core/services/teams/team.service';
 
 @Component({
   selector: 'nk-events',
@@ -45,6 +48,9 @@ export class Events {
 
   private readonly shelterHomeService =
     inject(ShelterHomeService);
+
+  private readonly teamService =
+    inject(TeamService);
 
 
   // =========================================================
@@ -347,6 +353,124 @@ export class Events {
 
   registrationSuccess =
     signal(false);
+
+
+  // =========================================================
+  // TEAM DRAWER
+  // =========================================================
+
+  selectedTeamEvent =
+    signal<Event | null>(null);
+
+  selectedTeam =
+    signal<Team | null>(null);
+
+  showTeamsDrawer =
+    signal(false);
+
+  showCreateTeam =
+    signal(false);
+
+  showTeamMembers =
+    signal(false);
+
+  showAddTeamMember =
+    signal(false);
+
+  teamName = '';
+
+  teamParticipantSearch =
+    signal('');
+
+  teamParticipantHomeFilter =
+    signal('ALL');
+
+  teamValidation =
+    signal<TeamValidationResult | null>(null);
+
+  teamSuccessMessage =
+    signal('');
+
+  teamFormError =
+    signal('');
+
+  readonly teamsForSelectedEvent = computed(() => {
+
+    const event = this.selectedTeamEvent();
+
+    if (!event) {
+      return [];
+    }
+
+    return this.teamService
+      .teams$()
+      .filter(team => team.eventId === event.id);
+  });
+
+  readonly teamRegisteredCount = computed(() => {
+
+    const event = this.selectedTeamEvent();
+
+    return event
+      ? this.participantEventService.getEventRegistrations(event.id).length
+      : 0;
+  });
+
+  readonly selectedTeamMembers = computed(() => {
+
+    const team = this.selectedTeam();
+
+    if (!team) {
+      return [];
+    }
+
+    return this.teamService
+      .getMembers(team.id)
+      .map(member => this.participantService.getParticipantById(member.participantId))
+      .filter((participant): participant is Participant => !!participant);
+  });
+
+  readonly teamCandidates = computed(() => {
+
+    const event = this.selectedTeamEvent();
+    const team = this.selectedTeam();
+
+    if (!event || !team) {
+      return [];
+    }
+
+    const search = this.teamParticipantSearch().trim().toLowerCase();
+    const homeId = this.teamParticipantHomeFilter();
+
+    return this.participants()
+      .filter(participant => {
+
+        const matchesSearch =
+          !search ||
+          participant.fullName.toLowerCase().includes(search) ||
+          participant.participantCode.toLowerCase().includes(search);
+
+        const matchesHome =
+          homeId === 'ALL' || participant.shelterHomeId === homeId;
+
+        return matchesSearch && matchesHome;
+      })
+      .map(participant => ({
+        participant,
+        isRegistered: this.participantEventService.isAlreadyRegistered(
+          participant.id,
+          event.id
+        ),
+        isEligible:
+          participant.eligibilityStatus === 'ELIGIBLE' &&
+          !!participant.level &&
+          event.eligibleLevels.includes(participant.level),
+        assignedTeam: this.teamService.getParticipantTeam(
+          participant.id,
+          event.id
+        )
+      }));
+  });
 
 
   // =========================================================
@@ -789,6 +913,282 @@ export class Events {
         registration.id,
         'ADMIN'
       );
+  }
+
+
+  // =========================================================
+  // TEAM MANAGEMENT
+  // =========================================================
+
+  openTeams(event: Event): void {
+
+    if (event.mode !== 'GROUP') {
+      return;
+    }
+
+    this.selectedTeamEvent.set(event);
+    this.selectedTeam.set(null);
+    this.showCreateTeam.set(false);
+    this.showTeamMembers.set(false);
+    this.showAddTeamMember.set(false);
+    this.teamValidation.set(null);
+    this.teamSuccessMessage.set('');
+    this.teamFormError.set('');
+    this.showTeamsDrawer.set(true);
+  }
+
+
+  closeTeams(): void {
+
+    this.showTeamsDrawer.set(false);
+    this.selectedTeamEvent.set(null);
+    this.selectedTeam.set(null);
+    this.showCreateTeam.set(false);
+    this.showTeamMembers.set(false);
+    this.showAddTeamMember.set(false);
+    this.teamName = '';
+    this.teamValidation.set(null);
+    this.teamSuccessMessage.set('');
+    this.teamFormError.set('');
+  }
+
+
+  openCreateTeam(): void {
+
+    this.teamName = '';
+    this.teamValidation.set(null);
+    this.teamSuccessMessage.set('');
+    this.teamFormError.set('');
+    this.showCreateTeam.set(true);
+  }
+
+
+  closeCreateTeam(): void {
+
+    this.showCreateTeam.set(false);
+    this.teamName = '';
+    this.teamFormError.set('');
+  }
+
+
+  createTeam(): void {
+
+    const event = this.selectedTeamEvent();
+
+    if (!event) {
+      return;
+    }
+
+    if (!this.teamName.trim()) {
+      this.teamFormError.set('Team name is required.');
+      return;
+    }
+
+    const result = this.teamService.createTeam(
+      event.id,
+      this.teamName,
+      'ADMIN'
+    );
+
+    this.teamValidation.set(result);
+
+    if (!result.valid || !result.team) {
+      return;
+    }
+
+    this.teamSuccessMessage.set(`${result.team.name} has been created.`);
+    this.selectedTeam.set(result.team);
+    this.showCreateTeam.set(false);
+    this.showTeamMembers.set(true);
+    this.teamName = '';
+  }
+
+
+  viewTeamMembers(team: Team): void {
+
+    this.selectedTeam.set(team);
+    this.showTeamMembers.set(true);
+    this.showAddTeamMember.set(false);
+    this.teamValidation.set(null);
+    this.teamSuccessMessage.set('');
+    this.teamFormError.set('');
+  }
+
+
+  closeTeamMembers(): void {
+
+    this.selectedTeam.set(null);
+    this.showTeamMembers.set(false);
+    this.showAddTeamMember.set(false);
+    this.teamValidation.set(null);
+    this.teamFormError.set('');
+  }
+
+
+  openAddTeamMember(): void {
+
+    const team = this.selectedTeam();
+
+    if (!team || !this.canModifyTeam(team)) {
+      return;
+    }
+
+    this.teamParticipantSearch.set('');
+    this.teamParticipantHomeFilter.set('ALL');
+    this.teamValidation.set(null);
+    this.teamSuccessMessage.set('');
+    this.showAddTeamMember.set(true);
+  }
+
+
+  closeAddTeamMember(): void {
+
+    this.showAddTeamMember.set(false);
+    this.teamValidation.set(null);
+  }
+
+
+  setTeamParticipantSearch(value: string): void {
+    this.teamParticipantSearch.set(value);
+  }
+
+
+  setTeamParticipantHome(value: string): void {
+    this.teamParticipantHomeFilter.set(value);
+  }
+
+
+  addTeamMember(participantId: string): void {
+
+    const team = this.selectedTeam();
+
+    if (!team) {
+      return;
+    }
+
+    const result = this.teamService.addMember(
+      team.id,
+      participantId,
+      'ADMIN'
+    );
+
+    this.teamValidation.set(result);
+
+    if (!result.valid) {
+      return;
+    }
+
+    this.teamSuccessMessage.set('Participant has been added to the team.');
+    this.showAddTeamMember.set(false);
+  }
+
+
+  removeTeamMember(participantId: string): void {
+
+    const team = this.selectedTeam();
+
+    if (!team) {
+      return;
+    }
+
+    const result = this.teamService.removeMember(
+      team.id,
+      participantId,
+      'ADMIN'
+    );
+
+    this.teamValidation.set(result);
+
+    if (result.valid) {
+      this.teamSuccessMessage.set('Participant has been removed from the team. Revalidate before marking it ready.');
+    }
+  }
+
+
+  validateTeam(team: Team): void {
+
+    const result = this.teamService.validateTeam(team.id);
+
+    this.teamValidation.set(result);
+    this.teamSuccessMessage.set(
+      result.valid ? `${team.name} is valid and ready for review.` : ''
+    );
+  }
+
+
+  markTeamReady(team: Team): void {
+
+    const result = this.teamService.markReady(team.id, 'ADMIN');
+
+    this.teamValidation.set(result);
+
+    if (result.valid) {
+      this.teamSuccessMessage.set(`${team.name} is ready.`);
+    }
+  }
+
+
+  lockTeam(team: Team): void {
+
+    const result = this.teamService.lockTeam(team.id, 'ADMIN');
+
+    this.teamValidation.set(result);
+
+    if (result.valid) {
+      this.teamSuccessMessage.set(`${team.name} has been locked.`);
+    }
+  }
+
+
+  cancelTeam(team: Team): void {
+
+    const result = this.teamService.cancelTeam(team.id, 'ADMIN');
+
+    this.teamValidation.set(result);
+
+    if (result.valid) {
+      this.teamSuccessMessage.set(`${team.name} has been cancelled.`);
+
+      if (this.selectedTeam()?.id === team.id) {
+        this.closeTeamMembers();
+      }
+    }
+  }
+
+
+  getTeamMemberCount(teamId: string): number {
+    return this.teamService.getTeamMemberCount(teamId);
+  }
+
+
+  canModifyTeam(team: Team): boolean {
+    return team.status !== 'LOCKED' && team.status !== 'CANCELLED';
+  }
+
+
+  teamStatusLabel(team: Team): string {
+    return team.status.charAt(0) + team.status.slice(1).toLowerCase();
+  }
+
+
+  teamSizeRule(event: Event): string {
+
+    if (
+      event.minimumTeamSize === undefined &&
+      event.maximumTeamSize === undefined
+    ) {
+      return 'Minimum and maximum team size are not configured.';
+    }
+
+    if (event.minimumTeamSize === undefined) {
+      return `Maximum ${event.maximumTeamSize} participants.`;
+    }
+
+    if (event.maximumTeamSize === undefined) {
+      return `Minimum ${event.minimumTeamSize} participants.`;
+    }
+
+    return `${event.minimumTeamSize}–${event.maximumTeamSize} participants.`;
   }
 
 

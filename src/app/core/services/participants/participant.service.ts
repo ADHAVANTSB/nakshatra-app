@@ -513,6 +513,23 @@ export class ParticipantService {
 
     }
 
+    if (existing.lockStatus === 'LOCKED') {
+      return {
+        success: false,
+        errors: ['This participant is locked and cannot be updated.']
+      };
+    }
+
+    if (
+      updatedParticipant.shelterHomeId !== existing.shelterHomeId &&
+      !this.canAddParticipant(updatedParticipant.shelterHomeId)
+    ) {
+      return {
+        success: false,
+        errors: ['This shelter home already has the maximum of 35 participants.']
+      };
+    }
+
 
     const prepared =
       this.prepareParticipant(

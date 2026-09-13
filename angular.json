@@ -35,6 +35,7 @@
           },
           "configurations": {
             "production": {
+              "baseHref": "/nakshatra-app/",
               "budgets": [
                 {
                   "type": "initial",

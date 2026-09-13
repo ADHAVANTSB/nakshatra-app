@@ -1,8 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { ImportService } from '../../../core/services/imports/import.service';
+import { ShelterHomeService } from '../../../core/services/shelter-homes/shelter-home.service';
 
 @Component({
   selector: 'app-imports-page',
-  standalone: true,
-  template: '<section><h1>Imports</h1><p>Module foundation ready.</p></section>'
+  standalone: true, imports: [FormsModule], styleUrl: './imports-page.component.scss',
+  template: `<div class="imports"><span>DATA INTEGRITY</span><h1>Imports & validation</h1><p>Google Sheets remain external sources; no API sync occurs in this frontend foundation.</p><select [ngModel]="homeId()" (ngModelChange)="homeId.set($event)"><option value="">Select shelter home</option>@for(home of homes();track home.id){<option [value]="home.id">{{home.name}}</option>}</select>@if(homeId()){<div class="notice">Every import is a new version. Errors block approval; unlock requires revalidation and reapproval.</div>@if(versions().length){@for(version of versions();track version.id){<article><strong>Version {{version.versionNumber}}</strong><span>{{version.status}} · {{version.validationStatus ?? 'NOT_VALIDATED'}} · {{version.recordCount}} records · {{version.errorCount}} errors · {{version.warningCount}} warnings</span><small>Approval: {{version.approvalStatus ?? 'PENDING'}} · Lock: {{version.lockStatus ?? 'UNLOCKED'}}</small>@if(validation(version.id).length){<ul>@for(error of validation(version.id);track error.id ?? error.ruleCode){<li>{{error.severity}} · {{error.entityType}} · {{error.message}}</li>}</ul>}@if(version.status === 'READY_FOR_REVIEW'){<button (click)="approve(version.id)">Approve clean version</button>}@if(version.approvalStatus === 'APPROVED' && version.lockStatus !== 'LOCKED'){<button (click)="lock(version.id)">Lock approved version</button>}@if(version.lockStatus === 'LOCKED'){<input #reason placeholder="Unlock reason"/><button (click)="unlock(version.id,reason.value)">Unlock for revalidation</button>}</article>}}@else{<div class="empty">No import versions for this shelter home. Backend/Google Sheet integration will create versions later.</div>}}@else{<div class="empty">Select a shelter home to view import history and validation results.</div>}</div>`
 })
-export class ImportsPageComponent {}
+export class ImportsPageComponent { private readonly imports=inject(ImportService); private readonly homeService=inject(ShelterHomeService); readonly homes=this.homeService.homes$; readonly homeId=signal(''); readonly versions=computed(()=>this.homeId()?this.imports.getImportsByHome(this.homeId()).sort((a,b)=>b.versionNumber-a.versionNumber):[]); validation(id:string){return this.imports.getValidationResults(id)} approve(id:string){this.imports.approveImport(id)} lock(id:string){this.imports.lockImport(id)} unlock(id:string,reason:string){this.imports.unlockImport(id,reason)} }

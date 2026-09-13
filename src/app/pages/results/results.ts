@@ -1,46 +1,47 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Certificate, Event, Participant, Score, Team } from '../../core/models';
-import { CertificateService } from '../../core/services/certificates/certificate.service';
+import { Event, EventCategory, Participant, Score, Team } from '../../core/models';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ScoringService } from '../../core/services/scoring/scoring.service';
 import { TeamService } from '../../core/services/teams/team.service';
 
-interface CertificateCandidate {
+interface ResultRow {
   score: Score;
   participant?: Participant;
   team?: Team;
-  certificate?: Certificate;
 }
 
 @Component({
-  selector: 'nk-certificates',
+  selector: 'nk-results',
   imports: [DatePipe, FormsModule],
-  templateUrl: './certificates.html',
-  styleUrl: './certificates.scss',
+  templateUrl: './results.html',
+  styleUrl: './results.scss',
 })
-export class Certificates {
+export class Results {
   private readonly eventService = inject(EventService);
   private readonly scoringService = inject(ScoringService);
-  private readonly certificateService = inject(CertificateService);
   private readonly participantService = inject(ParticipantService);
   private readonly teamService = inject(TeamService);
 
   readonly events = this.eventService.events$;
   readonly selectedEventId = signal('');
+  readonly category = signal<EventCategory | ''>('');
   readonly search = signal('');
-  readonly errors = signal<string[]>([]);
-  readonly message = signal('');
-  readonly workflowConfigured = this.certificateService.workflowConfigured;
+
+  readonly filteredEvents = computed(() => this.events().filter(event =>
+    !this.category() || event.category === this.category()
+  ));
+
   readonly selectedEvent = computed(() => this.selectedEventId()
     ? this.eventService.getById(this.selectedEventId())
     : undefined);
 
-  readonly candidates = computed<CertificateCandidate[]>(() => {
+  readonly results = computed<ResultRow[]>(() => {
     const event = this.selectedEvent();
     if (!event) return [];
+
     const query = this.search().trim().toLowerCase();
     return this.scoringService.getByEvent(event.id)
       .filter(score => score.status === 'FINALIZED')
@@ -50,43 +51,43 @@ export class Certificates {
           ? this.participantService.getParticipantById(score.participantId)
           : undefined,
         team: score.teamId ? this.teamService.getById(score.teamId) : undefined,
-        certificate: this.certificateService.getByScoreId(score.id),
       }))
-      .filter(candidate => this.matchesSearch(candidate, query));
+      .filter(row => this.matchesSearch(row, query));
   });
 
   readonly finalizedCount = computed(() => {
     const event = this.selectedEvent();
-    return event ? this.scoringService.getByEvent(event.id)
-      .filter(score => score.status === 'FINALIZED').length : 0;
+    return event
+      ? this.scoringService.getByEvent(event.id)
+        .filter(score => score.status === 'FINALIZED').length
+      : 0;
   });
+
+  setCategory(category: EventCategory | ''): void {
+    this.category.set(category);
+    if (!this.filteredEvents().some(event => event.id === this.selectedEventId())) {
+      this.selectedEventId.set('');
+    }
+  }
 
   setEvent(eventId: string): void {
     this.selectedEventId.set(eventId);
     this.search.set('');
-    this.errors.set([]);
-    this.message.set('');
   }
 
   setSearch(value: string): void {
     this.search.set(value);
   }
 
-  generate(candidate: CertificateCandidate): void {
-    const result = this.certificateService.generate(candidate.score.id);
-    this.errors.set(result.errors);
-    this.message.set(result.success ? 'Certificate record generated.' : '');
-  }
-
   eventModeLabel(event: Event): string {
     return event.mode === 'SOLO' ? 'Individual' : 'Group';
   }
 
-  private matchesSearch(candidate: CertificateCandidate, query: string): boolean {
+  private matchesSearch(row: ResultRow, query: string): boolean {
     if (!query) return true;
-    const values = candidate.participant
-      ? [candidate.participant.fullName, candidate.participant.participantCode, candidate.participant.shelterHomeId]
-      : [candidate.team?.name ?? '', candidate.team?.teamCode ?? ''];
+    const values = row.participant
+      ? [row.participant.fullName, row.participant.participantCode, row.participant.shelterHomeId]
+      : [row.team?.name ?? '', row.team?.teamCode ?? ''];
     return values.some(value => value.toLowerCase().includes(query));
   }
 }

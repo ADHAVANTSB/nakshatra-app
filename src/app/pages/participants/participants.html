@@ -722,9 +722,13 @@
                       participant.lockStatus === 'LOCKED'
                     ) {
 
-                      <span class="locked-action">
-                        Locked
-                      </span>
+                      <button
+                        type="button"
+                        class="table-action"
+                        (click)="unlockParticipant(participant.id)"
+                      >
+                        Unlock
+                      </button>
 
                     } @else {
 

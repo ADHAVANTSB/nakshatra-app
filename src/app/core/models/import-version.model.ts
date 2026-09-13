@@ -18,4 +18,13 @@ export interface ImportVersion {
   recordCount: number;
   errorCount: number;
   warningCount: number;
+  validationStatus?: 'NOT_VALIDATED' | 'PASSED' | 'FAILED' | 'WARNING';
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  lockStatus?: 'UNLOCKED' | 'LOCKED';
+  lockedAt?: string;
+  lockedBy?: string;
+  unlockReason?: string;
+  version?: number;
+  updatedAt?: string;
+  updatedBy?: string;
 }

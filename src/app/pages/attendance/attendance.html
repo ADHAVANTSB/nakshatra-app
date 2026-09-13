@@ -1,19 +1,12 @@
-<div class="page">
-
-  <div class="page-header">
-    <div>
-      <span class="eyebrow">EVENT DAY</span>
-      <h1>Attendance</h1>
-      <p>Track participant attendance across events.</p>
-    </div>
-  </div>
-
-  <div class="section-card">
-    <h3>Attendance Management</h3>
-    <p>
-      Volunteers will be able to mark and update attendance
-      for each participant and event.
-    </p>
-  </div>
-
+<div class="attendance-page">
+  <div class="page-header"><div><span class="eyebrow">EVENT DAY</span><h1>Attendance</h1><p>Record attendance for registered participants in individual and group events.</p></div></div>
+  <div class="attendance-card"><label for="attendance-event">Select event</label><select id="attendance-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)"><option value="">Choose an active event</option>@for (event of events(); track event.id) { @if (event.status === 'ACTIVE') { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option> } }</select></div>
+  @if (errors().length > 0) { <div class="alert error"><strong>Attendance could not be updated.</strong><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> }
+  @if (message()) { <div class="alert success">✓ {{ message() }}</div> }
+  @if (selectedEvent(); as event) {
+    <div class="event-summary"><div><span>Event</span><strong>{{ event.name }}</strong></div><div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div><div><span>Registered</span><strong>{{ attendees().length }}</strong></div><div><span>Present</span><strong>{{ presentCount() }}</strong></div><div><span>Absent</span><strong>{{ absentCount() }}</strong></div></div>
+    @if (attendees().length > 0) {
+      <div class="attendance-card table-card"><div class="table-header"><h2>Registered participants</h2><span>Attendance is recorded per participant.</span></div><div class="table-wrapper"><table><thead><tr><th>Participant</th><th>Home</th><th>Level</th>@if (event.mode === 'GROUP') { <th>Team</th> }<th>Status</th><th>Action</th></tr></thead><tbody>@for (item of attendees(); track item.participant.id) { <tr><td><strong>{{ item.participant.fullName }}</strong><small>{{ item.participant.participantCode }}</small></td><td>{{ item.participant.shelterHomeId }}</td><td>{{ levelLabel(item.participant) }}</td>@if (event.mode === 'GROUP') { <td>{{ item.team?.name ?? 'No team assigned' }}</td> }<td><span class="status" [class.present]="item.attendance?.status === 'PRESENT'" [class.absent]="item.attendance?.status === 'ABSENT'">{{ item.attendance?.status ?? 'Not marked' }}</span></td><td class="actions"><button type="button" class="present" (click)="markAttendance(item.participant.id, 'PRESENT', item.team?.id)">Present</button><button type="button" class="absent" (click)="markAttendance(item.participant.id, 'ABSENT', item.team?.id)">Absent</button></td></tr> }</tbody></table></div></div>
+    } @else { <div class="empty-state"><strong>No registered participants</strong><span>Attendance becomes available after participants are registered for this event.</span></div> }
+  } @else { <div class="empty-state"><strong>Select an event to begin</strong><span>Only active events can receive attendance.</span></div> }
 </div>

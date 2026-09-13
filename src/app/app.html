@@ -1,3 +1,6 @@
+@if (!isAuthenticated()) {
+  <router-outlet></router-outlet>
+} @else {
 <!-- =========================================================
      NAKSHATRA EVENT MANAGEMENT
      MASTER APPLICATION SHELL
@@ -36,7 +39,7 @@
       <div class="nk-sidebar-logo-wrapper">
 
         <img
-          src="/logo/nakshatra-logo.png"
+          src="logo/nakshatra-logo.png"
           alt="Nakshatra"
           class="nk-logo nk-logo--full"
         />
@@ -71,7 +74,7 @@
       aria-label="Main navigation"
     >
 
-      @for (item of navItems; track item.route) {
+      @for (item of visibleNavItems(); track item.route) {
 
         <a
           class="nk-nav-item"
@@ -102,7 +105,7 @@
          SIDEBAR BOTTOM
          ===================================================== -->
 
-    <div class="nk-sidebar-bottom">
+    @if (canAccess('ACCESS_MANAGEMENT')) { <div class="nk-sidebar-bottom">
 
       <div class="nk-sidebar-separator"></div>
 
@@ -123,7 +126,7 @@
 
       </a>
 
-    </div>
+    </div> }
 
   </aside>
 
@@ -173,7 +176,7 @@
       <div class="nk-mobile-logo-wrapper">
 
         <img
-          src="/logo/nakshatra-logo.png"
+          src="logo/nakshatra-logo.png"
           alt="Nakshatra"
           class="nk-mobile-logo"
         />
@@ -200,7 +203,7 @@
       aria-label="Mobile navigation"
     >
 
-      @for (item of navItems; track item.route) {
+      @for (item of visibleNavItems(); track item.route) {
 
         <a
           class="nk-nav-item"
@@ -227,7 +230,7 @@
 
       <!-- Mobile Settings -->
 
-      <div class="nk-mobile-settings">
+      @if (canAccess('ACCESS_MANAGEMENT')) { <div class="nk-mobile-settings">
 
         <a
           class="nk-nav-item"
@@ -246,7 +249,7 @@
 
         </a>
 
-      </div>
+      </div> }
 
     </nav>
 
@@ -358,22 +361,20 @@
         <button
           class="nk-user"
           type="button"
-          aria-label="User profile"
+          aria-label="Sign out"
+          title="Sign out"
+          (click)="logout()"
         >
 
           <div class="nk-user-avatar">
-            A
+            {{ userInitial() }}
           </div>
 
           <div class="nk-user-details">
 
-            <strong>
-              Admin
-            </strong>
+            <strong>{{ currentUser()?.displayName }}</strong>
 
-            <span>
-              Administrator
-            </span>
+            <span>{{ currentUser()?.role?.replace('_', ' ') }}</span>
 
           </div>
 
@@ -448,3 +449,4 @@
   </div>
 
 </div>
+}

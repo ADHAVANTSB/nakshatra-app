@@ -1,0 +1,11 @@
+.results-page { max-width: 1400px; margin: 0 auto; padding: 28px; color: #39322d; }
+.page-header { margin-bottom: 22px; }.eyebrow, label, .event-summary span, td small { display: block; color: #817873; font-size: 11px; } h1 { margin: 4px 0; font-size: 30px; } p { color: #766f6a; }
+.filters-card, .event-summary > div, .results-card, .empty-state, .alert { margin-bottom: 16px; padding: 16px; border: 1px solid #e5dfda; border-radius: 12px; background: #fff; }
+.filters-card { display: grid; grid-template-columns: 120px minmax(180px, 1fr) 70px minmax(240px, 2fr) 105px minmax(220px, 1.5fr); gap: 10px; align-items: center; }.filters-card label { color: #5e5550; font-weight: 700; }
+select, input { width: 100%; padding: 10px; border: 1px solid #ded8d3; border-radius: 8px; background: #fff; color: #39322d; } input:disabled { background: #f5f2ef; cursor: not-allowed; }
+.event-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }.event-summary strong { display: block; margin-top: 5px; }.alert.warning { border-color: #eadfbf; background: #fffaf0; color: #79643d; }
+.table-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; }.table-heading h2 { margin: 0; font-size: 17px; }.table-heading p { margin: 4px 0 0; font-size: 12px; }.table-heading > span { color: #817873; font-size: 12px; }
+.table-wrapper { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padding: 12px; border-bottom: 1px solid #eee9e5; text-align: left; white-space: nowrap; } th { color: #817873; font-size: 10px; text-transform: uppercase; } td strong { display: block; }.score { font-weight: 700; }.status-final { display: inline-block; padding: 4px 7px; border-radius: 999px; background: #e5f1e6; color: #54745a; font-size: 10px; font-weight: 700; }
+.empty-state { text-align: center; }.empty-state strong { display: block; }.empty-state span { color: #817873; font-size: 12px; }
+@media (max-width: 900px) { .filters-card { grid-template-columns: 1fr 2fr; }.filters-card label { margin-top: 4px; } }
+@media (max-width: 700px) { .results-page { padding: 18px 14px; }.filters-card, .event-summary { grid-template-columns: 1fr; }.table-heading { align-items: flex-start; flex-direction: column; } }

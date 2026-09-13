@@ -360,6 +360,14 @@ export class TeamService {
       });
     }
 
+    if (event.status !== 'ACTIVE') {
+      errors.push({
+        code: 'EVENT_NOT_ACTIVE',
+        message: 'Teams can only be modified for an active event.',
+        teamId: team.id
+      });
+    }
+
     if (team.status === 'LOCKED') {
       errors.push({
         code: 'TEAM_LOCKED',
@@ -399,6 +407,19 @@ export class TeamService {
       });
     }
 
+    if (!this.participantEventService.isAlreadyRegistered(
+      participant.id,
+      event.id
+    )) {
+      errors.push({
+        code: 'PARTICIPANT_NOT_REGISTERED',
+        message:
+          `${participant.fullName} is not registered for ${event.name}.`,
+        participantId: participant.id,
+        teamId: team.id
+      });
+    }
+
     const alreadyInTeam =
       this.getMembers(team.id)
         .some(member => member.participantId === participant.id);
@@ -424,6 +445,19 @@ export class TeamService {
         message:
           `${participant.fullName} is already assigned to another team for this event.`,
         participantId: participant.id,
+        teamId: team.id
+      });
+    }
+
+    if (
+      event.maximumTeamSize !== undefined &&
+      this.getTeamMemberCount(team.id) >= event.maximumTeamSize
+    ) {
+      errors.push({
+        code: 'TEAM_MAXIMUM_SIZE_EXCEEDED',
+        message:
+          `Team allows a maximum of ${event.maximumTeamSize} participants. ` +
+          `Currently ${this.getTeamMemberCount(team.id)} participant(s).`,
         teamId: team.id
       });
     }
@@ -465,6 +499,34 @@ export class TeamService {
           {
             code: 'EVENT_NOT_FOUND',
             message: 'Event not found.',
+            teamId
+          }
+        ],
+        warnings: []
+      };
+    }
+
+    if (event.mode !== 'GROUP') {
+      return {
+        valid: false,
+        errors: [
+          {
+            code: 'EVENT_NOT_GROUP',
+            message: 'This event is not a group event.',
+            teamId
+          }
+        ],
+        warnings: []
+      };
+    }
+
+    if (event.status !== 'ACTIVE') {
+      return {
+        valid: false,
+        errors: [
+          {
+            code: 'EVENT_NOT_ACTIVE',
+            message: 'This event is not currently active.',
             teamId
           }
         ],
@@ -583,6 +645,19 @@ export class TeamService {
         code: 'PARTICIPANT_NOT_ELIGIBLE',
         message:
           `${participant.fullName} is not eligible for ${event.name}.`,
+        participantId: participant.id,
+        teamId: team.id
+      });
+    }
+
+    if (!this.participantEventService.isAlreadyRegistered(
+      participant.id,
+      event.id
+    )) {
+      errors.push({
+        code: 'PARTICIPANT_NOT_REGISTERED',
+        message:
+          `${participant.fullName} is not registered for ${event.name}.`,
         participantId: participant.id,
         teamId: team.id
       });

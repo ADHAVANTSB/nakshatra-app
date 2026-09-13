@@ -1,14 +1,18 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import {
   RouterLink,
   RouterLinkActive,
-  RouterOutlet
+  RouterOutlet,
+  Router
 } from '@angular/router';
+import { ApplicationSection } from './core/models';
+import { AuthService } from './core/services/auth/auth.service';
 
 interface NavItem {
   label: string;
   route: string;
   icon: string;
+  section: ApplicationSection;
 }
 
 @Component({
@@ -22,6 +26,10 @@ interface NavItem {
   styleUrl: './app.scss'
 })
 export class App {
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  readonly isAuthenticated = this.auth.isAuthenticated;
+  readonly currentUser = this.auth.currentUser;
 
   /**
    * Controls the mobile navigation drawer.
@@ -38,44 +46,54 @@ export class App {
     {
       label: 'Dashboard',
       route: '/dashboard',
-      icon: '⌂'
+      icon: '⌂', section: 'DASHBOARD'
     },
     {
       label: 'Homes',
       route: '/homes',
-      icon: '⌂'
+      icon: '⌂', section: 'HOMES'
     },
     {
       label: 'Participants',
       route: '/participants',
-      icon: '○'
+      icon: '○', section: 'PARTICIPANTS'
     },
     {
       label: 'Events',
       route: '/events',
-      icon: '✦'
+      icon: '✦', section: 'EVENTS'
     },
     {
       label: 'Attendance',
       route: '/attendance',
-      icon: '✓'
+      icon: '✓', section: 'ATTENDANCE'
     },
     {
       label: 'Scoring',
       route: '/scoring',
-      icon: '★'
+      icon: '★', section: 'SCORING'
+    },
+    {
+      label: 'Results',
+      route: '/results',
+      icon: '▤', section: 'RESULTS'
     },
     {
       label: 'Certificates',
       route: '/certificates',
-      icon: '□'
+      icon: '□', section: 'CERTIFICATES'
     },
     {
       label: 'Reports',
       route: '/reports',
-      icon: '▤'
+      icon: '▤', section: 'REPORTS'
     }
   ];
+
+  readonly visibleNavItems = computed(() => this.navItems.filter(item => this.auth.canAccess(item.section)));
+  canAccess(section: ApplicationSection): boolean { return this.auth.canAccess(section); }
+  userInitial(): string { return this.currentUser()?.displayName.charAt(0).toUpperCase() ?? '?'; }
+  logout(): void { this.auth.logout(); void this.router.navigateByUrl('/login'); }
 
 
 sidebarExpanded = false;

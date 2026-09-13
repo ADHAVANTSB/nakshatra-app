@@ -584,6 +584,28 @@ export class Participants {
 
   }
 
+  unlockParticipant(
+    participantId: string
+  ): void {
+
+    this.clearMessages();
+
+    const success =
+      this.participantService
+        .unlockParticipant(participantId);
+
+    if (!success) {
+      this.validationErrors.set([
+        'Participant could not be unlocked.'
+      ]);
+      return;
+    }
+
+    this.successMessage.set(
+      'Participant has been unlocked successfully.'
+    );
+  }
+
 
   // =========================================================
   // GET LEVEL LABEL

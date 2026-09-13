@@ -1,19 +1,25 @@
-<div class="page">
+<div class="certificates-page">
+  <div class="page-header"><span class="eyebrow">CERTIFICATE WORKFLOW</span><h1>Certificates</h1><p>Review finalized-score entries and their certificate record status.</p></div>
 
-  <div class="page-header">
-    <div>
-      <span class="eyebrow">OUTPUT</span>
-      <h1>Certificates</h1>
-      <p>Prepare and manage participant certificates.</p>
-    </div>
+  <div class="configuration-notice"><strong>Generation is not configured</strong><span>Official certificate eligibility rules and a certificate template are required before records can be generated. No certificate content or eligibility is inferred here.</span></div>
+
+  <div class="filters-card">
+    <label for="certificate-event">Event</label>
+    <select id="certificate-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)"><option value="">Select an event</option>@for (event of events(); track event.id) { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} ({{ event.status }})</option> }</select>
+    <label for="certificate-search">Search</label>
+    <input id="certificate-search" type="search" placeholder="Participant, team, code, or home" [ngModel]="search()" (ngModelChange)="setSearch($event)" [disabled]="!selectedEvent()" />
   </div>
 
-  <div class="section-card">
-    <h3>Certificate Management</h3>
-    <p>
-      Certificate preparation, participant information
-      and final certificate processing will be managed here.
-    </p>
-  </div>
+  @if (errors().length) { <div class="alert error"><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> }
+  @if (message()) { <div class="alert success">✓ {{ message() }}</div> }
 
+  @if (selectedEvent(); as event) {
+    <div class="event-summary"><div><span>Event</span><strong>{{ event.name }}</strong></div><div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div><div><span>Finalized scores</span><strong>{{ finalizedCount() }}</strong></div><div><span>Workflow</span><strong>{{ workflowConfigured() ? 'Configured' : 'Not configured' }}</strong></div></div>
+    @if (event.status !== 'ACTIVE') { <div class="alert warning">This event is {{ event.status.toLowerCase() }}. Certificate generation is unavailable; existing records remain viewable.</div> }
+
+    @if (candidates().length) {
+      <div class="certificates-card"><div class="table-heading"><div><h2>Finalized-score entries</h2><p>Draft scores are excluded. Certificate status does not indicate a placement or award.</p></div>@if (search()) { <span>{{ candidates().length }} matching entry(s)</span> }</div><div class="table-wrapper"><table><thead><tr><th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>@if (event.mode === 'SOLO') { <th>Shelter home</th> }<th>Finalized score</th><th>Certificate status</th><th>Record audit</th><th>Action</th></tr></thead><tbody>@for (candidate of candidates(); track candidate.certificate?.id ?? candidate.score.id) { <tr><td><strong>{{ candidate.participant?.fullName ?? candidate.team?.name ?? 'Unavailable entry' }}</strong><small>{{ candidate.participant?.participantCode ?? candidate.team?.teamCode ?? candidate.score.participantId ?? candidate.score.teamId }}</small></td>@if (event.mode === 'SOLO') { <td>{{ candidate.participant?.shelterHomeId ?? 'Unavailable' }}</td> }<td class="score">{{ candidate.score.value }}</td><td>@if (candidate.certificate; as certificate) { <span class="status generated">{{ certificate.status }}</span> } @else { <span class="status pending">Not generated</span> }</td><td>@if (candidate.certificate; as certificate) { <small>v{{ certificate.version }} · {{ certificate.updatedBy }}<br />{{ certificate.updatedAt | date:'medium' }}</small> } @else { <small>No certificate record</small> }</td><td><button type="button" (click)="generate(candidate)" [disabled]="!workflowConfigured() || event.status !== 'ACTIVE' || !!candidate.certificate">Generate when configured</button></td></tr> }</tbody></table></div></div>
+    } @else if (finalizedCount() > 0) { <div class="empty-state"><strong>No matching finalized-score entries</strong><span>Try changing or clearing the search field.</span></div>
+    } @else { <div class="empty-state"><strong>No finalized scores for this event</strong><span>Certificates can only be considered from finalized scores. Draft scores are excluded.</span></div> }
+  } @else { <div class="empty-state"><strong>Select an event to view certificate workflow</strong><span>Only finalized-score entries can appear here.</span></div> }
 </div>

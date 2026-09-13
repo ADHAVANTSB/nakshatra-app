@@ -1,7 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 import {
   ImportVersion,
-  ImportStatus
+  ImportStatus,
+  ValidationResult
 } from '../../models';
 
 @Injectable({
@@ -12,6 +13,8 @@ export class ImportService {
   private readonly imports = signal<ImportVersion[]>([]);
 
   readonly imports$ = this.imports.asReadonly();
+  private readonly validations = signal<ValidationResult[]>([]);
+  readonly validations$ = this.validations.asReadonly();
 
   /**
    * Get all import versions for a shelter home
@@ -74,11 +77,7 @@ export class ImportService {
       this.getNextVersionNumber(shelterHomeId);
 
     const status: ImportStatus =
-      errorCount > 0
-        ? 'VALIDATION_FAILED'
-        : warningCount > 0
-          ? 'READY_FOR_REVIEW'
-          : 'IMPORTED';
+      errorCount > 0 ? 'VALIDATION_FAILED' : 'READY_FOR_REVIEW';
 
     const importVersion: ImportVersion = {
       id: `IMP-${Date.now()}`,
@@ -92,6 +91,7 @@ export class ImportService {
       recordCount,
       errorCount,
       warningCount
+      , validationStatus: errorCount ? 'FAILED' : warningCount ? 'WARNING' : 'PASSED', approvalStatus: 'PENDING', lockStatus: 'UNLOCKED', version: 1, updatedAt: now, updatedBy: importedBy
     };
 
     this.imports.update(current => [
@@ -134,14 +134,15 @@ export class ImportService {
    * Approve an import version
    */
   approveImport(importId: string): boolean {
-    return this.updateStatus(importId, 'APPROVED');
+    if (!this.canApprove(importId)) return false;
+    return this.updateWorkflow(importId, 'APPROVED', 'APPROVED', undefined, 'ADMIN');
   }
 
   /**
    * Reject an import version
    */
   rejectImport(importId: string): boolean {
-    return this.updateStatus(importId, 'REJECTED');
+    return this.updateWorkflow(importId, 'REJECTED', 'REJECTED', undefined, 'ADMIN');
   }
 
   /**
@@ -178,13 +179,9 @@ export class ImportService {
     return !!importVersion && importVersion.errorCount > 0;
   }
 
-  /**
-   * Remove an import version.
-   *
-   * This is intentionally not exposed in the UI.
-   * Later the backend should retain import history permanently.
-   */
-  clearLocalImports(): void {
-    this.imports.set([]);
-  }
+  getValidationResults(importVersionId: string): ValidationResult[] { return this.validations().filter(item => item.importVersionId === importVersionId); }
+  setValidationResults(importVersionId: string, results: ValidationResult[]): void { this.validations.update(current => [...current.filter(item => item.importVersionId !== importVersionId), ...results.map(item => ({ ...item, importVersionId }))]); }
+  lockImport(importId: string, by = 'ADMIN'): boolean { const item = this.getImportById(importId); return !!item && item.approvalStatus === 'APPROVED' && this.updateWorkflow(importId, 'APPROVED', 'APPROVED', 'LOCKED', by); }
+  unlockImport(importId: string, reason: string, by = 'ADMIN'): boolean { const item = this.getImportById(importId); if (!item || item.lockStatus !== 'LOCKED' || item.approvalStatus !== 'APPROVED' || !reason.trim()) return false; return this.updateWorkflow(importId, 'READY_FOR_REVIEW', 'PENDING', 'UNLOCKED', by, reason); }
+  private updateWorkflow(id: string, status: ImportStatus, approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED', lockStatus: 'LOCKED' | 'UNLOCKED' | undefined, by: string, unlockReason?: string): boolean { const item = this.getImportById(id); if (!item) return false; const now = new Date().toISOString(); this.imports.update(current => current.map(value => value.id === id ? { ...value, status, approvalStatus, ...(lockStatus ? { lockStatus } : {}), ...(lockStatus === 'LOCKED' ? { lockedAt: now, lockedBy: by } : {}), ...(unlockReason ? { unlockReason } : {}), version: (value.version ?? 1) + 1, updatedAt: now, updatedBy: by } : value)); return true; }
 }

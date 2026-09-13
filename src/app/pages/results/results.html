@@ -1,0 +1,83 @@
+<div class="results-page">
+  <div class="page-header">
+    <span class="eyebrow">OFFICIAL SCORES</span>
+    <h1>Results</h1>
+    <p>View finalized event scores. This view does not assign rankings or winners.</p>
+  </div>
+
+  <div class="filters-card">
+    <label for="result-category">Event category</label>
+    <select id="result-category" [ngModel]="category()" (ngModelChange)="setCategory($event)">
+      <option value="">All categories</option>
+      <option value="ARTS">Arts</option>
+      <option value="LITERARY">Literary</option>
+      <option value="CULTURAL">Cultural</option>
+    </select>
+
+    <label for="result-event">Event</label>
+    <select id="result-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)">
+      <option value="">Select an event</option>
+      @for (event of filteredEvents(); track event.id) {
+        <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} ({{ event.status }})</option>
+      }
+    </select>
+
+    <label for="result-search">Search results</label>
+    <input id="result-search" type="search" placeholder="Participant, team, code, or home" [ngModel]="search()" (ngModelChange)="setSearch($event)" [disabled]="!selectedEvent()" />
+  </div>
+
+  @if (selectedEvent(); as event) {
+    <div class="event-summary">
+      <div><span>Event</span><strong>{{ event.name }}</strong></div>
+      <div><span>Category</span><strong>{{ event.category }}</strong></div>
+      <div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div>
+      <div><span>Finalized scores</span><strong>{{ finalizedCount() }}</strong></div>
+    </div>
+
+    @if (event.status !== 'ACTIVE') {
+      <div class="alert warning">This event is {{ event.status.toLowerCase() }}. Results are read-only and shown only when finalized scores exist.</div>
+    }
+
+    @if (results().length) {
+      <div class="results-card">
+        <div class="table-heading">
+          <div><h2>Finalized scores</h2><p>Scores are locked at finalization.</p></div>
+          @if (search()) { <span>{{ results().length }} matching result(s)</span> }
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>
+                @if (event.mode === 'SOLO') { <th>Shelter home</th> }
+                <th>Score</th>
+                <th>Status</th>
+                <th>Audit</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (result of results(); track result.score.id) {
+                <tr>
+                  <td>
+                    <strong>{{ result.participant?.fullName ?? result.team?.name ?? 'Unavailable entry' }}</strong>
+                    <small>{{ result.participant?.participantCode ?? result.team?.teamCode ?? result.score.participantId ?? result.score.teamId }}</small>
+                  </td>
+                  @if (event.mode === 'SOLO') { <td>{{ result.participant?.shelterHomeId ?? 'Unavailable' }}</td> }
+                  <td class="score">{{ result.score.value }}</td>
+                  <td><span class="status-final">Finalized · Locked</span></td>
+                  <td><small>v{{ result.score.version }} · {{ result.score.updatedBy }}<br />{{ result.score.updatedAt | date:'medium' }}</small></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    } @else if (finalizedCount() > 0) {
+      <div class="empty-state"><strong>No matching finalized results</strong><span>Try changing or clearing the search field.</span></div>
+    } @else {
+      <div class="empty-state"><strong>No finalized results for this event</strong><span>Draft scores are intentionally excluded until they are finalized.</span></div>
+    }
+  } @else {
+    <div class="empty-state"><strong>Select an event to view results</strong><span>Only finalized scores are shown here.</span></div>
+  }
+</div>
