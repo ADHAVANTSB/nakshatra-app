@@ -28,8 +28,7 @@ import { TeamService } from '../../core/services/teams/team.service';
   selector: 'nk-events',
   standalone: true,
   imports: [FormsModule],
-  templateUrl: './events.html',
-  styleUrl: './events.scss'
+  templateUrl: './events.html'
 })
 export class Events {
 

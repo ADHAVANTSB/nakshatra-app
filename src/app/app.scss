@@ -8,7 +8,7 @@
    NAKSHATRA BRAND COLORS
    ========================================================= */
 
-:host {
+app-root {
 
   /* =======================================================
      NAKSHATRA COLOR CHANGE
@@ -1256,7 +1256,7 @@
 
 @media (max-width: 1100px) {
 
-  :host {
+  app-root {
 
     --nk-sidebar-collapsed: 88px;
     --nk-sidebar-expanded: 250px;
@@ -1326,7 +1326,7 @@
 
 @media (max-width: 700px) {
 
-  :host {
+  app-root {
 
     --nk-header-height: 72px;
     --nk-footer-height: 0px;
