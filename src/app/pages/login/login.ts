@@ -1,15 +1,31 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild, inject, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { GOOGLE_IDENTITY_CONFIG } from '../../core/constants/google-identity.config';
+import { ApplicationRole, ApplicationSession } from '../../core/models';
+import { AuthService } from '../../core/services/auth/auth.service';
 
 interface VerifiedGoogleUser {
   email: string;
+  role: string;
 }
+
+interface ApprovedGoogleUser extends VerifiedGoogleUser {
+  id: string;
+  googleId: string;
+  displayName: string;
+  role: ApplicationRole;
+  accessStatus: 'APPROVED';
+  version: number;
+}
+
+type NakshatraAccess = 'NOT_REGISTERED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED' | 'DENIED';
 
 interface GoogleVerificationResponse {
   success: boolean;
+  access?: NakshatraAccess;
   error?: string;
   user?: VerifiedGoogleUser;
+  data?: { applicationSession?: unknown };
 }
 
 type GisSetupFailure = 'SCRIPT_ELEMENT' | 'SCRIPT_LOAD' | 'SCRIPT_TIMEOUT' | 'API_UNAVAILABLE' | 'INITIALIZATION';
@@ -91,6 +107,8 @@ function waitForGoogleIdentity(): Promise<GoogleIdentity> {
 
 @Component({ selector: 'nk-login', imports: [RouterLink], templateUrl: './login.html', styleUrl: './login.scss' })
 export class Login implements AfterViewInit, OnDestroy {
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   private googleButtonElement: HTMLElement | null = null;
   private googleButtonWaiters: Array<(element: HTMLElement | null) => void> = [];
   @ViewChild('googleButton')
@@ -102,7 +120,7 @@ export class Login implements AfterViewInit, OnDestroy {
   }
   readonly error = signal('');
   readonly loading = signal(false);
-  readonly verifiedUser = signal<VerifiedGoogleUser | null>(null);
+  readonly verifiedUser = signal<(VerifiedGoogleUser & { access: NakshatraAccess }) | null>(null);
   private destroyed = false;
   private buttonRendered = false;
   private readonly onCredential = (credential: string): void => void this.verifyCredential(credential);
@@ -170,7 +188,22 @@ export class Login implements AfterViewInit, OnDestroy {
         this.error.set(this.isVerificationFailure(result) ? result.error : 'Google account verification failed.');
         return;
       }
-      this.verifiedUser.set({ email: result.user.email });
+      if (result.access === 'APPROVED') {
+        if (!this.isApprovedGoogleUser(result.user)) {
+          this.error.set('Google account verification failed.');
+          return;
+        }
+        const applicationSession = this.readApplicationSession(result);
+        if (applicationSession === null) {
+          this.error.set('The application session returned by the server was invalid.');
+          return;
+        }
+        this.auth.setGoogleAuthenticatedUser(result.user);
+        this.auth.setApplicationSession(applicationSession);
+        await this.router.navigateByUrl('/dashboard');
+        return;
+      }
+      this.verifiedUser.set({ ...result.user, access: result.access });
     } catch (error) {
       console.error('Google account verification request failed.', error);
       if (!this.destroyed) this.error.set('Unable to verify your Google account. Check your connection and try again.');
@@ -199,11 +232,59 @@ export class Login implements AfterViewInit, OnDestroy {
     this.error.set(message[error.failure]);
   }
 
-  private isVerifiedResponse(value: unknown): value is GoogleVerificationResponse & { success: true; user: VerifiedGoogleUser } {
+  accessMessage(access: NakshatraAccess): string {
+    const messages: Record<NakshatraAccess, string> = {
+      NOT_REGISTERED: 'Google account verified, but your Nakshatra account is not registered yet.',
+      PENDING: 'Your Nakshatra account is pending admin approval.',
+      APPROVED: 'Google account verified and Nakshatra access approved.',
+      REJECTED: 'Your Nakshatra access request was rejected.',
+      DISABLED: 'Your Nakshatra account is disabled.',
+      DENIED: 'Your Nakshatra access is denied.',
+    };
+    return messages[access];
+  }
+
+  private isVerifiedResponse(value: unknown): value is GoogleVerificationResponse & {
+    success: true;
+    access: NakshatraAccess;
+    user: VerifiedGoogleUser;
+  } {
     return typeof value === 'object' && value !== null
       && 'success' in value && value.success === true
+      && 'access' in value && this.isNakshatraAccess(value.access)
       && 'user' in value && typeof value.user === 'object' && value.user !== null
-      && 'email' in value.user && typeof value.user.email === 'string';
+      && 'email' in value.user && typeof value.user.email === 'string'
+      && 'role' in value.user && typeof value.user.role === 'string';
+  }
+
+  private isNakshatraAccess(value: unknown): value is NakshatraAccess {
+    return value === 'NOT_REGISTERED' || value === 'PENDING' || value === 'APPROVED'
+      || value === 'REJECTED' || value === 'DISABLED' || value === 'DENIED';
+  }
+
+  private isApplicationRole(value: unknown): value is ApplicationRole {
+    return value === 'ADMIN' || value === 'SUPPORT' || value === 'EVENTS_TEAM'
+      || value === 'LIAISON_TEAM' || value === 'CERTIFICATE_TEAM';
+  }
+
+  private readApplicationSession(response: GoogleVerificationResponse): ApplicationSession | null {
+    const value = response.data?.applicationSession;
+    if (typeof value !== 'object' || value === null || !('id' in value) || !('expiresAt' in value)
+      || typeof value.id !== 'string' || !value.id || typeof value.expiresAt !== 'string'
+      || Number.isNaN(Date.parse(value.expiresAt)) || Date.parse(value.expiresAt) <= Date.now()) {
+      return null;
+    }
+    return { id: value.id, expiresAt: value.expiresAt };
+  }
+
+  private isApprovedGoogleUser(value: VerifiedGoogleUser): value is ApprovedGoogleUser {
+    const user = value as Partial<ApprovedGoogleUser>;
+    return typeof user.id === 'string'
+      && typeof user.googleId === 'string'
+      && typeof user.displayName === 'string'
+      && this.isApplicationRole(user.role)
+      && user.accessStatus === 'APPROVED'
+      && typeof user.version === 'number';
   }
 
   private isVerificationFailure(value: unknown): value is { success: false; error: string } {

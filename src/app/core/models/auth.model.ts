@@ -3,6 +3,7 @@ export type AccessStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 
 export interface ApplicationUser {
   id: string;
+  googleId?: string;
   displayName: string;
   email: string;
   role?: ApplicationRole;
@@ -12,6 +13,15 @@ export interface ApplicationUser {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+}
+
+/**
+ * Opaque, short-lived application session issued by the Apps Script backend.
+ * It intentionally contains no user identity, role, or Google credential.
+ */
+export interface ApplicationSession {
+  id: string;
+  expiresAt: string;
 }
 
 export type ApplicationSection =

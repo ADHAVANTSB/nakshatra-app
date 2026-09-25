@@ -1,5 +1,6 @@
 export * from './common.model';
 export * from './auth.model';
+export * from './api.model';
 export * from './shelter-home.model';
 export * from './caretaker.model';
 export * from './participant.model';

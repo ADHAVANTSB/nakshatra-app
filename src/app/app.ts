@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, OnInit, computed, inject } from '@angular/core';
 import {
   RouterLink,
   RouterLinkActive,
@@ -7,6 +7,7 @@ import {
 } from '@angular/router';
 import { ApplicationSection } from './core/models';
 import { AuthService } from './core/services/auth/auth.service';
+import { ApiClientService } from './core/services/api/api-client.service';
 
 interface NavItem {
   label: string;
@@ -24,11 +25,16 @@ interface NavItem {
   ],
   templateUrl: './app.html'
 })
-export class App {
+export class App implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly apiClient = inject(ApiClientService);
   private readonly router = inject(Router);
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly currentUser = this.auth.currentUser;
+
+  ngOnInit(): void {
+    void this.validateStartupSession();
+  }
 
   /**
    * Controls the mobile navigation drawer.
@@ -92,7 +98,29 @@ export class App {
   readonly visibleNavItems = computed(() => this.navItems.filter(item => this.auth.canAccess(item.section)));
   canAccess(section: ApplicationSection): boolean { return this.auth.canAccess(section); }
   userInitial(): string { return this.currentUser()?.displayName.charAt(0).toUpperCase() ?? '?'; }
-  logout(): void { this.auth.logout(); void this.router.navigateByUrl('/login'); }
+  logout(): void { void this.signOut(); }
+
+  private async signOut(): Promise<void> {
+    await this.apiClient.invalidateApplicationSession();
+    await this.router.navigateByUrl('/login');
+  }
+
+  private async validateStartupSession(): Promise<void> {
+    const session = this.auth.applicationSession();
+    if (!session) return;
+
+    const result = await this.apiClient.validateApplicationSession();
+    // Do not let a delayed validation clear a newer session created by sign-in.
+    if (this.auth.applicationSession()?.id !== session.id) return;
+
+    if (!result.success) {
+      this.auth.logout();
+      return;
+    }
+
+    this.auth.setGoogleAuthenticatedUser(result.user);
+    this.auth.setApplicationSession({ id: session.id, expiresAt: result.data.session.expiresAt });
+  }
 
 
 sidebarExpanded = false;

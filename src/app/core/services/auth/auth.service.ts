@@ -1,13 +1,29 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { AccessStatus, ApplicationRole, ApplicationSection, ApplicationUser } from '../../models';
+import { AccessStatus, ApplicationRole, ApplicationSection, ApplicationSession, ApplicationUser } from '../../models';
 
 export interface AuthResult { success: boolean; errors: string[]; }
+
+export interface GoogleAuthenticatedUser {
+  id: string;
+  googleId: string;
+  email: string;
+  displayName: string;
+  role: ApplicationRole;
+  accessStatus: 'APPROVED';
+  version: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly users = signal<ApplicationUser[]>([this.createSeedAdmin()]);
   private readonly sessionUserId = signal<string | null>(null);
+  private readonly applicationSessionState = signal<ApplicationSession | null>(null);
   readonly users$ = this.users.asReadonly();
+  /** A copy prevents consumers from mutating the in-memory session state. */
+  readonly applicationSession = computed(() => {
+    const session = this.applicationSessionState();
+    return session ? { ...session } : null;
+  });
   readonly currentUser = computed(() => this.sessionUserId()
     ? this.users().find(user => user.id === this.sessionUserId())
     : undefined);
@@ -24,7 +40,37 @@ export class AuthService {
     return { success: true, errors: [] };
   }
 
-  logout(): void { this.sessionUserId.set(null); }
+  logout(): void {
+    this.applicationSessionState.set(null);
+    this.sessionUserId.set(null);
+  }
+
+  setApplicationSession(session: ApplicationSession): void {
+    this.applicationSessionState.set({ ...session });
+  }
+
+  clearApplicationSession(): void {
+    this.applicationSessionState.set(null);
+  }
+
+  setGoogleAuthenticatedUser(user: GoogleAuthenticatedUser): void {
+    const existing = this.getUser(user.id);
+    const now = new Date().toISOString();
+    const sessionUser: ApplicationUser = {
+      ...user,
+      createdAt: existing?.createdAt ?? now,
+      createdBy: existing?.createdBy ?? 'GOOGLE_SIGN_IN',
+      updatedAt: now,
+      updatedBy: 'GOOGLE_SIGN_IN',
+    };
+    this.users.update(current => {
+      const index = current.findIndex(item => item.id === user.id);
+      return index === -1
+        ? [...current, sessionUser]
+        : current.map(item => item.id === user.id ? sessionUser : item);
+    });
+    this.sessionUserId.set(user.id);
+  }
 
   register(displayName: string, email: string): AuthResult {
     const name = displayName.trim();
