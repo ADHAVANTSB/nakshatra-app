@@ -4,8 +4,8 @@ import { AttendanceService } from '../attendance/attendance.service';
 import { CertificateService } from '../certificates/certificate.service';
 import { EventService } from '../events/event.service';
 import { ParticipantEventService } from '../events/participant-event.service';
-import { ParticipantService } from '../participants/participant.service';
 import { ScoringService } from '../scoring/scoring.service';
+import { ShelterDataResult, ShelterDataService } from '../shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../shelter-homes/shelter-home.service';
 import { TeamService } from '../teams/team.service';
 
@@ -53,10 +53,24 @@ export interface ParticipantReport {
   certificates: number;
 }
 
+/**
+ * Read-only aggregation over already-loaded Nakshatra records.
+ *
+ * The only I/O this service performs is `load()`, which delegates to
+ * `ShelterDataService.refresh()` so the shared backend cache is populated.
+ * Every getter below is a pure read of that cache — no getter triggers a
+ * request and no getter mutates state — which keeps the Summary, Homes, Events
+ * and Participants tabs describing exactly the same backend snapshot.
+ *
+ * Shelter homes and participants both come from the single backend store, so
+ * participant counts are grouped once per read and shared by the summary and
+ * the per-home rows. That guarantees `summary.participants` always equals the
+ * sum of the `HomeReport.participants` values.
+ */
 @Injectable({ providedIn: 'root' })
 export class ReportService {
+  private readonly shelterData = inject(ShelterDataService);
   private readonly homes = inject(ShelterHomeService);
-  private readonly participants = inject(ParticipantService);
   private readonly events = inject(EventService);
   private readonly registrations = inject(ParticipantEventService);
   private readonly teams = inject(TeamService);
@@ -64,13 +78,21 @@ export class ReportService {
   private readonly scoring = inject(ScoringService);
   private readonly certificates = inject(CertificateService);
 
+  /** Fills the shared backend cache. Parallel calls collapse into one request. */
+  load(): Promise<ShelterDataResult> {
+    return this.shelterData.refresh();
+  }
+
   getSummary(): OperationalSummary {
     const attendance = this.attendance.records$();
     const scores = this.scoring.scores$();
     const certificates = this.certificates.certificates$();
+    const participantsByHome = this.participantsByHome();
     return {
       homes: this.homes.getHomes().length,
-      participants: this.participants.getParticipants().length,
+      // Sum of the same per-home grouping `getHomeReports()` uses, so the two
+      // can never disagree.
+      participants: this.totalParticipants(participantsByHome),
       events: this.events.getAll().length,
       activeEvents: this.events.activeEvents().length,
       registrations: this.registrations.getAll().filter(item => item.registrationStatus === 'REGISTERED').length,
@@ -91,9 +113,10 @@ export class ReportService {
     const teams = this.teams.getAll().filter(team =>
       team.status !== 'CANCELLED' && (!eventId || team.eventId === eventId)
     );
+    const participantsByHome = this.participantsByHome();
 
     return this.homes.getHomes().map(home => {
-      const homeParticipants = this.participants.getParticipants().filter(item => item.shelterHomeId === home.id);
+      const homeParticipants = participantsByHome.get(home.id) ?? [];
       const participantIds = new Set(homeParticipants.map(item => item.id));
       return {
         home,
@@ -129,10 +152,9 @@ export class ReportService {
 
   getParticipantReports(homeId?: string, eventId?: string, search = ''): ParticipantReport[] {
     const query = search.trim().toLowerCase();
-    return this.participants.getParticipants()
+    return this.allParticipants()
       .filter(participant => !homeId || participant.shelterHomeId === homeId)
-      .filter(participant => !query || [participant.fullName, participant.participantCode, participant.shelterHomeId]
-        .some(value => value.toLowerCase().includes(query)))
+      .filter(participant => !query || this.matchesSearch(participant, query))
       .map(participant => {
         const registrations = this.registrations.getParticipantRegistrations(participant.id)
           .filter(item => !eventId || item.eventId === eventId);
@@ -147,6 +169,75 @@ export class ReportService {
         );
         return { participant, registrations: registrations.length, attendance: this.summarizeAttendance(attendance), finalizedSoloScores: scores.length, certificates: certificates.length };
       });
+  }
+
+  /**
+   * Human-readable shelter home label. Raw backend ids are never rendered.
+   */
+  getHomeName(homeId: string): string {
+    if (!homeId) {
+      return 'Unknown Home';
+    }
+
+    return this.homes.getHomeById(homeId)?.name || 'Unknown Home';
+  }
+
+  /**
+   * Human-readable shelter home code. Raw backend ids are never rendered.
+   */
+  getHomeCode(homeId: string): string {
+    if (!homeId) {
+      return '—';
+    }
+
+    return this.homes.getHomeById(homeId)?.homeCode || '—';
+  }
+
+  /**
+   * Backend participants grouped by shelter home, restricted to homes the
+   * backend currently reports. Every participant-facing number in this service
+   * is derived from this single grouping.
+   */
+  private participantsByHome(): Map<string, Participant[]> {
+    const grouped = new Map<string, Participant[]>();
+
+    for (const participant of this.allParticipants()) {
+      const existing = grouped.get(participant.shelterHomeId);
+
+      if (existing) {
+        existing.push(participant);
+      } else {
+        grouped.set(participant.shelterHomeId, [participant]);
+      }
+    }
+
+    return grouped;
+  }
+
+  /** Flat list backing the grouping above, so both share one source. */
+  private allParticipants(): Participant[] {
+    const participants = this.shelterData.participants();
+    const knownHomeIds = new Set(this.shelterData.homes().map(home => home.id));
+
+    return participants.filter(participant => knownHomeIds.has(participant.shelterHomeId));
+  }
+
+  private totalParticipants(participantsByHome: Map<string, Participant[]>): number {
+    let total = 0;
+
+    for (const homeParticipants of participantsByHome.values()) {
+      total += homeParticipants.length;
+    }
+
+    return total;
+  }
+
+  /** Searches the readable home label rather than the raw backend id. */
+  private matchesSearch(participant: Participant, query: string): boolean {
+    const homeLabel = `${this.getHomeName(participant.shelterHomeId)} ${this.getHomeCode(participant.shelterHomeId)}`;
+    const terms: string[] = [participant.fullName, participant.participantCode, homeLabel];
+
+    return terms.some(term => (term ?? '').toLowerCase().includes(query));
   }
 
   private summarizeAttendance(records: { status: 'PRESENT' | 'ABSENT' }[]): AttendanceSummary {

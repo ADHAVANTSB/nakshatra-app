@@ -1,232 +1,352 @@
 <div class="page">
 
   <!-- PAGE HEADER -->
+
   <div class="page-header">
+
     <div>
       <span class="eyebrow">REGISTRATION</span>
-
       <h1>Shelter Homes</h1>
-
-      <p>
-        Manage participating shelter homes and their details.
-      </p>
+      <p>Register participating shelter homes and connect their Google Sheet.</p>
     </div>
 
-    <button
-      class="primary-button"
-      type="button">
-      + Add Home
-    </button>
-  </div>
-
-
-  <!-- MANAGEMENT CARD -->
-  <div class="section-card">
-
-    <h3>Shelter Home Management</h3>
-
-    <p>
-      Home registration, contact information, location,
-      participation status and Google Sheet configuration
-      will be managed here.
-    </p>
+    <div class="page-actions">
+      <button
+        class="secondary-button"
+        type="button"
+        (click)="refreshConnectedHomes()"
+        [disabled]="loading()">
+        {{ loading() ? 'Refreshing…' : 'Refresh' }}
+      </button>
+      <button
+        class="primary-button"
+        type="button"
+        (click)="openAddHome()">
+        + Add Home
+      </button>
+    </div>
 
   </div>
 
 
-<!-- HOME LIST -->
-@if (homes().length > 0) {
+  <!-- ADD HOME -->
 
-  <div class="home-list">
+  @if (showAddHome()) {
 
-    @for (home of homes(); track home.id) {
+    <form class="connect-home-card" (ngSubmit)="connectSheet()">
 
-      <div class="home-card">
+      <div class="connect-home-header">
+        <div>
+          <span class="eyebrow">NEW CONNECTION</span>
+          <h2>Add Shelter Home</h2>
+          <p>Enter the shelter home details and paste its Google Sheet URL.</p>
+        </div>
+        <button
+          type="button"
+          class="secondary-action"
+          (click)="closeAddHome()">
+          Close
+        </button>
+      </div>
 
-        <!-- HOME INFORMATION -->
-        <div class="home-card-main">
+      @if (connectedHome(); as home) {
 
-          <div class="home-card-title">
+        <section class="connected-home" aria-label="Connected shelter home">
+          <h3>{{ home.name }}</h3>
+          <p>Google Sheet: <strong>{{ home.spreadsheetName ?? 'Connected' }}</strong></p>
+        </section>
 
-            <span class="home-code">
-              {{ home.homeCode }}
-            </span>
+      } @else {
 
-            <h4>
-              {{ home.name }}
-            </h4>
+        <div class="home-form-grid">
 
-          </div>
+          <label>
+            Shelter Home Name
+            <span aria-hidden="true">*</span>
+            <input
+              type="text"
+              name="homeName"
+              [ngModel]="homeName()"
+              (ngModelChange)="homeName.set($event)"
+              required
+              [disabled]="saving()" />
+          </label>
 
+          <label>
+            Address
+            <input
+              type="text"
+              name="address"
+              [ngModel]="address()"
+              (ngModelChange)="address.set($event)"
+              [disabled]="saving()" />
+          </label>
 
-          <!-- DETAILS -->
-          <div class="home-details">
+          <label>
+            Contact Name
+            <input
+              type="text"
+              name="contactName"
+              [ngModel]="contactName()"
+              (ngModelChange)="contactName.set($event)"
+              [disabled]="saving()" />
+          </label>
 
-            <div class="home-detail">
-
-              <span class="detail-label">
-                Address
-              </span>
-
-              <span class="detail-value">
-                {{ home.address }}
-              </span>
-
-            </div>
-
-
-            <div class="home-detail">
-
-              <span class="detail-label">
-                Contact
-              </span>
-
-              <span class="detail-value">
-                {{ home.contactPhone }}
-              </span>
-
-            </div>
-
-
-            <div class="home-detail">
-
-              <span class="detail-label">
-                Participants
-              </span>
-
-              <span class="detail-value">
-
-                {{ getParticipantCount(home.id) }}
-                /
-                35
-
-              </span>
-
-            </div>
-
-
-            <div class="home-detail">
-
-              <span class="detail-label">
-                Boys / Girls
-              </span>
-
-              <span class="detail-value">
-
-                {{ getMaleCount(home.id) }}
-                /
-                {{ getFemaleCount(home.id) }}
-
-              </span>
-
-            </div>
-
-
-            <div class="home-detail">
-
-              <span class="detail-label">
-                Transportation
-              </span>
-
-              <span class="detail-value">
-
-                @if (
-                  home.transportationType ===
-                  'OWN_TRANSPORT'
-                ) {
-
-                  Own Transport
-
-                } @else {
-
-                  To Be Arranged
-
-                }
-
-              </span>
-
-            </div>
-
-          </div>
+          <label>
+            Contact Phone
+            <input
+              type="tel"
+              name="contactPhone"
+              [ngModel]="contactPhone()"
+              (ngModelChange)="contactPhone.set($event)"
+              [disabled]="saving()" />
+          </label>
 
         </div>
 
+        <section class="sheet-connection" aria-labelledby="sheet-connection-title">
+          <h3 id="sheet-connection-title">Google Sheet</h3>
 
-        <!-- RIGHT SIDE -->
-        <div class="home-card-status">
+          <label class="sheet-search">
+            Google Sheet URL
+            <input
+              type="url"
+              name="sheetUrl"
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              [ngModel]="sheetUrl()"
+              (ngModelChange)="sheetUrl.set($event)"
+              required
+              [disabled]="saving()" />
+          </label>
 
-          <!-- APPROVAL STATUS -->
-          <span
-            class="status-badge"
-            [class.status-approved]="
-              home.approvalStatus === 'APPROVED'
-            "
-            [class.status-pending]="
-              home.approvalStatus === 'PENDING'
-            "
-            [class.status-rejected]="
-              home.approvalStatus === 'REJECTED'
-            "
-          >
+          <p class="sheet-state">
+            Any Google Sheets link works, provided it is shared with the
+            signed-in Google account. It does not need to appear in a Drive
+            search list.
+          </p>
+        </section>
 
-            {{ home.approvalStatus }}
+      }
 
-          </span>
+      @if (formError()) {
+        <p class="form-message error" role="alert">{{ formError() }}</p>
+      }
+
+      @if (progressMessage()) {
+        <p class="form-message progress" role="status">{{ progressMessage() }}</p>
+      }
+
+      @if (successMessage()) {
+        <p class="form-message success" role="status">{{ successMessage() }}</p>
+      }
+
+      @if (syncSummary(); as summary) {
+
+        <section class="sync-summary" aria-label="Participant import summary">
+          <h3>Participant sync summary</h3>
+
+          <dl>
+            <div>
+              <dt>Version number</dt>
+              <dd>{{ summary.version === null ? 'Unavailable' : 'Version ' + summary.version }}</dd>
+            </div>
+            <div>
+              <dt>Records processed</dt>
+              <dd>{{ summary.recordsProcessed ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Valid participants</dt>
+              <dd>{{ summary.validParticipants }}</dd>
+            </div>
+            <div>
+              <dt>Validation errors</dt>
+              <dd>{{ summary.validationErrors ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Warnings</dt>
+              <dd>{{ summary.warnings ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Sync status</dt>
+              <dd>{{ summary.syncStatus }}</dd>
+            </div>
+          </dl>
+
+          <p>Imported participant count: <strong>{{ importedParticipantCount() ?? 0 }}</strong></p>
+
+          @if (validationResults().length) {
+            <div class="validation-results">
+              <h4>Validation results ({{ validationResults().length }})</h4>
+              <ul>
+                @for (result of validationResults(); track result.id ?? result.ruleCode + result.message) {
+                  <li><strong>{{ result.severity }}</strong> · {{ result.message }}</li>
+                }
+              </ul>
+            </div>
+          }
+        </section>
+
+      }
+
+      @if (!connectedHome()) {
+        <div class="connect-actions">
+          <button type="submit" class="primary-button" [disabled]="saving()">
+            {{ saving() ? 'Connecting…' : 'Connect Google Sheet' }}
+          </button>
+        </div>
+      }
+
+    </form>
+
+  }
 
 
-          <!-- VALIDATION -->
-          <span class="validation-status">
+  <!-- CONNECTED HOMES -->
 
-            @if (
-              home.validationStatus === 'PASSED'
-            ) {
+  <section
+    class="connected-homes-section"
+    aria-labelledby="connected-homes-title"
+    [attr.aria-busy]="loading()">
 
-              ✓ Validated
+    <div class="section-card-header">
+      <div>
+        <span class="eyebrow">CONNECTED SOURCES</span>
+        <h2 id="connected-homes-title">Connected Shelter Homes</h2>
+      </div>
+    </div>
 
-            } @else if (
-              home.validationStatus === 'FAILED'
-            ) {
+    @if (!loaded()) {
+      <p class="sheet-state" role="status">Loading connected shelter homes…</p>
 
-              ⚠ Validation Failed
+    } @else if (homesError()) {
+      <p class="form-message error" role="alert">{{ homesError() }}</p>
 
-            } @else {
+    } @else if (connectedHomes().length === 0) {
+      <div class="connected-homes-empty">
+        <p>
+          No shelter homes are connected yet. Connect one to import its
+          participants from Google Sheets.
+        </p>
+        <button type="button" class="primary-button" (click)="openAddHome()">
+          + Add Home
+        </button>
+      </div>
 
-              {{ home.validationStatus }}
+    } @else {
+
+      <div class="connected-homes-list">
+
+        @for (home of connectedHomes(); track home.id) {
+
+          <article class="connected-home-card">
+
+            <div>
+              <span class="home-code">{{ home.homeCode }}</span>
+
+              <h3>
+                @if (home.spreadsheetOpenUrl; as sheetOpenUrl) {
+                  <!--
+                    Backend-supplied link only. No URL is built locally and no
+                    spreadsheet identifier is exposed, so a home without
+                    spreadsheetOpenUrl stays plain text instead of a dead link.
+                  -->
+                  <a
+                    class="home-name-link page-link"
+                    [href]="sheetOpenUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    [attr.aria-label]="home.homeName + ' — opens the connected Google Sheet in a new tab'">
+                    {{ home.homeName }}<span aria-hidden="true"> ↗</span>
+                  </a>
+                } @else {
+                  {{ home.homeName }}
+                }
+              </h3>
+
+              <p>{{ home.address || 'No address provided' }}</p>
+            </div>
+
+            <dl>
+              <div>
+                <dt>Contact Name</dt>
+                <dd>{{ home.contactName || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Contact Phone</dt>
+                <dd>{{ home.contactPhone || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Google Sheet</dt>
+                <dd>{{ home.spreadsheetName || 'Connected' }}</dd>
+              </div>
+              <div>
+                <dt>Source status</dt>
+                <dd>{{ home.sourceStatus || home.status || 'Unknown' }}</dd>
+              </div>
+              <div>
+                <dt>Import status</dt>
+                <dd>{{ importStatusLabel(home) }}</dd>
+              </div>
+              <div>
+                <dt>Last synced</dt>
+                <dd>{{ home.lastSyncedAt ?? 'Not synced yet' }}</dd>
+              </div>
+              <div>
+                <dt>Participants</dt>
+                <dd>
+                  @if (participantCount(home.id); as count) {
+                    {{ count }}
+                  } @else {
+                    Not loaded
+                  }
+                </dd>
+              </div>
+            </dl>
+
+            @if (homeError(home.id); as message) {
+              <p class="form-message error" role="alert">{{ message }}</p>
+            }
+
+            <div class="home-card-actions">
+              <button type="button" class="secondary-action" (click)="viewHome(home.id)">
+                {{ selectedHomeId() === home.id ? 'Close' : 'View' }}
+              </button>
+              <button type="button" class="secondary-action" (click)="viewParticipants(home.id)">
+                Participants
+              </button>
+            </div>
+
+            @if (selectedHomeId() === home.id) {
+
+              <div class="home-detail-panel">
+                <h4>{{ home.homeName }}</h4>
+                <p><strong>Home Code:</strong> {{ home.homeCode }}</p>
+                <p><strong>Address:</strong> {{ home.address || '—' }}</p>
+                <p><strong>Contact:</strong> {{ home.contactName || '—' }} · {{ home.contactPhone || '—' }}</p>
+                <p><strong>Google Sheet:</strong> {{ home.spreadsheetName || 'Connected' }}</p>
+                <p><strong>Source status:</strong> {{ home.sourceStatus || home.status || 'Unknown' }}</p>
+                <p><strong>Import status:</strong> {{ importStatusLabel(home) }}</p>
+                <p><strong>Last synced:</strong> {{ home.lastSyncedAt ?? 'Not synced yet' }}</p>
+                <p>
+                  <strong>Participants:</strong>
+                  @if (participantCount(home.id); as count) {
+                    {{ count }}
+                  } @else {
+                    Not loaded
+                  }
+                </p>
+              </div>
 
             }
 
-          </span>
+          </article>
 
-
-          <!-- ACTIONS -->
-          <div class="home-card-actions">
-
-            <button
-              type="button"
-              class="secondary-action"
-              (click)="viewParticipants(home.id)"
-            >
-              Participants
-            </button>
-
-            <button
-              type="button"
-              class="secondary-action"
-              (click)="viewHome(home.id)"
-            >
-              View
-            </button>
-
-          </div>
-
-        </div>
+        }
 
       </div>
 
     }
 
-  </div>
-
-}
+  </section>
 
 </div>

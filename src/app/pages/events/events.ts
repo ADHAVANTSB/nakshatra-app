@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import {
@@ -9,7 +9,7 @@ import {
   Participant,
   ParticipantLevel,
   ParticipantEvent,
-  ShelterHome,
+  RegistrationStatus,
   Team,
   TeamValidationResult
 } from '../../core/models';
@@ -21,16 +21,16 @@ import {
 } from '../../core/services/events/participant-event.service';
 
 import { ParticipantService } from '../../core/services/participants/participant.service';
+import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { TeamService } from '../../core/services/teams/team.service';
 
 @Component({
   selector: 'nk-events',
-  standalone: true,
   imports: [FormsModule],
   templateUrl: './events.html'
 })
-export class Events {
+export class Events implements OnInit {
 
   // =========================================================
   // SERVICES
@@ -51,14 +51,70 @@ export class Events {
   private readonly teamService =
     inject(TeamService);
 
+  private readonly shelterData =
+    inject(ShelterDataService);
 
-  // =========================================================
-  // EVENT MASTER
-  // =========================================================
 
+  /**
+   * The event master is read-only from here: it is owned by the backend and
+   * there is no frontend write path, so the page never fabricates an event.
+   */
   readonly events =
     this.eventService.events$;
 
+  private readonly eventBootstrapPending =
+    signal(false);
+
+  readonly eventsLoading =
+    computed(() =>
+      this.eventBootstrapPending() ||
+      this.eventService.loading()
+    );
+
+  readonly eventsLoaded =
+    this.eventService.loaded;
+
+  readonly eventsError =
+    this.eventService.loadError;
+
+
+  // =========================================================
+  // LIFECYCLE
+  // =========================================================
+
+  /**
+   * Shelter homes, participants, events and registrations all come from the one
+   * backend store, so a single refresh fills every list this page renders.
+   */
+  ngOnInit(): void {
+    void this.shelterData.refresh();
+    void this.loadEventMaster();
+  }
+
+
+  private async loadEventMaster(): Promise<void> {
+
+    this.eventBootstrapPending.set(true);
+
+    await this.eventService.load();
+
+    this.eventBootstrapPending.set(false);
+
+    // Nothing preselects an event on this route today, but if a selection is
+    // already in place its registrations must be read before the first render
+    // of the drawer.
+    const preselected =
+      this.selectedEvent();
+
+    if (preselected) {
+      await this.loadRegistrations(preselected.id);
+    }
+  }
+
+
+  // =========================================================
+  // FILTERS
+  // =========================================================
 
   readonly searchTerm =
     signal('');
@@ -140,59 +196,30 @@ export class Events {
 
 
   // =========================================================
-  // EVENT FORM
+  // EVENT FILTERS
   // =========================================================
 
-  showAddForm =
-    signal(false);
+  setSearch(value: string): void {
+    this.searchTerm.set(value);
+  }
 
-  editingEvent =
-    signal<Event | null>(null);
+  setCategory(value: string): void {
+    this.categoryFilter.set(
+      value as EventCategory | 'ALL'
+    );
+  }
 
+  setMode(value: string): void {
+    this.modeFilter.set(
+      value as EventMode | 'ALL'
+    );
+  }
 
-  eventName = '';
-  eventCode = '';
-
-  category: EventCategory =
-    'ARTS';
-
-  mode: EventMode =
-    'SOLO';
-
-  eligibleLevels: ParticipantLevel[] = [
-    'SUB_JUNIOR',
-    'JUNIOR',
-    'SENIOR',
-    'SUPER_SENIOR'
-  ];
-
-  minimumTeamSize: number | null =
-    null;
-
-  maximumTeamSize: number | null =
-    null;
-
-  schedule = '';
-  venue = '';
-
-
-  readonly categories: EventCategory[] = [
-    'ARTS',
-    'LITERARY',
-    'CULTURAL'
-  ];
-
-  readonly modes: EventMode[] = [
-    'SOLO',
-    'GROUP'
-  ];
-
-  readonly levels: ParticipantLevel[] = [
-    'SUB_JUNIOR',
-    'JUNIOR',
-    'SENIOR',
-    'SUPER_SENIOR'
-  ];
+  setStatus(value: string): void {
+    this.statusFilter.set(
+      value as EventStatus | 'ALL'
+    );
+  }
 
 
   // =========================================================
@@ -228,6 +255,32 @@ export class Events {
   // REGISTERED PARTICIPANTS
   // =========================================================
 
+  /** True while the selected event's registrations are being read. */
+  registrationsLoading =
+    signal(false);
+
+  /** The event whose registrations finished loading, or null when nothing has. */
+  registrationsLoadedEventId =
+    signal<string | null>(null);
+
+  /**
+   * Registrations live in the backend store. The synchronous getters on
+   * ParticipantEventService only see what has been read, so the drawer treats
+   * "not read yet" and "read and empty" as two different states.
+   */
+  readonly registrationsReady =
+    computed(() => {
+
+      const event =
+        this.selectedEvent();
+
+      return (
+        !!event &&
+        this.registrationsLoadedEventId() === event.id
+      );
+    });
+
+
   readonly eventRegistrations =
     computed(() => {
 
@@ -239,43 +292,203 @@ export class Events {
       }
 
       return this.participantEventService
-        .getEventRegistrations(event.id);
+        .registrations$()
+        .filter(registration =>
+          registration.eventId === event.id
+        );
     });
 
 
+  /**
+   * Every persisted registration for the selected event, whether registered,
+   * cancelled or waitlisted, paired with the participant record the backend
+   * holds for it.
+   */
   readonly registeredParticipants =
-    computed(() => {
+    computed(() =>
+      this.eventRegistrations().map(registration => {
 
-      const registrations =
-        this.eventRegistrations();
+        const participant =
+          this.participantService
+            .getParticipantById(
+              registration.participantId
+            );
 
-      return registrations
-        .map(registration => {
-
-          const participant =
-            this.participantService
-              .getParticipantById(
-                registration.participantId
-              );
-
-          return {
-            registration,
+        return {
+          registration,
+          name:
+            participant?.fullName ??
+            'Unknown participant',
+          code:
+            participant?.participantCode ??
+            '—',
+          homeName:
             participant
-          };
-        })
-        .filter(
-          item => !!item.participant
-        ) as {
-          registration: ParticipantEvent;
-          participant: Participant;
-        }[];
-    });
+              ? this.getHomeName(
+                  participant.shelterHomeId
+                )
+              : 'Unknown Home',
+          levelText:
+            participant?.level
+              ? this.levelLabel(participant.level)
+              : 'No level',
+          initial:
+            participant
+              ? participant.fullName
+                  .charAt(0)
+                  .toUpperCase()
+              : '?'
+        };
+      })
+    );
 
 
   readonly registeredCount =
     computed(() =>
       this.eventRegistrations().length
     );
+
+
+  // =========================================================
+  // ADD PARTICIPANT STATE
+  // =========================================================
+
+  showAddParticipant =
+    signal(false);
+
+  selectedParticipantId =
+    signal('');
+
+  registrationValidation =
+    signal<RegistrationValidation | null>(
+      null
+    );
+
+  registrationNotice =
+    signal('');
+
+  registrationErrors =
+    signal<string[]>([]);
+
+  /** Identifies the in-flight write so double clicks cannot submit twice. */
+  registrationBusy =
+    signal<string | null>(null);
+
+
+  // =========================================================
+  // EVENT SELECTION
+  // =========================================================
+
+  /**
+   * Makes an event the active selection and reads its registrations from the
+   * backend. Without this the counts and the drawer read an empty cache.
+   */
+  selectEvent(event: Event): void {
+
+    this.selectedEvent.set(event);
+
+    this.registrationsLoadedEventId.set(null);
+
+    void this.loadRegistrations(event.id);
+  }
+
+
+  private async loadRegistrations(
+    eventId: string,
+    force = false
+  ): Promise<void> {
+
+    if (this.selectedEvent()?.id === eventId) {
+      this.registrationsLoading.set(true);
+
+      this.registrationErrors.set([]);
+    }
+
+    const registrations =
+      await this.participantEventService
+        .loadEventRegistrations(eventId, force);
+
+    // A newer selection owns the loading and ready flags from here on.
+    if (this.selectedEvent()?.id !== eventId) {
+      return;
+    }
+
+    this.registrationsLoading.set(false);
+
+    this.registrationsLoadedEventId.set(eventId);
+
+    if (registrations === null) {
+      this.registrationErrors.set([
+        'Registrations could not be read from the backend. Please try again.'
+      ]);
+    }
+  }
+
+
+  // =========================================================
+  // PARTICIPANT DRAWER
+  // =========================================================
+
+  openParticipants(
+    event: Event
+  ): void {
+
+    this.selectEvent(event);
+
+    this.participantSearch.set('');
+
+    this.participantHomeFilter.set('ALL');
+
+    this.showAddParticipant.set(false);
+
+    this.selectedParticipantId.set('');
+
+    this.registrationValidation.set(null);
+
+    this.registrationNotice.set('');
+
+    this.showParticipantsDrawer.set(true);
+  }
+
+
+  closeParticipants(): void {
+
+    this.showParticipantsDrawer.set(false);
+
+    this.showAddParticipant.set(false);
+
+    this.selectedEvent.set(null);
+
+    this.selectedParticipantId.set('');
+
+    this.registrationValidation.set(null);
+
+    this.registrationNotice.set('');
+
+    this.registrationErrors.set([]);
+
+    this.registrationsLoadedEventId.set(null);
+  }
+
+
+  // =========================================================
+  // PARTICIPANT FILTERS
+  // =========================================================
+
+  setParticipantSearch(
+    value: string
+  ): void {
+
+    this.participantSearch.set(value);
+  }
+
+
+  setParticipantHome(
+    value: string
+  ): void {
+
+    this.participantHomeFilter.set(value);
+  }
 
 
   // =========================================================
@@ -336,26 +549,261 @@ export class Events {
 
 
   // =========================================================
-  // ADD PARTICIPANT STATE
+  // ADD PARTICIPANT
   // =========================================================
 
-  showAddParticipant =
-    signal(false);
+  openAddParticipant(): void {
 
-  selectedParticipantId =
-    signal('');
+    const event =
+      this.selectedEvent();
 
-  registrationValidation =
-    signal<RegistrationValidation | null>(
-      null
+    if (!event) {
+      return;
+    }
+
+    if (event.status !== 'ACTIVE') {
+      return;
+    }
+
+    // Candidate eligibility depends on the registration cache, so the panel
+    // only opens once the event's registrations are actually in hand.
+    if (!this.registrationsReady()) {
+      return;
+    }
+
+    this.selectedParticipantId.set('');
+
+    this.registrationValidation.set(null);
+
+    this.registrationNotice.set('');
+
+    this.showAddParticipant.set(true);
+  }
+
+
+  closeAddParticipant(): void {
+
+    this.showAddParticipant.set(false);
+
+    this.selectedParticipantId.set('');
+
+    this.registrationValidation.set(null);
+  }
+
+
+  setSelectedParticipant(
+    participantId: string
+  ): void {
+
+    this.selectedParticipantId.set(
+      participantId
     );
 
-  registrationSuccess =
-    signal(false);
+    this.registrationValidation.set(null);
+
+    this.registrationNotice.set('');
+
+    this.registrationErrors.set([]);
+
+    const event =
+      this.selectedEvent();
+
+    if (!event || !participantId) {
+      return;
+    }
+
+    const validation =
+      this.participantEventService
+        .validateRegistration(
+          participantId,
+          event.id
+        );
+
+    this.registrationValidation.set(
+      validation
+    );
+  }
 
 
   // =========================================================
-  // TEAM DRAWER
+  // REGISTER
+  // =========================================================
+
+  async registerSelectedParticipant(): Promise<void> {
+
+    const event =
+      this.selectedEvent();
+
+    const participantId =
+      this.selectedParticipantId();
+
+    if (!event || !participantId) {
+      return;
+    }
+
+    if (this.registrationBusy()) {
+      return;
+    }
+
+    this.registrationBusy.set(
+      `register:${participantId}`
+    );
+
+    this.registrationErrors.set([]);
+
+    this.registrationNotice.set('');
+
+    try {
+
+      const result =
+        await this.participantEventService
+          .registerParticipant(
+            participantId,
+            event.id
+          );
+
+      // The service re-reads this event's registrations after the write, so
+      // the count and the list below already reflect the backend.
+      this.registrationsLoadedEventId.set(
+        event.id
+      );
+
+      if (!result.success) {
+        this.registrationErrors.set(
+          this.reportErrors(result.errors)
+        );
+        return;
+      }
+
+      this.registrationNotice.set(
+        'Participant registered successfully.'
+      );
+
+      this.selectedParticipantId.set('');
+
+      // Close add mode after successful registration
+      this.showAddParticipant.set(false);
+
+    } finally {
+      this.registrationBusy.set(null);
+    }
+  }
+
+
+  // =========================================================
+  // CANCEL REGISTRATION
+  // =========================================================
+
+  async cancelRegistration(
+    registration: ParticipantEvent
+  ): Promise<void> {
+
+    if (this.registrationBusy()) {
+      return;
+    }
+
+    this.registrationBusy.set(
+      `cancel:${registration.id}`
+    );
+
+    this.registrationErrors.set([]);
+
+    this.registrationNotice.set('');
+
+    try {
+
+      const result =
+        await this.participantEventService
+          .cancelRegistration(
+            registration.participantId,
+            registration.eventId
+          );
+
+      this.registrationsLoadedEventId.set(
+        registration.eventId
+      );
+
+      if (!result.success) {
+        this.registrationErrors.set(
+          this.reportErrors(result.errors)
+        );
+        return;
+      }
+
+      this.registrationNotice.set(
+        'Registration cancelled.'
+      );
+
+    } finally {
+      this.registrationBusy.set(null);
+    }
+  }
+
+
+  // =========================================================
+  // REACTIVATE REGISTRATION
+  // =========================================================
+
+  async reactivateRegistration(
+    registration: ParticipantEvent
+  ): Promise<void> {
+
+    if (this.registrationBusy()) {
+      return;
+    }
+
+    this.registrationBusy.set(
+      `reactivate:${registration.id}`
+    );
+
+    this.registrationErrors.set([]);
+
+    this.registrationNotice.set('');
+
+    try {
+
+      const result =
+        await this.participantEventService
+          .reactivateRegistration(
+            registration.participantId,
+            registration.eventId
+          );
+
+      this.registrationsLoadedEventId.set(
+        registration.eventId
+      );
+
+      if (!result.success) {
+        this.registrationErrors.set(
+          this.reportErrors(result.errors)
+        );
+        return;
+      }
+
+      this.registrationNotice.set(
+        'Registration reactivated.'
+      );
+
+    } finally {
+      this.registrationBusy.set(null);
+    }
+  }
+
+
+  private reportErrors(
+    errors: string[]
+  ): string[] {
+
+    return errors.length > 0
+      ? errors
+      : [
+          'The request could not be completed. Please try again.'
+        ];
+  }
+
+
+  // =========================================================
+  // TEAM MANAGEMENT
   // =========================================================
 
   selectedTeamEvent =
@@ -410,14 +858,20 @@ export class Events {
 
     const event = this.selectedTeamEvent();
 
-    return event
-      ? this.participantEventService.getEventRegistrations(event.id).length
-      : 0;
+    if (!event) {
+      return 0;
+    }
+
+    return this.participantEventService
+      .registrations$()
+      .filter(item => item.eventId === event.id)
+      .length;
   });
 
   readonly selectedTeamMembers = computed(() => {
 
-    const team = this.selectedTeam();
+    const team =
+      this.selectedTeam();
 
     if (!team) {
       return [];
@@ -472,453 +926,6 @@ export class Events {
   });
 
 
-  // =========================================================
-  // EVENT FILTERS
-  // =========================================================
-
-  setSearch(value: string): void {
-    this.searchTerm.set(value);
-  }
-
-  setCategory(value: string): void {
-    this.categoryFilter.set(
-      value as EventCategory | 'ALL'
-    );
-  }
-
-  setMode(value: string): void {
-    this.modeFilter.set(
-      value as EventMode | 'ALL'
-    );
-  }
-
-  setStatus(value: string): void {
-    this.statusFilter.set(
-      value as EventStatus | 'ALL'
-    );
-  }
-
-
-  // =========================================================
-  // EVENT FORM
-  // =========================================================
-
-  openAddForm(): void {
-
-    this.resetForm();
-
-    this.editingEvent.set(null);
-
-    this.showAddForm.set(true);
-  }
-
-
-  openEditForm(event: Event): void {
-
-    this.editingEvent.set(event);
-
-    this.eventName =
-      event.name;
-
-    this.eventCode =
-      event.eventCode;
-
-    this.category =
-      event.category;
-
-    this.mode =
-      event.mode;
-
-    this.eligibleLevels =
-      [...event.eligibleLevels];
-
-    this.minimumTeamSize =
-      event.minimumTeamSize ?? null;
-
-    this.maximumTeamSize =
-      event.maximumTeamSize ?? null;
-
-    this.schedule =
-      event.schedule ?? '';
-
-    this.venue =
-      event.venue ?? '';
-
-    this.showAddForm.set(true);
-  }
-
-
-  closeForm(): void {
-
-    this.showAddForm.set(false);
-
-    this.editingEvent.set(null);
-
-    this.resetForm();
-  }
-
-
-  saveEvent(): void {
-
-    if (!this.eventName.trim()) {
-      return;
-    }
-
-    if (!this.eventCode.trim()) {
-      return;
-    }
-
-    if (this.eligibleLevels.length === 0) {
-      return;
-    }
-
-    const existing =
-      this.editingEvent();
-
-
-    if (existing) {
-
-      this.eventService.updateEvent(
-        existing.id,
-        {
-          eventCode:
-            this.eventCode.trim(),
-
-          name:
-            this.eventName.trim(),
-
-          category:
-            this.category,
-
-          mode:
-            this.mode,
-
-          eligibleLevels:
-            [...this.eligibleLevels],
-
-          minimumTeamSize:
-            this.minimumTeamSize ??
-            undefined,
-
-          maximumTeamSize:
-            this.maximumTeamSize ??
-            undefined,
-
-          schedule:
-            this.schedule.trim() ||
-            undefined,
-
-          venue:
-            this.venue.trim() ||
-            undefined
-        }
-      );
-
-    } else {
-
-      this.eventService.addEvent(
-        {
-          eventCode:
-            this.eventCode.trim(),
-
-          name:
-            this.eventName.trim(),
-
-          category:
-            this.category,
-
-          mode:
-            this.mode,
-
-          eligibleLevels:
-            [...this.eligibleLevels],
-
-          minimumTeamSize:
-            this.minimumTeamSize ??
-            undefined,
-
-          maximumTeamSize:
-            this.maximumTeamSize ??
-            undefined,
-
-          schedule:
-            this.schedule.trim() ||
-            undefined,
-
-          venue:
-            this.venue.trim() ||
-            undefined,
-
-          status:
-            'ACTIVE'
-        }
-      );
-    }
-
-    this.closeForm();
-  }
-
-
-  toggleLevel(
-    level: ParticipantLevel
-  ): void {
-
-    if (
-      this.eligibleLevels
-        .includes(level)
-    ) {
-
-      this.eligibleLevels =
-        this.eligibleLevels.filter(
-          item => item !== level
-        );
-
-    } else {
-
-      this.eligibleLevels = [
-        ...this.eligibleLevels,
-        level
-      ];
-    }
-  }
-
-
-  isLevelSelected(
-    level: ParticipantLevel
-  ): boolean {
-
-    return this.eligibleLevels
-      .includes(level);
-  }
-
-
-  cancelEvent(event: Event): void {
-    this.eventService
-      .cancelEvent(event.id);
-  }
-
-
-  activateEvent(event: Event): void {
-    this.eventService
-      .activateEvent(event.id);
-  }
-
-
-  // =========================================================
-  // PARTICIPANT DRAWER
-  // =========================================================
-
-  openParticipants(
-    event: Event
-  ): void {
-
-    this.selectedEvent.set(event);
-
-    this.participantSearch.set('');
-
-    this.participantHomeFilter.set('ALL');
-
-    this.showAddParticipant.set(false);
-
-    this.selectedParticipantId.set('');
-
-    this.registrationValidation.set(null);
-
-    this.registrationSuccess.set(false);
-
-    this.showParticipantsDrawer.set(true);
-  }
-
-
-  closeParticipants(): void {
-
-    this.showParticipantsDrawer.set(false);
-
-    this.showAddParticipant.set(false);
-
-    this.selectedEvent.set(null);
-
-    this.selectedParticipantId.set('');
-
-    this.registrationValidation.set(null);
-
-    this.registrationSuccess.set(false);
-  }
-
-
-  // =========================================================
-  // PARTICIPANT FILTERS
-  // =========================================================
-
-  setParticipantSearch(
-    value: string
-  ): void {
-
-    this.participantSearch.set(value);
-  }
-
-
-  setParticipantHome(
-    value: string
-  ): void {
-
-    this.participantHomeFilter.set(value);
-  }
-
-
-  // =========================================================
-  // ADD PARTICIPANT
-  // =========================================================
-
-  openAddParticipant(): void {
-
-    const event =
-      this.selectedEvent();
-
-    if (!event) {
-      return;
-    }
-
-    if (event.status !== 'ACTIVE') {
-      return;
-    }
-
-    this.selectedParticipantId.set('');
-
-    this.registrationValidation.set(null);
-
-    this.registrationSuccess.set(false);
-
-    this.showAddParticipant.set(true);
-  }
-
-
-  closeAddParticipant(): void {
-
-    this.showAddParticipant.set(false);
-
-    this.selectedParticipantId.set('');
-
-    this.registrationValidation.set(null);
-
-    this.registrationSuccess.set(false);
-  }
-
-
-  setSelectedParticipant(
-    participantId: string
-  ): void {
-
-    this.selectedParticipantId.set(
-      participantId
-    );
-
-    this.registrationValidation.set(null);
-
-    this.registrationSuccess.set(false);
-
-    const event =
-      this.selectedEvent();
-
-    if (!event || !participantId) {
-      return;
-    }
-
-    const validation =
-      this.participantEventService
-        .validateRegistration(
-          participantId,
-          event.id
-        );
-
-    this.registrationValidation.set(
-      validation
-    );
-  }
-
-
-  // =========================================================
-  // REGISTER
-  // =========================================================
-
-  registerSelectedParticipant(): void {
-
-    const event =
-      this.selectedEvent();
-
-    const participantId =
-      this.selectedParticipantId();
-
-    if (!event || !participantId) {
-      return;
-    }
-
-
-    const result =
-      this.participantEventService
-        .registerParticipant(
-          participantId,
-          event.id,
-          'ADMIN'
-        );
-
-
-    this.registrationValidation.set(
-      result.validation
-    );
-
-
-    if (!result.success) {
-      return;
-    }
-
-
-    this.registrationSuccess.set(true);
-
-    this.selectedParticipantId.set('');
-
-
-    // Close add mode after successful registration
-    this.showAddParticipant.set(false);
-  }
-
-
-  // =========================================================
-  // CANCEL REGISTRATION
-  // =========================================================
-
-  cancelRegistration(
-    registration: ParticipantEvent
-  ): void {
-
-    this.participantEventService
-      .cancelRegistration(
-        registration.id,
-        'ADMIN'
-      );
-  }
-
-
-  // =========================================================
-  // REACTIVATE REGISTRATION
-  // =========================================================
-
-  reactivateRegistration(
-    registration: ParticipantEvent
-  ): void {
-
-    this.participantEventService
-      .reactivateRegistration(
-        registration.id,
-        'ADMIN'
-      );
-  }
-
-
-  // =========================================================
-  // TEAM MANAGEMENT
-  // =========================================================
-
   openTeams(event: Event): void {
 
     if (event.mode !== 'GROUP') {
@@ -933,12 +940,16 @@ export class Events {
     this.teamValidation.set(null);
     this.teamSuccessMessage.set('');
     this.teamFormError.set('');
+
+    // Team candidates and the registered count read the same registration
+    // cache as the participants drawer.
+    void this.loadRegistrations(event.id);
+
     this.showTeamsDrawer.set(true);
   }
 
 
   closeTeams(): void {
-
     this.showTeamsDrawer.set(false);
     this.selectedTeamEvent.set(null);
     this.selectedTeam.set(null);
@@ -953,7 +964,6 @@ export class Events {
 
 
   openCreateTeam(): void {
-
     this.teamName = '';
     this.teamValidation.set(null);
     this.teamSuccessMessage.set('');
@@ -963,7 +973,6 @@ export class Events {
 
 
   closeCreateTeam(): void {
-
     this.showCreateTeam.set(false);
     this.teamName = '';
     this.teamFormError.set('');
@@ -1004,7 +1013,6 @@ export class Events {
 
 
   viewTeamMembers(team: Team): void {
-
     this.selectedTeam.set(team);
     this.showTeamMembers.set(true);
     this.showAddTeamMember.set(false);
@@ -1015,7 +1023,6 @@ export class Events {
 
 
   closeTeamMembers(): void {
-
     this.selectedTeam.set(null);
     this.showTeamMembers.set(false);
     this.showAddTeamMember.set(false);
@@ -1025,7 +1032,6 @@ export class Events {
 
 
   openAddTeamMember(): void {
-
     const team = this.selectedTeam();
 
     if (!team || !this.canModifyTeam(team)) {
@@ -1041,7 +1047,6 @@ export class Events {
 
 
   closeAddTeamMember(): void {
-
     this.showAddTeamMember.set(false);
     this.teamValidation.set(null);
   }
@@ -1105,7 +1110,6 @@ export class Events {
 
 
   validateTeam(team: Team): void {
-
     const result = this.teamService.validateTeam(team.id);
 
     this.teamValidation.set(result);
@@ -1116,7 +1120,6 @@ export class Events {
 
 
   markTeamReady(team: Team): void {
-
     const result = this.teamService.markReady(team.id, 'ADMIN');
 
     this.teamValidation.set(result);
@@ -1128,7 +1131,6 @@ export class Events {
 
 
   lockTeam(team: Team): void {
-
     const result = this.teamService.lockTeam(team.id, 'ADMIN');
 
     this.teamValidation.set(result);
@@ -1140,7 +1142,6 @@ export class Events {
 
 
   cancelTeam(team: Team): void {
-
     const result = this.teamService.cancelTeam(team.id, 'ADMIN');
 
     this.teamValidation.set(result);
@@ -1207,17 +1208,6 @@ export class Events {
 
     return home?.name ??
       'Unknown Home';
-  }
-
-
-  getHomeById(
-    shelterHomeId: string
-  ): ShelterHome | undefined {
-
-    return this.shelterHomeService
-      .getHomeById(
-        shelterHomeId
-      );
   }
 
 
@@ -1297,29 +1287,23 @@ export class Events {
   }
 
 
-  private resetForm(): void {
+  registrationStatusLabel(
+    status: RegistrationStatus
+  ): string {
 
-    this.eventName = '';
+    const labels:
+      Record<RegistrationStatus, string> = {
 
-    this.eventCode = '';
+      REGISTERED:
+        'Registered',
 
-    this.category = 'ARTS';
+      CANCELLED:
+        'Cancelled',
 
-    this.mode = 'SOLO';
+      WAITLISTED:
+        'Waitlisted'
+    };
 
-    this.eligibleLevels = [
-      'SUB_JUNIOR',
-      'JUNIOR',
-      'SENIOR',
-      'SUPER_SENIOR'
-    ];
-
-    this.minimumTeamSize = null;
-
-    this.maximumTeamSize = null;
-
-    this.schedule = '';
-
-    this.venue = '';
+    return labels[status];
   }
 }

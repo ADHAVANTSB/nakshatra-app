@@ -1,0 +1,83 @@
+/* Dashboard-only additions. Everything else reuses the global Nakshatra
+   utilities from src/styles.scss (.page, .welcome-card, .stats-grid,
+   .stat-card, .section-card, .empty-state, .badge, .page-actions). */
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.quick-actions .secondary-button,
+.quick-actions .primary-button {
+  width: auto;
+}
+
+.alert.error {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid #f5d3da;
+  border-radius: var(--nk-radius-md);
+  background: #fff2f5;
+  color: #a83c58;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.home-list {
+  margin-top: 6px;
+}
+
+/* Seven cards across the 4-column global grid: the 5th card fills the gap
+   so the second row stays flush. */
+.stat-card--wide {
+  grid-column: span 2;
+}
+
+.home-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--nk-border-light);
+}
+
+.home-row:last-child {
+  border-bottom: 0;
+}
+
+.home-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.home-identity strong {
+  color: var(--nk-text-dark);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.home-count {
+  color: var(--nk-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .quick-actions .secondary-button,
+  .quick-actions .primary-button {
+    width: 100%;
+  }
+
+  /* One-column grid: drop the span so no implicit column is created. */
+  .stat-card--wide {
+    grid-column: auto;
+  }
+}

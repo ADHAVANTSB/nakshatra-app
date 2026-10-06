@@ -1,13 +1,22 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
+
+import {
+  EVENT_CATEGORY_LABELS,
+  NAKSHATRA_EVENT_RULES,
+  PARTICIPANT_LEVEL_LABELS,
+} from '../../constants/nakshatra-rules';
 
 import {
   Participant,
   Event,
   ParticipantEvent,
-  RegistrationStatus
+  RegistrationStatus,
+  UpdateParticipantData,
 } from '../../models';
 
+import { ApiClientService } from '../api/api-client.service';
 import { ParticipantService } from '../participants/participant.service';
+import { ShelterDataService } from '../shelter-homes/shelter-data.service';
 import { EventService } from './event.service';
 
 export interface RegistrationValidation {
@@ -16,131 +25,69 @@ export interface RegistrationValidation {
   warnings: string[];
 }
 
+export interface RegistrationResult {
+  success: boolean;
+  registration?: ParticipantEvent;
+  errors: string[];
+}
+
+/**
+ * Registrations (ParticipantEvents).
+ *
+ * Reads resolve to the persisted registrations held in the shared backend store
+ * (`listEventRegistrations` / `listParticipantEvents`). Writes always go through
+ * the backend and the local cache is refreshed from the backend response, so
+ * this service never becomes a second source of truth.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class ParticipantEventService {
+  private readonly shelterData = inject(ShelterDataService);
+  private readonly participantService = inject(ParticipantService);
+  private readonly eventService = inject(EventService);
+  private readonly apiClient = inject(ApiClientService);
 
-  private readonly participantService =
-    inject(ParticipantService);
-
-  private readonly eventService =
-    inject(EventService);
-
-  private readonly registrations =
-    signal<ParticipantEvent[]>([]);
-
-  readonly registrations$ =
-    this.registrations.asReadonly();
+  /** Every registration the store currently holds. */
+  readonly registrations$ = this.shelterData.registrations;
+  readonly loading = this.shelterData.loadingRegistrations;
 
   readonly registeredCount = computed(() =>
-    this.registrations().filter(
-      item => item.registrationStatus === 'REGISTERED'
-    ).length
+    this.registrations$().filter(item => item.registrationStatus === 'REGISTERED').length
   );
 
+  // ==========================================
+  // BACKEND READS
+  // ==========================================
 
-  // ==========================================
-  // BASIC GETTERS
-  // ==========================================
+  /** Reads persisted registrations for one event from the backend. */
+  loadEventRegistrations(eventId: string, force = false): Promise<ParticipantEvent[] | null> {
+    return this.shelterData.loadEventRegistrations(eventId, force);
+  }
+
+  /** Reads persisted registrations for one participant from the backend. */
+  loadParticipantEvents(participantId: string, force = false): Promise<ParticipantEvent[] | null> {
+    return this.shelterData.loadParticipantEvents(participantId, force);
+  }
 
   getAll(): ParticipantEvent[] {
-    return this.registrations();
+    return this.registrations$();
   }
-
 
   getById(id: string): ParticipantEvent | undefined {
-    return this.registrations().find(
-      item => item.id === id
-    );
+    return this.registrations$().find(item => item.id === id);
   }
 
-
-  getParticipantRegistrations(
-    participantId: string
-  ): ParticipantEvent[] {
-
-    return this.registrations().filter(
-      item =>
-        item.participantId === participantId &&
-        item.registrationStatus === 'REGISTERED'
-    );
+  getEventRegistrations(eventId: string): ParticipantEvent[] {
+    return this.shelterData.registrationsForEvent(eventId);
   }
 
-
-  getEventRegistrations(
-    eventId: string
-  ): ParticipantEvent[] {
-
-    return this.registrations().filter(
-      item =>
-        item.eventId === eventId &&
-        item.registrationStatus === 'REGISTERED'
-    );
+  getParticipantRegistrations(participantId: string): ParticipantEvent[] {
+    return this.shelterData.registrationsForParticipant(participantId);
   }
 
-
-  getParticipantEventCount(
-    participantId: string
-  ): number {
-
-    return this.getParticipantRegistrations(
-      participantId
-    ).length;
-  }
-
-
-  getParticipantCategoryCount(
-    participantId: string,
-    category: Event['category']
-  ): number {
-
-    const registrations =
-      this.getParticipantRegistrations(participantId);
-
-    return registrations.filter(registration => {
-
-      const event =
-        this.eventService.getById(
-          registration.eventId
-        );
-
-      return event?.category === category;
-
-    }).length;
-  }
-
-
-  getParticipantIndividualCount(
-    participantId: string
-  ): number {
-
-    const registrations =
-      this.getParticipantRegistrations(participantId);
-
-    return registrations.filter(registration => {
-
-      const event =
-        this.eventService.getById(
-          registration.eventId
-        );
-
-      return event?.mode === 'SOLO';
-
-    }).length;
-  }
-
-
-  // ==========================================
-  // DUPLICATE CHECK
-  // ==========================================
-
-  isAlreadyRegistered(
-    participantId: string,
-    eventId: string
-  ): boolean {
-
-    return this.registrations().some(
+  isAlreadyRegistered(participantId: string, eventId: string): boolean {
+    return this.registrations$().some(
       registration =>
         registration.participantId === participantId &&
         registration.eventId === eventId &&
@@ -148,464 +95,194 @@ export class ParticipantEventService {
     );
   }
 
+  getParticipantEventCount(participantId: string): number {
+    return this.getParticipantRegistrations(participantId)
+      .filter(item => item.registrationStatus === 'REGISTERED').length;
+  }
 
-  // ==========================================
-  // VALIDATION
-  // ==========================================
-
-  validateRegistration(
+  getParticipantCategoryCount(
     participantId: string,
-    eventId: string
-  ): RegistrationValidation {
+    category: Event['category']
+  ): number {
+    return this.getParticipantRegistrations(participantId)
+      .filter(item => item.registrationStatus === 'REGISTERED')
+      .filter(registration =>
+        this.eventService.getById(registration.eventId)?.category === category
+      ).length;
+  }
 
+  getParticipantIndividualCount(participantId: string): number {
+    return this.getParticipantRegistrations(participantId)
+      .filter(item => item.registrationStatus === 'REGISTERED')
+      .filter(registration =>
+        this.eventService.getById(registration.eventId)?.mode === 'SOLO'
+      ).length;
+  }
+
+  // ==========================================
+  // LOCAL RULE VALIDATION
+  // ==========================================
+
+  /**
+   * Frontend-side admissibility check run before a registration request.
+   * The backend remains authoritative and may still reject the request.
+   */
+  validateRegistration(participantId: string, eventId: string): RegistrationValidation {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const participant =
-      this.participantService.getParticipantById(
-        participantId
-      );
-
-    const event =
-      this.eventService.getById(eventId);
-
-
-    // ------------------------------------------
-    // Participant exists
-    // ------------------------------------------
+    const participant = this.participantService.getParticipantById(participantId);
+    const event = this.eventService.getById(eventId);
 
     if (!participant) {
-
-      return {
-        valid: false,
-        errors: ['Participant not found.'],
-        warnings: []
-      };
-
+      return { valid: false, errors: ['Participant not found.'], warnings: [] };
     }
-
-
-    // ------------------------------------------
-    // Event exists
-    // ------------------------------------------
 
     if (!event) {
-
-      return {
-        valid: false,
-        errors: ['Event not found.'],
-        warnings: []
-      };
-
+      return { valid: false, errors: ['Event not found.'], warnings: [] };
     }
-
-
-    // ------------------------------------------
-    // Event must be active
-    // ------------------------------------------
 
     if (event.status !== 'ACTIVE') {
-
-      errors.push(
-        'This event is not currently active.'
-      );
-
+      errors.push('This event is not currently active.');
     }
 
-
-    // ------------------------------------------
-    // Participant eligibility
-    // ------------------------------------------
-
-    if (
-      participant.eligibilityStatus ===
-      'INELIGIBLE'
-    ) {
-
-      errors.push(
-        'This participant is marked as ineligible.'
-      );
-
+    if (participant.eligibilityStatus === 'INELIGIBLE') {
+      errors.push('This participant is marked as ineligible.');
     }
 
-
-    // ------------------------------------------
-    // Participant validation
-    // ------------------------------------------
-
-    if (
-      participant.validationStatus ===
-      'FAILED'
-    ) {
-
-      errors.push(
-        'Participant validation has failed.'
-      );
-
+    if (participant.validationStatus === 'FAILED') {
+      errors.push('Participant validation has failed.');
     }
 
-
-    // ------------------------------------------
-    // Level eligibility
-    // ------------------------------------------
-
-    if (
-      participant.level &&
-      !event.eligibleLevels.includes(
-        participant.level
-      )
-    ) {
-
+    if (participant.level && !event.eligibleLevels.includes(participant.level)) {
       errors.push(
         `Participant level (${this.levelLabel(participant.level)}) is not eligible for this event.`
       );
-
     }
 
+    if (this.isAlreadyRegistered(participantId, eventId)) {
+      errors.push('This participant is already registered for this event.');
+    }
 
-    // ------------------------------------------
-    // Duplicate registration
-    // ------------------------------------------
+    const totalEvents = this.getParticipantEventCount(participantId);
 
-    if (
-      this.isAlreadyRegistered(
-        participantId,
-        eventId
-      )
-    ) {
-
+    if (totalEvents >= NAKSHATRA_EVENT_RULES.maxTotalEventsPerParticipant) {
       errors.push(
-        'This participant is already registered for this event.'
+        `Maximum ${NAKSHATRA_EVENT_RULES.maxTotalEventsPerParticipant} events per participant has been reached.`
       );
-
     }
 
+    const categoryCount = this.getParticipantCategoryCount(participantId, event.category);
 
-    // ------------------------------------------
-    // MAX 6 EVENTS
-    // ------------------------------------------
-
-    const totalEvents =
-      this.getParticipantEventCount(
-        participantId
-      );
-
-    if (totalEvents >= 6) {
-
+    if (categoryCount >= NAKSHATRA_EVENT_RULES.maxEventsPerCategory) {
       errors.push(
-        'Maximum 6 events per participant has been reached.'
+        `Maximum ${NAKSHATRA_EVENT_RULES.maxEventsPerCategory} events in the ${this.categoryLabel(event.category)} category has been reached.`
       );
-
     }
 
+    const individualCount = this.getParticipantIndividualCount(participantId);
 
-    // ------------------------------------------
-    // MAX 2 EVENTS PER CATEGORY
-    // ------------------------------------------
-
-    const categoryCount =
-      this.getParticipantCategoryCount(
-        participantId,
-        event.category
-      );
-
-    if (categoryCount >= 2) {
-
+    if (event.mode === 'SOLO' && individualCount >= NAKSHATRA_EVENT_RULES.maxIndividualEvents) {
       errors.push(
-        `Maximum 2 events in the ${this.categoryLabel(event.category)} category has been reached.`
+        `Maximum ${NAKSHATRA_EVENT_RULES.maxIndividualEvents} individual events per participant has been reached.`
       );
-
     }
 
-
-    // ------------------------------------------
-    // MAX 3 INDIVIDUAL EVENTS
-    // ------------------------------------------
-
-    const individualCount =
-      this.getParticipantIndividualCount(
-        participantId
-      );
-
-    if (
-      event.mode === 'SOLO' &&
-      individualCount >= 3
-    ) {
-
-      errors.push(
-        'Maximum 3 individual events per participant has been reached.'
-      );
-
+    if (event.mode === 'GROUP' && !event.minimumTeamSize) {
+      warnings.push('This group event does not have a minimum team size configured.');
     }
 
-
-    // ------------------------------------------
-    // Team information
-    // ------------------------------------------
-
-    if (
-      event.mode === 'GROUP' &&
-      !event.minimumTeamSize
-    ) {
-
-      warnings.push(
-        'This group event does not have a minimum team size configured.'
-      );
-
-    }
-
-
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings
-    };
+    return { valid: errors.length === 0, errors, warnings };
   }
 
-
   // ==========================================
-  // REGISTER
+  // BACKEND WRITES
   // ==========================================
 
-  registerParticipant(
+  /**
+   * Registers a participant through the backend, then re-reads the affected
+   * registrations so the UI reflects persisted state rather than a local guess.
+   */
+  async registerParticipant(
     participantId: string,
-    eventId: string,
-    registeredBy: string = 'ADMIN'
-  ): {
-    success: boolean;
-    registration?: ParticipantEvent;
-    validation: RegistrationValidation;
-  } {
-
-    const validation =
-      this.validateRegistration(
-        participantId,
-        eventId
-      );
-
+    eventId: string
+  ): Promise<RegistrationResult> {
+    const validation = this.validateRegistration(participantId, eventId);
 
     if (!validation.valid) {
-
-      return {
-        success: false,
-        validation
-      };
-
+      return { success: false, errors: validation.errors };
     }
 
+    const response = await this.apiClient.registerParticipant({ participantId, eventId });
 
-    const participant =
-      this.participantService.getParticipantById(
-        participantId
-      );
-
-    if (!participant) {
-
-      return {
-        success: false,
-        validation: {
-          valid: false,
-          errors: ['Participant not found.'],
-          warnings: []
-        }
-      };
-
+    if (!response.success) {
+      return { success: false, errors: [response.error.message] };
     }
 
-
-    const now =
-      new Date().toISOString();
-
-
-    const registration: ParticipantEvent = {
-
-      id: `PE-${Date.now()}`,
-
-      participantId,
-
-      eventId,
-
-      registrationStatus: 'REGISTERED',
-
-      source: 'NAKSHATRA',
-
-      version: 1,
-
-      createdAt: now,
-
-      createdBy: registeredBy,
-
-      updatedAt: now,
-
-      updatedBy: registeredBy
-    };
-
-
-    this.registrations.update(
-      current => [
-        ...current,
-        registration
-      ]
-    );
-
+    await this.refreshAfterWrite(eventId, participantId);
 
     return {
       success: true,
-      registration,
-      validation
+      registration: response.data.participantEvent,
+      errors: [],
     };
   }
 
+  async cancelRegistration(
+    participantId: string,
+    eventId: string
+  ): Promise<RegistrationResult> {
+    const response = await this.apiClient.cancelRegistration({ participantId, eventId });
 
-  // ==========================================
-  // CANCEL REGISTRATION
-  // ==========================================
-
-  cancelRegistration(
-    registrationId: string,
-    updatedBy: string = 'ADMIN'
-  ): boolean {
-
-    const existing =
-      this.getById(registrationId);
-
-    if (!existing) {
-      return false;
+    if (!response.success) {
+      return { success: false, errors: [response.error.message] };
     }
 
+    await this.refreshAfterWrite(eventId, participantId);
 
-    this.registrations.update(
-      current =>
-        current.map(item =>
-          item.id === registrationId
-            ? {
-                ...item,
-
-                registrationStatus:
-                  'CANCELLED' as RegistrationStatus,
-
-                version:
-                  item.version + 1,
-
-                updatedAt:
-                  new Date().toISOString(),
-
-                updatedBy
-              }
-            : item
-        )
-    );
-
-
-    return true;
+    return {
+      success: true,
+      registration: response.data.participantEvent,
+      errors: [],
+    };
   }
 
+  async reactivateRegistration(
+    participantId: string,
+    eventId: string
+  ): Promise<RegistrationResult> {
+    const response = await this.apiClient.reactivateRegistration({ participantId, eventId });
 
-  // ==========================================
-  // REACTIVATE REGISTRATION
-  // ==========================================
-
-  reactivateRegistration(
-    registrationId: string,
-    updatedBy: string = 'ADMIN'
-  ): boolean {
-
-    const existing =
-      this.getById(registrationId);
-
-    if (!existing) {
-      return false;
+    if (!response.success) {
+      return { success: false, errors: [response.error.message] };
     }
 
+    await this.refreshAfterWrite(eventId, participantId);
 
-    const validation =
-      this.validateRegistration(
-        existing.participantId,
-        existing.eventId
-      );
-
-
-    if (!validation.valid) {
-      return false;
-    }
-
-
-    this.registrations.update(
-      current =>
-        current.map(item =>
-          item.id === registrationId
-            ? {
-                ...item,
-
-                registrationStatus:
-                  'REGISTERED' as RegistrationStatus,
-
-                version:
-                  item.version + 1,
-
-                updatedAt:
-                  new Date().toISOString(),
-
-                updatedBy
-              }
-            : item
-        )
-    );
-
-
-    return true;
+    return {
+      success: true,
+      registration: response.data.participantEvent,
+      errors: [],
+    };
   }
-
 
   // ==========================================
   // HELPERS
   // ==========================================
 
-  private categoryLabel(
-    category: Event['category']
-  ): string {
-
-    const labels: Record<
-      Event['category'],
-      string
-    > = {
-
-      ARTS: 'Arts',
-
-      LITERARY: 'Literary',
-
-      CULTURAL: 'Cultural'
-
-    };
-
-    return labels[category];
+  private async refreshAfterWrite(eventId: string, participantId: string): Promise<void> {
+    this.shelterData.invalidateRegistrations(eventId, participantId);
+    await Promise.all([
+      this.shelterData.loadEventRegistrations(eventId, true),
+      this.shelterData.loadParticipantEvents(participantId, true),
+    ]);
   }
 
+  private categoryLabel(category: Event['category']): string {
+    return EVENT_CATEGORY_LABELS[category];
+  }
 
-  private levelLabel(
-    level: Participant['level']
-  ): string {
-
-    if (!level) {
-      return 'Unknown';
-    }
-
-
-    const labels: Record<
-      NonNullable<Participant['level']>,
-      string
-    > = {
-
-      SUB_JUNIOR: 'Sub Juniors',
-
-      JUNIOR: 'Juniors',
-
-      SENIOR: 'Seniors',
-
-      SUPER_SENIOR: 'Super Seniors'
-
-    };
-
-    return labels[level];
+  private levelLabel(level: Participant['level']): string {
+    return level ? PARTICIPANT_LEVEL_LABELS[level] : 'Unknown';
   }
 }

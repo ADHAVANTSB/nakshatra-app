@@ -1,0 +1,119 @@
+<div class="imports">
+  <span class="eyebrow">DATA INTEGRITY</span>
+  <h1>Imports &amp; validation</h1>
+  <p class="lede">
+    Google Sheets remain the external source. Import versions and validation results below are
+    reported by the backend for the selected shelter home.
+  </p>
+
+  <p class="notice">
+    <strong>Read-only view.</strong> Import approval, rejection and locking are backend-owned
+    operations and no backend write action exists for them yet, so import state cannot be changed
+    from this screen.
+  </p>
+
+  <div class="filters">
+    <label for="imports-home-select">Shelter home</label>
+    <select
+      id="imports-home-select"
+      name="shelterHomeId"
+      [ngModel]="selectedHomeId()"
+      (ngModelChange)="selectHome($event)"
+      [disabled]="homes().length === 0"
+    >
+      @for (home of homes(); track home.id) {
+        <option [value]="home.id">{{ home.homeCode }} &middot; {{ home.name }}</option>
+      }
+    </select>
+  </div>
+
+  @if (homesError()) {
+    <p class="state state--error" role="alert">{{ homesError() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="state" role="status">Loading import status from the backend.</p>
+  } @else if (homesError()) {
+    <p class="state">Import status stays unavailable until the backend responds.</p>
+  } @else if (homes().length === 0) {
+    <p class="empty">No shelter home is connected yet, so there is no import history to show.</p>
+  } @else if (rows().length === 0) {
+    <p class="empty">No import version recorded for {{ selectedHomeName() }} yet.</p>
+  } @else {
+    @for (row of rows(); track row.id) {
+      <article class="version" [class.version--current]="row.isCurrentVersion">
+        <header class="version-head">
+          <h2>{{ row.versionLabel }}</h2>
+          <span [class]="row.statusClass">{{ row.status }}</span>
+        </header>
+
+        <dl class="metrics">
+          <div class="metric">
+            <dt>Records processed</dt>
+            <dd>{{ metric(row.recordCount) }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Valid participants</dt>
+            <dd>{{ metric(row.validParticipantCount) }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Validation errors</dt>
+            <dd [class.metric--bad]="(row.errorCount ?? 0) > 0">{{ metric(row.errorCount) }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Warnings</dt>
+            <dd [class.metric--warn]="(row.warningCount ?? 0) > 0">{{ metric(row.warningCount) }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Last synced</dt>
+            <dd>{{ row.lastSyncedAt || 'Never synced' }}</dd>
+          </div>
+        </dl>
+
+        @if (row.isCurrentVersion) {
+          <p class="current-flag">Current version for this shelter home.</p>
+        }
+
+        @if (row.issueCount === 0) {
+          <p class="no-issues">No validation messages recorded for this version.</p>
+        } @else {
+          @if (row.errors.length > 0) {
+            <h3 class="issues-title issues-title--error">Errors ({{ row.errors.length }})</h3>
+            <ul class="issues">
+              @for (issue of row.errors; track trackIssue(issue, $index)) {
+                <li class="issue issue--error">
+                  <span class="issue-meta">{{ issue.entityType }}</span>
+                  {{ issue.message }}
+                </li>
+              }
+            </ul>
+          }
+
+          @if (row.warnings.length > 0) {
+            <h3 class="issues-title issues-title--warn">Warnings ({{ row.warnings.length }})</h3>
+            <ul class="issues">
+              @for (issue of row.warnings; track trackIssue(issue, $index)) {
+                <li class="issue issue--warn">
+                  <span class="issue-meta">{{ issue.entityType }}</span>
+                  {{ issue.message }}
+                </li>
+              }
+            </ul>
+          }
+
+          @if (row.infos.length > 0) {
+            <h3 class="issues-title">Info ({{ row.infos.length }})</h3>
+            <ul class="issues">
+              @for (issue of row.infos; track trackIssue(issue, $index)) {
+                <li class="issue">
+                  <span class="issue-meta">{{ issue.entityType }}</span>
+                  {{ issue.message }}
+                </li>
+              }
+            </ul>
+          }
+        }
+      </article>
+    }
+  }
+</div>

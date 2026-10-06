@@ -1,17 +1,336 @@
 <div class="reports-page">
-  <div class="page-header"><span class="eyebrow">OPERATIONS</span><h1>Reports</h1><p>Read-only summaries derived from current Nakshatra records.</p></div>
-  <div class="tabs" role="tablist"><button type="button" [class.active]="tab() === 'SUMMARY'" (click)="setTab('SUMMARY')">Summary</button><button type="button" [class.active]="tab() === 'HOMES'" (click)="setTab('HOMES')">Homes</button><button type="button" [class.active]="tab() === 'EVENTS'" (click)="setTab('EVENTS')">Events</button><button type="button" [class.active]="tab() === 'PARTICIPANTS'" (click)="setTab('PARTICIPANTS')">Participants</button></div>
-  <div class="filters-card"><label for="report-category">Category</label><select id="report-category" [ngModel]="category()" (ngModelChange)="setCategory($event)"><option value="">All categories</option><option value="ARTS">Arts</option><option value="LITERARY">Literary</option><option value="CULTURAL">Cultural</option></select><label for="report-event">Event</label><select id="report-event" [ngModel]="eventId()" (ngModelChange)="setEvent($event)"><option value="">All events</option>@for (event of events(); track event.id) { @if (!category() || event.category === category()) { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option> } }</select><label for="report-home">Home</label><select id="report-home" [ngModel]="homeId()" (ngModelChange)="setHome($event)"><option value="">All homes</option>@for (home of homes(); track home.id) { <option [value]="home.id">{{ home.homeCode }} · {{ home.name }}</option> }</select></div>
 
-  @if (tab() === 'SUMMARY') {
-    <div class="metric-grid"><div class="metric"><span>Homes</span><strong>{{ summary().homes }}</strong></div><div class="metric"><span>Participants</span><strong>{{ summary().participants }}</strong></div><div class="metric"><span>Events</span><strong>{{ summary().events }}</strong><small>{{ summary().activeEvents }} active</small></div><div class="metric"><span>Registrations</span><strong>{{ summary().registrations }}</strong></div><div class="metric"><span>Active teams</span><strong>{{ summary().teams }}</strong></div><div class="metric"><span>Attendance recorded</span><strong>{{ summary().attendance.recorded }}</strong><small>{{ summary().attendance.present }} present · {{ summary().attendance.absent }} absent</small></div><div class="metric"><span>Finalized scores</span><strong>{{ summary().finalizedScores }}</strong></div><div class="metric"><span>Certificates</span><strong>{{ summary().certificates.generated + summary().certificates.issued }}</strong><small>{{ summary().certificates.generated }} generated · {{ summary().certificates.issued }} issued</small></div></div>
-  } @else if (tab() === 'HOMES') {
-    @if (homeReports().length) { <div class="report-card table-wrapper"><table><thead><tr><th>Home</th><th>Participants</th><th>Boys / girls</th><th>Registrations</th><th>Teams</th><th>Attendance</th><th>Finalized SOLO scores</th><th>Participant certificates</th></tr></thead><tbody>@for (report of homeReports(); track report.home.id) { <tr><td><strong>{{ report.home.name }}</strong><small>{{ report.home.homeCode }}</small></td><td>{{ report.participants }}</td><td>{{ report.boys }} / {{ report.girls }}</td><td>{{ report.registrations }}</td><td>{{ report.teams }}</td><td>{{ report.attendance.recorded }} recorded<small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small></td><td>{{ report.finalizedSoloScores }}</td><td>{{ report.participantCertificates }}</td></tr> }</tbody></table></div> } @else { <div class="empty-state">No shelter-home records are available.</div> }
-  } @else if (tab() === 'EVENTS') {
-    <div class="inline-filter"><label for="report-status">Status</label><select id="report-status" [ngModel]="eventStatus()" (ngModelChange)="setEventStatus($event)"><option value="">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="CANCELLED">Cancelled</option></select></div>
-    @if (eventReports().length) { <div class="report-card table-wrapper"><table><thead><tr><th>Event</th><th>Category</th><th>Mode / status</th><th>Registrations</th><th>Teams</th><th>Attendance</th><th>Finalized scores</th><th>Certificates</th></tr></thead><tbody>@for (report of eventReports(); track report.event.id) { <tr><td><strong>{{ report.event.name }}</strong><small>{{ report.event.eventCode }}</small></td><td>{{ report.event.category }}</td><td>{{ report.event.mode }}<small>{{ report.event.status }}</small></td><td>{{ report.registrations }}</td><td>{{ report.teams ?? '—' }}</td><td>{{ report.attendance.recorded }} recorded<small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small></td><td>{{ report.finalizedScores }}</td><td>{{ report.certificates.generated + report.certificates.issued }}</td></tr> }</tbody></table></div> } @else { <div class="empty-state">No events match the current filters.</div> }
-  } @else {
-    <div class="inline-filter"><label for="report-participant">Participant</label><input id="report-participant" type="search" placeholder="Name, code, or shelter home" [ngModel]="participantSearch()" (ngModelChange)="setParticipantSearch($event)" /></div>
-    @if (participantReports().length) { <div class="report-card table-wrapper"><table><thead><tr><th>Participant</th><th>Home</th><th>Level</th><th>Registrations</th><th>Attendance</th><th>Finalized SOLO scores</th><th>Certificates</th></tr></thead><tbody>@for (report of participantReports(); track report.participant.id) { <tr><td><strong>{{ report.participant.fullName }}</strong><small>{{ report.participant.participantCode }}</small></td><td>{{ report.participant.shelterHomeId }}</td><td>{{ report.participant.level ?? 'Unavailable' }}</td><td>{{ report.registrations }}</td><td>{{ report.attendance.recorded }} recorded<small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small></td><td>{{ report.finalizedSoloScores }}</td><td>{{ report.certificates }}</td></tr> }</tbody></table></div> } @else { <div class="empty-state">No participants match the current filters.</div> }
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div>
+      <span class="eyebrow">OPERATIONS</span>
+      <h1>Reports</h1>
+      <p>Read-only summaries derived from current Nakshatra records.</p>
+    </div>
+
+    <div class="page-actions">
+      <button
+        type="button"
+        class="secondary-button"
+        [disabled]="loading() || registrationsLoading()"
+        (click)="reload()">
+        {{ loading() || registrationsLoading() ? 'Reloading…' : 'Reload' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs" role="tablist">
+    <button type="button" [class.active]="tab() === 'SUMMARY'" (click)="setTab('SUMMARY')">Summary</button>
+    <button type="button" [class.active]="tab() === 'HOMES'" (click)="setTab('HOMES')">Homes</button>
+    <button type="button" [class.active]="tab() === 'EVENTS'" (click)="setTab('EVENTS')">Events</button>
+    <button type="button" [class.active]="tab() === 'PARTICIPANTS'" (click)="setTab('PARTICIPANTS')">Participants</button>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters-card">
+    <label for="report-category">Category</label>
+    <select id="report-category" [ngModel]="category()" (ngModelChange)="setCategory($event)">
+      <option value="">All categories</option>
+      <option value="ARTS">Arts</option>
+      <option value="LITERARY">Literary</option>
+      <option value="CULTURAL">Cultural</option>
+    </select>
+
+    <label for="report-event">Event</label>
+    <select id="report-event" [ngModel]="eventId()" (ngModelChange)="setEvent($event)">
+      <option value="">All events</option>
+      @for (event of events(); track event.id) {
+        @if (!category() || event.category === category()) {
+          <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option>
+        }
+      }
+    </select>
+
+    <label for="report-home">Home</label>
+    <select id="report-home" [ngModel]="homeId()" (ngModelChange)="setHome($event)">
+      <option value="">All homes</option>
+      @for (home of homes(); track home.id) {
+        <option [value]="home.id">{{ home.homeCode }} · {{ home.name }}</option>
+      }
+    </select>
+  </div>
+
+  <!-- REGISTRATION READ STATE -->
+  @if (registrationsLoading()) {
+    <div class="empty-state" role="status">
+      <h3>Loading registrations…</h3>
+      <p>Registrations are read per event from the backend. Registration figures are labelled as not loaded until that read completes, so a pending request is never shown as a count of zero.</p>
+    </div>
   }
+
+  @if (registrationsError()) {
+    <div class="empty-state" role="alert">
+      <h3>Registrations could not be loaded</h3>
+      <p>{{ registrationsError() }}</p>
+      <p>Registration columns are therefore shown as not loaded rather than as zero.</p>
+      <p><button type="button" class="secondary-button" (click)="reload()">Retry</button></p>
+    </div>
+  }
+
+  <!-- LOADING / ERROR GATE -->
+  @if (loading()) {
+    <div class="empty-state" role="status">
+      <h3>Loading reports…</h3>
+      <p>Reading connected shelter homes and participant records from the Nakshatra backend.</p>
+    </div>
+  } @else if (error()) {
+    <div class="empty-state" role="alert">
+      <h3>Reports could not be loaded</h3>
+      <p>{{ error() }}</p>
+      <p>Shelter homes and participants are owned by the backend. Retry the read, or reconnect a shelter home Google Sheet from the Homes module.</p>
+      <p><button type="button" class="secondary-button" (click)="reload()">Retry</button></p>
+    </div>
+  } @else if (tab() === 'SUMMARY') {
+
+    <!-- =========================================================
+         SUMMARY
+         ========================================================= -->
+    <div class="metric-grid">
+      <div class="metric">
+        <span>Homes</span>
+        <strong>{{ summary().homes }}</strong>
+      </div>
+      <div class="metric">
+        <span>Participants</span>
+        <strong>{{ summary().participants }}</strong>
+      </div>
+      <div class="metric">
+        <span>Events</span>
+        <strong>{{ summary().events }}</strong>
+        <small>{{ summary().activeEvents }} active</small>
+      </div>
+      <div class="metric">
+        <span>Registrations</span>
+        <strong>{{ registrationFigure(summary().registrations) }}</strong>
+        <small>{{ registrationsNote() }}</small>
+      </div>
+      <div class="metric">
+        <span>Active teams</span>
+        <strong>{{ summary().teams }}</strong>
+      </div>
+      <div class="metric">
+        <span>Attendance recorded</span>
+        <strong>{{ summary().attendance.recorded }}</strong>
+        <small>{{ summary().attendance.present }} present · {{ summary().attendance.absent }} absent</small>
+      </div>
+      <div class="metric">
+        <span>Finalized scores</span>
+        <strong>{{ summary().finalizedScores }}</strong>
+      </div>
+      <div class="metric">
+        <span>Certificates</span>
+        <strong>{{ summary().certificates.generated + summary().certificates.issued }}</strong>
+        <small>{{ summary().certificates.generated }} generated · {{ summary().certificates.issued }} issued</small>
+      </div>
+    </div>
+
+    @if (!homes().length) {
+      <div class="empty-state">
+        <h3>No shelter homes are connected yet</h3>
+        <p>Connect a shelter home Google Sheet from the Homes module. Once a home is connected, its imported participants flow into these summaries automatically.</p>
+      </div>
+    }
+
+  } @else if (tab() === 'HOMES') {
+
+    <!-- =========================================================
+         HOMES
+         ========================================================= -->
+    @if (!homes().length) {
+      <div class="empty-state">
+        <h3>No shelter homes are connected yet</h3>
+        <p>Connect one from the Homes module. Home reports are built from connected homes only.</p>
+      </div>
+    } @else if (!homeReports().length) {
+      <div class="empty-state">
+        <h3>No shelter homes match the current filters</h3>
+        <p>Clear the Event or Home filter above to include every connected shelter home.</p>
+        <p>
+          <button type="button" class="secondary-button" (click)="setHome(''); setEvent('')">Clear filters</button>
+        </p>
+      </div>
+    } @else {
+      <div class="report-card table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Home</th>
+              <th>Participants</th>
+              <th>Boys / girls</th>
+              <th>Registrations</th>
+              <th>Teams</th>
+              <th>Attendance</th>
+              <th>Finalized SOLO scores</th>
+              <th>Participant certificates</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (report of homeReports(); track report.home.id) {
+              <tr>
+                <td>
+                  <strong>{{ report.home.name }}</strong>
+                  <small>{{ report.home.homeCode }}</small>
+                </td>
+                <td>{{ report.participants }}</td>
+                <td>{{ report.boys }} / {{ report.girls }}</td>
+                <td>{{ registrationFigure(report.registrations) }}</td>
+                <td>{{ report.teams }}</td>
+                <td>
+                  {{ report.attendance.recorded }} recorded
+                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                </td>
+                <td>{{ report.finalizedSoloScores }}</td>
+                <td>{{ report.participantCertificates }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  } @else if (tab() === 'EVENTS') {
+
+    <!-- =========================================================
+         EVENTS
+         ========================================================= -->
+    <div class="inline-filter">
+      <label for="report-status">Status</label>
+      <select id="report-status" [ngModel]="eventStatus()" (ngModelChange)="setEventStatus($event)">
+        <option value="">All statuses</option>
+        <option value="ACTIVE">Active</option>
+        <option value="INACTIVE">Inactive</option>
+        <option value="CANCELLED">Cancelled</option>
+      </select>
+    </div>
+
+    @if (!events().length) {
+      <div class="empty-state">
+        <h3>No events have been created yet</h3>
+        <p>Create an event and its categories from the Events module to build event reports.</p>
+      </div>
+    } @else if (!eventReports().length) {
+      <div class="empty-state">
+        <h3>No events match the current filters</h3>
+        <p>Clear the Category, Event or Status filter above to include every event.</p>
+        <p>
+          <button type="button" class="secondary-button" (click)="setCategory(''); setEvent(''); setEventStatus('')">Clear filters</button>
+        </p>
+      </div>
+    } @else {
+      <div class="report-card table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Category</th>
+              <th>Mode / status</th>
+              <th>Registrations</th>
+              <th>Teams</th>
+              <th>Attendance</th>
+              <th>Finalized scores</th>
+              <th>Certificates</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (report of eventReports(); track report.event.id) {
+              <tr>
+                <td>
+                  <strong>{{ report.event.name }}</strong>
+                  <small>{{ report.event.eventCode }}</small>
+                </td>
+                <td>{{ report.event.category }}</td>
+                <td>
+                  {{ report.event.mode }}
+                  <small>{{ report.event.status }}</small>
+                </td>
+                <td>{{ registrationFigure(report.registrations) }}</td>
+                <td>{{ report.teams ?? '—' }}</td>
+                <td>
+                  {{ report.attendance.recorded }} recorded
+                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                </td>
+                <td>{{ report.finalizedScores }}</td>
+                <td>{{ report.certificates.generated + report.certificates.issued }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  } @else {
+
+    <!-- =========================================================
+         PARTICIPANTS
+         ========================================================= -->
+    <div class="inline-filter">
+      <label for="report-participant">Participant</label>
+      <input
+        id="report-participant"
+        type="search"
+        placeholder="Name, code, or shelter home"
+        [ngModel]="participantSearch()"
+        (ngModelChange)="setParticipantSearch($event)" />
+    </div>
+
+    @if (!homes().length) {
+      <div class="empty-state">
+        <h3>No shelter homes are connected yet</h3>
+        <p>Connect one from the Homes module. Participant reports come from the records imported by each connected home.</p>
+      </div>
+    } @else if (!participantReports().length) {
+      <div class="empty-state">
+        <h3>No participants match the current filters</h3>
+        <p>Adjust the Home or Event filter, or clear the participant search box to include every imported participant.</p>
+        <p>
+          <button type="button" class="secondary-button" (click)="setHome(''); setEvent(''); setParticipantSearch('')">Clear filters</button>
+        </p>
+      </div>
+    } @else {
+      <div class="report-card table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Participant</th>
+              <th>Home</th>
+              <th>Level</th>
+              <th>Registrations</th>
+              <th>Attendance</th>
+              <th>Finalized SOLO scores</th>
+              <th>Certificates</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (report of participantReports(); track report.participant.id) {
+              <tr>
+                <td>
+                  <strong>{{ report.participant.fullName }}</strong>
+                  <small>{{ report.participant.participantCode }}</small>
+                </td>
+                <td>
+                  <strong>{{ getHomeName(report.participant.shelterHomeId) }}</strong>
+                  <small>{{ getHomeCode(report.participant.shelterHomeId) }}</small>
+                </td>
+                <td>{{ report.participant.level ?? 'Unavailable' }}</td>
+                <td>{{ registrationFigure(report.registrations) }}</td>
+                <td>
+                  {{ report.attendance.recorded }} recorded
+                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                </td>
+                <td>{{ report.finalizedSoloScores }}</td>
+                <td>{{ report.certificates }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+
 </div>

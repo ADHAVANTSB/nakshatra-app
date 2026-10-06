@@ -1,1 +1,206 @@
-.imports{max-width:1100px;margin:auto;padding:28px;color:#39322d}.imports>span,small{display:block;color:#817873;font-size:11px}.imports select,.imports input{padding:10px;border:1px solid #ded8d3;border-radius:8px;margin:10px 8px 10px 0}.imports article,.empty,.notice{padding:16px;margin:12px 0;border:1px solid #e5dfda;border-radius:10px;background:#fff}.imports article span{display:block;margin:6px 0}.notice{background:#fffaf0;color:#79643d}.imports button{padding:8px 10px;border:0;border-radius:7px;background:#eee9f5;color:#5f4d7c;font-weight:700}@media(max-width:700px){.imports{padding:18px 14px}}
+.imports {
+  max-width: 1100px;
+  margin: auto;
+  padding: 28px;
+  color: #39322d;
+
+  select {
+    width: 100%;
+    max-width: 420px;
+    padding: 10px;
+    border: 1px solid #ded8d3;
+    border-radius: 8px;
+  }
+
+  article {
+    padding: 16px;
+    margin: 12px 0;
+    border: 1px solid #e5dfda;
+    border-radius: 10px;
+    background: #fff;
+  }
+}
+
+.eyebrow {
+  display: block;
+  color: #817873;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.lede {
+  color: #817873;
+}
+
+.notice {
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid #e5dfda;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #79643d;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+
+  label {
+    color: #817873;
+    font-size: 12px;
+  }
+}
+
+.state,
+.empty {
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid #e5dfda;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.state {
+  color: #817873;
+}
+
+.state--error {
+  background: #fdf3f1;
+  border-color: #e8c9c2;
+  color: #8a3a2c;
+}
+
+.version {
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid #e5dfda;
+  border-radius: 10px;
+  background: #fff;
+
+  &--current {
+    border-color: #d6cec7;
+  }
+}
+
+.version-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+  }
+}
+
+.status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1edea;
+  color: #817873;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+
+  &--ok {
+    background: #eef4ec;
+    color: #4a6b46;
+  }
+
+  &--warn {
+    background: #fdf6e6;
+    color: #8a6a24;
+  }
+
+  &--bad {
+    background: #fdf1ef;
+    color: #8a3a2c;
+  }
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 12px 0 0;
+}
+
+.metric {
+  dt {
+    color: #817873;
+    font-size: 11px;
+  }
+
+  dd {
+    margin: 2px 0 0;
+    font-weight: 600;
+  }
+}
+
+.metric--bad {
+  color: #8a3a2c;
+}
+
+.metric--warn {
+  color: #8a6a24;
+}
+
+.current-flag {
+  margin: 10px 0 0;
+  color: #817873;
+  font-size: 11px;
+}
+
+.no-issues {
+  margin: 12px 0 0;
+  color: #817873;
+}
+
+.issues-title {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+
+  &--error {
+    color: #8a3a2c;
+  }
+
+  &--warn {
+    color: #8a6a24;
+  }
+}
+
+.issues {
+  margin: 0;
+  padding-left: 18px;
+
+  .issue {
+    margin: 4px 0;
+  }
+
+  .issue--error .issue-meta {
+    color: #8a3a2c;
+  }
+
+  .issue--warn .issue-meta {
+    color: #8a6a24;
+  }
+}
+
+.issue-meta {
+  margin-right: 6px;
+  color: #817873;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 700px) {
+  .imports {
+    padding: 18px 14px;
+  }
+}

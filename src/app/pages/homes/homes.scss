@@ -356,6 +356,23 @@
   outline-offset: 2px;
 }
 
+.connected-homes-section { margin: 1.5rem 0; }
+.connected-homes-list { display: grid; gap: .9rem; }
+.connected-home-card { padding: 1.1rem 1.25rem; border: 1px solid #e7edf5; border-radius: 14px; background: #fff; }
+.connected-home-card h3 { margin: .2rem 0 .35rem; color: #1d3557; }
+.connected-home-card p { margin: .25rem 0; color: #536b83; }
+.connected-home-card dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem 1rem; margin: 1rem 0 0; }
+.connected-home-card dt { color: #8495aa; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.connected-home-card dd { margin: .2rem 0 0; color: #536b83; font-size: .85rem; overflow-wrap: anywhere; }
+.home-detail-panel { margin-top: 1rem; padding: .9rem 1rem; border-radius: 10px; background: #f7f9fc; }
+.home-detail-panel h4 { margin: 0 0 .5rem; }
+.connected-homes-empty { padding: 1.5rem; border: 1px dashed #d8e1ec; border-radius: 12px; color: #8a9caf; text-align: center; }
+.form-message { padding: .7rem .9rem; border-radius: 8px; }
+.form-message.error { background: #fff0f0; color: #a53e3e; }
+.form-message.success { background: #eaf8f0; color: #20804d; }
+.form-message.progress, .sheet-state { color: #6f8297; }
+
+
 
 /* Mobile */
 
@@ -369,4 +386,37 @@
     flex: 1;
   }
 
+}
+
+/* ---------------------------------------------------------
+   CONNECTED HOME NAME LINK
+   Opens the backend-supplied spreadsheet link in a new tab.
+   The URL always comes from the backend; it is never built here.
+   --------------------------------------------------------- */
+
+.home-name-link {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.home-name-link:hover {
+  color: var(--nk-purple);
+}
+
+.home-name-link:focus-visible {
+  outline: 2px solid #cbd8e6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.connected-homes-empty {
+  display: grid;
+  gap: .75rem;
+  justify-items: center;
+}
+
+.connected-homes-empty p {
+  margin: 0;
 }
