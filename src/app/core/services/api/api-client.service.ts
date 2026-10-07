@@ -1,17 +1,34 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import {
+  AdminCreateUserPayload,
   ApiResponse,
+  Attendance,
+  AttendanceData,
+  CreateTeamPayload,
+  GetTeamData,
+  ListScoresData,
+  ListTeamsData,
+  MarkAttendancePayload,
+  Team,
+  TeamMember,
+  TeamMemberPayload,
   ApplicationRole,
   ApplicationSession,
+  ApplicationUser,
+  ApproveUserPayload,
   AuthenticatedApiRequest,
   ConnectShelterSheetData,
   ConnectShelterSheetPayload,
   CurrentUserData,
+  DashboardSummaryData,
   Event,
   EventRegistrationData,
   EventRegistrationPayload,
+  FinalizeScoreData,
+  FinalizeScorePayload,
   GetParticipantData,
+  GetReportsData,
   GetValidationResultsData,
   ImportStatusData,
   ImportStatusPayload,
@@ -21,15 +38,28 @@ import {
   ListParticipantsData,
   ListShelterSheetsData,
   ListShelterHomesData,
+  ListUsersData,
   LogoutData,
+  OperationalCounts,
   Participant,
   ParticipantEvent,
+  RegistrationRequestData,
+  RegistrationStatus,
+  ReportScopePayload,
+  RequestRegistrationPayload,
+  SaveScorePayload,
+  Score,
+  ScoreData,
   SessionValidationData,
   SessionValidationResponse,
+  SourceWriteBackResult,
   SyncShelterSheetData,
   SyncShelterSheetPayload,
   UpdateParticipantData,
   UpdateParticipantPayload,
+  UpdateUserRolePayload,
+  UserMutationData,
+  UserVersionPayload,
 } from '../../models';
 import { GOOGLE_IDENTITY_CONFIG } from '../../constants/google-identity.config';
 import { AuthService } from '../auth/auth.service';
@@ -141,12 +171,21 @@ export class ApiClientService {
       : { success: false, error: { code: 'INVALID_EVENTS_RESPONSE', message: 'The server returned an invalid events response.' } };
   }
 
-  /** Persisted registrations for one event. */
+  /**
+   * Persisted registrations for one event.
+   *
+   * The backend may return the rows under `registrations` or `participantEvents`;
+   * both are accepted. An empty array is a valid, successful result and is never
+   * reported as an invalid response.
+   */
   async listEventRegistrations(eventId: string): Promise<ApiResponse<ListEventRegistrationsData>> {
     const response = await this.post<ListEventRegistrationsData, { eventId: string }>('listEventRegistrations', { eventId });
     if (!response.success) return response;
-    return this.isListParticipantEventsData(response.data)
-      ? response
+
+    const normalized = this.normalizeRegistrations(response.data);
+
+    return normalized
+      ? { success: true, data: { participantEvents: normalized } }
       : { success: false, error: { code: 'INVALID_REGISTRATIONS_RESPONSE', message: 'The server returned an invalid registrations response.' } };
   }
 
@@ -154,8 +193,11 @@ export class ApiClientService {
   async listParticipantEvents(participantId: string): Promise<ApiResponse<ListParticipantEventsData>> {
     const response = await this.post<ListParticipantEventsData, { participantId: string }>('listParticipantEvents', { participantId });
     if (!response.success) return response;
-    return this.isListParticipantEventsData(response.data)
-      ? response
+
+    const normalized = this.normalizeRegistrations(response.data);
+
+    return normalized
+      ? { success: true, data: { participantEvents: normalized } }
       : { success: false, error: { code: 'INVALID_REGISTRATIONS_RESPONSE', message: 'The server returned an invalid registrations response.' } };
   }
 
@@ -169,6 +211,168 @@ export class ApiClientService {
 
   reactivateRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
     return this.post<EventRegistrationData, EventRegistrationPayload>('reactivateRegistration', payload);
+  }
+
+  /* ================================================================
+     TEAMS
+     ================================================================ */
+
+  /** Persisted teams (and their members) for one group event. */
+  async listTeams(eventId: string): Promise<ApiResponse<ListTeamsData>> {
+    const response = await this.post<unknown, { eventId: string }>('listTeams', { eventId });
+    if (!response.success) return response;
+    const data = this.normalizeTeams(response.data);
+    return data
+      ? { success: true, data }
+      : { success: false, error: { code: 'INVALID_TEAMS_RESPONSE', message: 'The server returned an invalid teams response.' } };
+  }
+
+  async getTeam(teamId: string): Promise<ApiResponse<GetTeamData>> {
+    const response = await this.post<unknown, { teamId: string }>('getTeam', { teamId });
+    if (!response.success) return response;
+    return this.readTeamWithMembers(response.data);
+  }
+
+  async createTeam(payload: CreateTeamPayload): Promise<ApiResponse<GetTeamData>> {
+    const response = await this.post<unknown, CreateTeamPayload>('createTeam', payload);
+    if (!response.success) return response;
+    return this.readTeamWithMembers(response.data);
+  }
+
+  async addTeamMember(payload: TeamMemberPayload): Promise<ApiResponse<GetTeamData>> {
+    const response = await this.post<unknown, TeamMemberPayload>('addTeamMember', payload);
+    if (!response.success) return response;
+    return this.readTeamWithMembers(response.data);
+  }
+
+  async removeTeamMember(payload: TeamMemberPayload): Promise<ApiResponse<GetTeamData>> {
+    const response = await this.post<unknown, TeamMemberPayload>('removeTeamMember', payload);
+    if (!response.success) return response;
+    return this.readTeamWithMembers(response.data);
+  }
+
+  /* ================================================================
+     ATTENDANCE
+     ================================================================ */
+
+  async markAttendance(payload: MarkAttendancePayload): Promise<ApiResponse<AttendanceData>> {
+    const response = await this.post<unknown, MarkAttendancePayload>('markAttendance', payload);
+    if (!response.success) return response;
+    const record = typeof response.data === 'object' && response.data !== null && 'attendance' in response.data
+      ? this.normalizeAttendance((response.data as { attendance: unknown }).attendance)
+      : this.normalizeAttendance(response.data);
+    return record
+      ? { success: true, data: { attendance: record } }
+      : { success: false, error: { code: 'INVALID_ATTENDANCE_RESPONSE', message: 'The server returned an invalid attendance response.' } };
+  }
+
+  /* ================================================================
+     SCORING
+     ================================================================ */
+
+  /** Persisted scores for one event, drafts and finalized alike. */
+  async listScores(eventId: string): Promise<ApiResponse<ListScoresData>> {
+    const response = await this.post<unknown, { eventId: string }>('listScores', { eventId });
+    if (!response.success) return response;
+    const rows = this.collection(response.data, ['scores']);
+    if (rows === null) {
+      return { success: false, error: { code: 'INVALID_SCORES_RESPONSE', message: 'The server returned an invalid scores response.' } };
+    }
+    return { success: true, data: { scores: rows.filter((row): row is Score => this.isScore(row)) } };
+  }
+
+  async saveScore(payload: SaveScorePayload): Promise<ApiResponse<ScoreData>> {
+    const response = await this.post<ScoreData, SaveScorePayload>('saveScore', payload);
+    if (!response.success) return response;
+    return this.isScoreData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
+  }
+
+  async finalizeScore(payload: FinalizeScorePayload): Promise<ApiResponse<FinalizeScoreData>> {
+    const response = await this.post<FinalizeScoreData, FinalizeScorePayload>('finalizeScore', payload);
+    if (!response.success) return response;
+    return this.isScoreData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
+  }
+
+  /* ================================================================
+     ACCESS MANAGEMENT
+     ================================================================ */
+
+  /** Backend list of application users; the only source for the Settings module. */
+  async listUsers(): Promise<ApiResponse<ListUsersData>> {
+    const response = await this.post<ListUsersData>('listUsers');
+    if (!response.success) return response;
+    return this.isListUsersData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_USERS_RESPONSE', message: 'The server returned an invalid users response.' } };
+  }
+
+  async adminCreateUser(payload: AdminCreateUserPayload): Promise<ApiResponse<UserMutationData>> {
+    const response = await this.post<UserMutationData, AdminCreateUserPayload>('adminCreateUser', payload);
+    if (!response.success) return response;
+    return this.isUserMutationData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_USER_RESPONSE', message: 'The server returned an invalid user response.' } };
+  }
+
+  async requestRegistration(payload: RequestRegistrationPayload): Promise<ApiResponse<RegistrationRequestData>> {
+    const response = await this.post<RegistrationRequestData, RequestRegistrationPayload>('requestRegistration', payload);
+    if (!response.success) return response;
+    return this.isRegistrationRequestData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_REGISTRATION_RESPONSE', message: 'The server returned an invalid registration response.' } };
+  }
+
+  async approveUser(payload: ApproveUserPayload): Promise<ApiResponse<UserMutationData>> {
+    return this.postUserMutation('approveUser', payload);
+  }
+
+  async rejectUser(payload: UserVersionPayload): Promise<ApiResponse<UserMutationData>> {
+    return this.postUserMutation('rejectUser', payload);
+  }
+
+  async disableUser(payload: UserVersionPayload): Promise<ApiResponse<UserMutationData>> {
+    return this.postUserMutation('disableUser', payload);
+  }
+
+  async enableUser(payload: UserVersionPayload): Promise<ApiResponse<UserMutationData>> {
+    return this.postUserMutation('enableUser', payload);
+  }
+
+  async updateUserRole(payload: UpdateUserRolePayload): Promise<ApiResponse<UserMutationData>> {
+    return this.postUserMutation('updateUserRole', payload);
+  }
+
+  /* ================================================================
+     DASHBOARD + REPORTS
+     ================================================================ */
+
+  async getDashboardSummary(): Promise<ApiResponse<DashboardSummaryData>> {
+    const response = await this.post<DashboardSummaryData>('getDashboardSummary');
+    if (!response.success) return response;
+    const summary = this.readOperationalCounts(response.data);
+    return summary
+      ? { success: true, data: { summary } }
+      : { success: false, error: { code: 'INVALID_SUMMARY_RESPONSE', message: 'The server returned an invalid dashboard summary.' } };
+  }
+
+  async getReports(payload: ReportScopePayload = {}): Promise<ApiResponse<GetReportsData>> {
+    const response = await this.post<GetReportsData, ReportScopePayload>('getReports', payload);
+    return response;
+  }
+
+  private async postUserMutation<TPayload extends object>(
+    action: string,
+    payload: TPayload
+  ): Promise<ApiResponse<UserMutationData>> {
+    const response = await this.post<UserMutationData, TPayload>(action, payload);
+    if (!response.success) return response;
+    return this.isUserMutationData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_USER_RESPONSE', message: 'The server returned an invalid user response.' } };
   }
 
   /** Best-effort server invalidation; local session state is always cleared. */
@@ -301,14 +505,119 @@ export class ApiClientService {
       && (value.status === 'ACTIVE' || value.status === 'CANCELLED' || value.status === 'INACTIVE');
   }
 
-  private isParticipantEvent(value: unknown): value is ParticipantEvent {
+  private isScore(value: unknown): value is Score {
     return typeof value === 'object' && value !== null
       && 'id' in value && typeof value.id === 'string'
-      && 'participantId' in value && typeof value.participantId === 'string'
       && 'eventId' in value && typeof value.eventId === 'string'
-      && 'registrationStatus' in value
-      && (value.registrationStatus === 'REGISTERED' || value.registrationStatus === 'CANCELLED' || value.registrationStatus === 'WAITLISTED')
+      && 'value' in value && typeof value.value === 'number'
+      && 'status' in value && (value.status === 'DRAFT' || value.status === 'FINALIZED')
       && 'version' in value && typeof value.version === 'number';
+  }
+
+  private isScoreData(value: unknown): value is ScoreData & FinalizeScoreData {
+    return typeof value === 'object' && value !== null
+      && 'score' in value && this.isScore(value.score)
+      && (!('sourceWriteBack' in value) || value.sourceWriteBack === undefined || this.isSourceWriteBack(value.sourceWriteBack));
+  }
+
+  private isApplicationUser(value: unknown): value is ApplicationUser {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const user = value as Record<string, unknown>;
+
+    return typeof user['id'] === 'string'
+      && typeof user['email'] === 'string'
+      && typeof user['displayName'] === 'string'
+      && this.isAccessStatus(user['accessStatus'])
+      && typeof user['version'] === 'number';
+  }
+
+  private isAccessStatus(value: unknown): value is ApplicationUser['accessStatus'] {
+    return value === 'PENDING' || value === 'APPROVED' || value === 'REJECTED' || value === 'DISABLED';
+  }
+
+  private isListUsersData(value: unknown): value is ListUsersData {
+    return typeof value === 'object' && value !== null
+      && 'users' in value && Array.isArray(value.users)
+      && value.users.every(user => this.isApplicationUser(user));
+  }
+
+  private isUserMutationData(value: unknown): value is UserMutationData {
+    return typeof value === 'object' && value !== null
+      && 'user' in value && this.isApplicationUser(value.user);
+  }
+
+  private isRegistrationRequestData(value: unknown): value is RegistrationRequestData {
+    return typeof value === 'object' && value !== null
+      && 'request' in value && typeof value.request === 'object' && value.request !== null
+      && 'email' in value.request && typeof value.request.email === 'string'
+      && 'displayName' in value.request && typeof value.request.displayName === 'string';
+  }
+
+  /**
+   * Reads the operational counts from a summary payload.
+   *
+   * Accepts the counts nested under `summary` or at the top level, and accepts
+   * attendance/certificates either nested or flattened. Returns null only when no
+   * recognisable counter set is present.
+   */
+  private readOperationalCounts(value: unknown): OperationalCounts | null {
+    const root = typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+
+    const source = typeof root['summary'] === 'object' && root['summary'] !== null
+      ? (root['summary'] as Record<string, unknown>)
+      : root;
+
+    const attendance = typeof source['attendance'] === 'object' && source['attendance'] !== null
+      ? (source['attendance'] as Record<string, unknown>)
+      : source;
+
+    const certificates = typeof source['certificates'] === 'object' && source['certificates'] !== null
+      ? (source['certificates'] as Record<string, unknown>)
+      : source;
+
+    const counts = {
+      homes: this.readCount(source['homes']),
+      participants: this.readCount(source['participants']),
+      events: this.readCount(source['events']),
+      activeEvents: this.readCount(source['activeEvents']),
+      registrations: this.readCount(source['registrations']),
+      teams: this.readCount(source['teams']),
+      finalizedScores: this.readCount(source['finalizedScores']),
+    };
+
+    const hasAnyCount = Object.values(counts).some(value => value !== null);
+
+    if (!hasAnyCount) {
+      return null;
+    }
+
+    return {
+      homes: counts.homes ?? 0,
+      participants: counts.participants ?? 0,
+      events: counts.events ?? 0,
+      activeEvents: counts.activeEvents ?? 0,
+      registrations: counts.registrations ?? 0,
+      teams: counts.teams ?? 0,
+      finalizedScores: counts.finalizedScores ?? 0,
+      attendance: {
+        recorded: this.readCount(attendance['recorded']) ?? 0,
+        present: this.readCount(attendance['present']) ?? 0,
+        absent: this.readCount(attendance['absent']) ?? 0,
+      },
+      certificates: {
+        generated: this.readCount(certificates['generated']) ?? 0,
+        issued: this.readCount(certificates['issued']) ?? 0,
+      },
+    };
+  }
+
+  private readCount(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
   private isGetParticipantData(value: unknown): value is GetParticipantData {
@@ -317,8 +626,30 @@ export class ApiClientService {
   }
 
   private isUpdateParticipantData(value: unknown): value is UpdateParticipantData {
-    return typeof value === 'object' && value !== null
-      && 'participant' in value && this.isParticipant(value.participant);
+    if (typeof value !== 'object' || value === null || !('participant' in value)) {
+      return false;
+    }
+
+    if (!this.isParticipant(value.participant)) {
+      return false;
+    }
+
+    if (!('sourceWriteBack' in value) || value.sourceWriteBack === undefined) {
+      return true;
+    }
+
+    return this.isSourceWriteBack(value.sourceWriteBack);
+  }
+
+  private isSourceWriteBack(value: unknown): boolean {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const status = (value as { status?: unknown }).status;
+
+    return status === 'UPDATED' || status === 'SKIPPED' || status === 'FAILED'
+      || status === 'UNVERIFIED';
   }
 
   private isListEventsData(value: unknown): value is ListEventsData {
@@ -327,12 +658,358 @@ export class ApiClientService {
       && value.events.every(event => this.isEvent(event));
   }
 
-  private isListParticipantEventsData(
-    value: unknown
-  ): value is ListEventRegistrationsData & ListParticipantEventsData {
-    return typeof value === 'object' && value !== null
-      && 'participantEvents' in value && Array.isArray(value.participantEvents)
-      && value.participantEvents.every(item => this.isParticipantEvent(item));
+  /**
+   * Normalizes a registration collection into `ParticipantEvent` records.
+   *
+   * Returns `null` only when the payload genuinely violates the contract, i.e.
+   * the collection is neither an array nor an object holding one under
+   * `registrations` / `participantEvents`, or a row lacks `participantId` or
+   * `eventId`. Individual rows missing audit or display fields are accepted and
+   * defaulted, because those are optional in the backend contract.
+   */
+  private normalizeRegistrations(value: unknown): ParticipantEvent[] | null {
+    const rows = this.registrationRows(value);
+
+    if (rows === null) {
+      return null;
+    }
+
+    const normalized: ParticipantEvent[] = [];
+
+    for (const row of rows) {
+      const registration = this.normalizeRegistration(row);
+
+      if (registration) {
+        normalized.push(registration);
+      }
+    }
+
+    return normalized;
+  }
+
+  private registrationRows(value: unknown): unknown[] | null {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+
+    for (const key of ['registrations', 'participantEvents']) {
+      const candidate = record[key];
+
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeRegistration(row: unknown): ParticipantEvent | null {
+    if (typeof row !== 'object' || row === null) {
+      return null;
+    }
+
+    const value = row as Record<string, unknown>;
+    const participantId = this.readString(value, 'participantId');
+    const eventId = this.readString(value, 'eventId');
+
+    if (!participantId || !eventId) {
+      return null;
+    }
+
+    const registration: ParticipantEvent = {
+      id: this.readString(value, 'id')
+        ?? this.readString(value, 'participantEventId')
+        ?? `${participantId}:${eventId}`,
+      participantId,
+      eventId,
+      registrationStatus: this.readRegistrationStatus(value)
+        ?? 'REGISTERED',
+      version: typeof value['version'] === 'number' ? value['version'] : 1,
+    };
+
+    const source = this.readString(value, 'source');
+
+    if (source === 'GOOGLE_SHEET' || source === 'NAKSHATRA') {
+      registration.source = source;
+    }
+
+    this.copyIfString(registration, value, 'sourceVersionId');
+    this.copyIfString(registration, value, 'createdAt');
+    this.copyIfString(registration, value, 'createdBy');
+    this.copyIfString(registration, value, 'updatedAt');
+    this.copyIfString(registration, value, 'updatedBy');
+    this.copyIfString(registration, value, 'participantName');
+    this.copyIfString(registration, value, 'participantCode');
+    this.copyIfString(registration, value, 'shelterHomeId');
+    this.copyIfString(registration, value, 'eventName');
+    this.copyIfString(registration, value, 'eventCode');
+
+    const category = this.readString(value, 'category');
+
+    if (category === 'ARTS' || category === 'LITERARY' || category === 'CULTURAL') {
+      registration.category = category;
+    }
+
+    const mode = this.readString(value, 'mode');
+
+    if (mode === 'SOLO' || mode === 'GROUP') {
+      registration.mode = mode;
+    }
+
+    const gender = this.readString(value, 'gender');
+
+    if (gender === 'MALE' || gender === 'FEMALE') {
+      registration.gender = gender;
+    }
+
+    const level = this.readString(value, 'level');
+
+    if (
+      level === 'SUB_JUNIOR' ||
+      level === 'JUNIOR' ||
+      level === 'SENIOR' ||
+      level === 'SUPER_SENIOR'
+    ) {
+      registration.level = level;
+    }
+
+    if (typeof value['age'] === 'number') {
+      registration.age = value['age'];
+    }
+
+    if (typeof value['standard'] === 'number') {
+      registration.standard = value['standard'];
+    }
+
+    return registration;
+  }
+
+  private readString(value: Record<string, unknown>, key: string): string | undefined {
+    const candidate = value[key];
+
+    return typeof candidate === 'string' && candidate.trim() ? candidate : undefined;
+  }
+
+  private readRegistrationStatus(
+    value: Record<string, unknown>
+  ): RegistrationStatus | undefined {
+    const candidate = this.readString(value, 'registrationStatus');
+
+    return candidate === 'REGISTERED' || candidate === 'CANCELLED' || candidate === 'WAITLISTED'
+      ? candidate
+      : undefined;
+  }
+
+  private copyIfString<T extends object, K extends keyof T>(
+    target: T,
+    value: Record<string, unknown>,
+    key: string
+  ): void {
+    const candidate = this.readString(value, key);
+
+    if (candidate !== undefined) {
+      (target as Record<string, unknown>)[key as string] = candidate;
+    }
+  }
+
+  /**
+   * Returns the first array found: the value itself, or one held under any of
+   * the given keys. `null` means the payload holds no collection at all, which
+   * is a contract violation rather than an empty result.
+   */
+  private collection(value: unknown, keys: string[]): unknown[] | null {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+
+    for (const key of keys) {
+      if (Array.isArray(record[key])) {
+        return record[key] as unknown[];
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeTeams(value: unknown): ListTeamsData | null {
+    const rows = this.collection(value, ['teams']);
+
+    if (rows === null) {
+      return null;
+    }
+
+    const teams: Team[] = [];
+    const members: TeamMember[] = [];
+
+    for (const row of rows) {
+      const team = this.normalizeTeam(row);
+
+      if (!team) {
+        continue;
+      }
+
+      teams.push(team);
+
+      // Members may be nested on each team row.
+      const nested = typeof row === 'object' && row !== null
+        ? (row as Record<string, unknown>)['members']
+        : undefined;
+
+      if (Array.isArray(nested)) {
+        members.push(...this.normalizeMembers(nested, team.id));
+      }
+    }
+
+    // ...or returned as a sibling collection.
+    const sibling = this.collection(value, ['members', 'teamMembers']);
+
+    if (sibling && sibling !== rows) {
+      members.push(...this.normalizeMembers(sibling));
+    }
+
+    return { teams, members: this.uniqueMembers(members) };
+  }
+
+  private readTeamWithMembers(value: unknown): ApiResponse<GetTeamData> {
+    const root = typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+    const teamRow = root['team'] ?? value;
+    const team = this.normalizeTeam(teamRow);
+
+    if (!team) {
+      return { success: false, error: { code: 'INVALID_TEAM_RESPONSE', message: 'The server returned an invalid team response.' } };
+    }
+
+    const nested = typeof teamRow === 'object' && teamRow !== null
+      ? (teamRow as Record<string, unknown>)['members']
+      : undefined;
+    const sibling = this.collection(root, ['members', 'teamMembers']) ?? [];
+    const members = this.uniqueMembers([
+      ...(Array.isArray(nested) ? this.normalizeMembers(nested, team.id) : []),
+      ...this.normalizeMembers(sibling, team.id),
+    ]);
+
+    return { success: true, data: { team, members } };
+  }
+
+  private normalizeTeam(row: unknown): Team | null {
+    if (typeof row !== 'object' || row === null) {
+      return null;
+    }
+
+    const value = row as Record<string, unknown>;
+    const id = this.readString(value, 'id') ?? this.readString(value, 'teamId');
+    const eventId = this.readString(value, 'eventId');
+
+    if (!id || !eventId) {
+      return null;
+    }
+
+    const status = this.readString(value, 'status');
+    const validationStatus = this.readString(value, 'validationStatus');
+
+    return {
+      id,
+      eventId,
+      teamCode: this.readString(value, 'teamCode') ?? '',
+      name: this.readString(value, 'name') ?? this.readString(value, 'teamName') ?? 'Unnamed team',
+      status: status === 'DRAFT' || status === 'READY' || status === 'LOCKED' || status === 'CANCELLED'
+        ? status
+        : 'DRAFT',
+      validationStatus: validationStatus === 'PASSED' || validationStatus === 'FAILED'
+        || validationStatus === 'WARNING' || validationStatus === 'NOT_VALIDATED'
+        ? validationStatus
+        : 'NOT_VALIDATED',
+      version: typeof value['version'] === 'number' ? value['version'] : 1,
+      createdAt: this.readString(value, 'createdAt') ?? '',
+      createdBy: this.readString(value, 'createdBy') ?? '',
+      updatedAt: this.readString(value, 'updatedAt') ?? '',
+      updatedBy: this.readString(value, 'updatedBy') ?? '',
+    };
+  }
+
+  private normalizeMembers(rows: unknown[], teamId?: string): TeamMember[] {
+    const members: TeamMember[] = [];
+
+    for (const row of rows) {
+      if (typeof row !== 'object' || row === null) {
+        continue;
+      }
+
+      const value = row as Record<string, unknown>;
+      const participantId = this.readString(value, 'participantId');
+      const memberTeamId = this.readString(value, 'teamId') ?? teamId;
+
+      if (!participantId || !memberTeamId) {
+        continue;
+      }
+
+      const status = this.readString(value, 'status');
+
+      members.push({
+        id: this.readString(value, 'id') ?? `${memberTeamId}:${participantId}`,
+        teamId: memberTeamId,
+        participantId,
+        status: status === 'REMOVED' ? 'REMOVED' : 'ACTIVE',
+        joinedAt: this.readString(value, 'joinedAt') ?? '',
+        joinedBy: this.readString(value, 'joinedBy') ?? '',
+        removedAt: this.readString(value, 'removedAt'),
+        removedBy: this.readString(value, 'removedBy'),
+      });
+    }
+
+    return members;
+  }
+
+  private uniqueMembers(members: TeamMember[]): TeamMember[] {
+    const byKey = new Map<string, TeamMember>();
+
+    for (const member of members) {
+      byKey.set(`${member.teamId}:${member.participantId}`, member);
+    }
+
+    return [...byKey.values()];
+  }
+
+  private normalizeAttendance(row: unknown): Attendance | null {
+    if (typeof row !== 'object' || row === null) {
+      return null;
+    }
+
+    const value = row as Record<string, unknown>;
+    const participantId = this.readString(value, 'participantId');
+    const eventId = this.readString(value, 'eventId');
+    const status = this.readString(value, 'status');
+
+    if (!participantId || !eventId || (status !== 'PRESENT' && status !== 'ABSENT')) {
+      return null;
+    }
+
+    return {
+      id: this.readString(value, 'id') ?? `${eventId}:${participantId}`,
+      participantId,
+      eventId,
+      teamId: this.readString(value, 'teamId'),
+      status,
+      version: typeof value['version'] === 'number' ? value['version'] : 1,
+      createdAt: this.readString(value, 'createdAt') ?? '',
+      createdBy: this.readString(value, 'createdBy') ?? '',
+      updatedAt: this.readString(value, 'updatedAt') ?? '',
+      updatedBy: this.readString(value, 'updatedBy') ?? '',
+    };
   }
 
   private isApprovalStatus(value: unknown): boolean {

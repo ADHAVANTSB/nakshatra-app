@@ -5,10 +5,10 @@ import { Certificate, Event, Participant, Score, Team } from '../../core/models'
 import { CertificateService } from '../../core/services/certificates/certificate.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
-import { ScoringService } from '../../core/services/scoring/scoring.service';
+import { ScoreLoadState, ScoringService } from '../../core/services/scoring/scoring.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
-import { TeamService } from '../../core/services/teams/team.service';
+import { TeamLoadState, TeamService } from '../../core/services/teams/team.service';
 
 interface CertificateCandidate {
   score: Score;
@@ -60,6 +60,11 @@ export class Certificates implements OnInit {
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
     void this.shelterData.refresh();
+
+    const preselected = this.selectedEventId();
+    if (preselected) {
+      void this.loadEvent(preselected);
+    }
   }
 
   /** Human-readable shelter home name; internal ids are never rendered. */
@@ -118,11 +123,54 @@ export class Certificates implements OnInit {
       .filter(score => score.status === 'FINALIZED').length : 0;
   });
 
+  /** Backend read state of the selected event's scores. */
+  readonly scoresState = computed<ScoreLoadState>(() => {
+    const id = this.selectedEventId();
+    return id ? this.scoringService.loadState(id) : { status: 'IDLE', error: '' };
+  });
+
+  /** Backend read state of the selected event's teams (used for team names). */
+  readonly teamsState = computed<TeamLoadState>(() => {
+    const id = this.selectedEventId();
+    return id ? this.teamService.loadState(id) : { status: 'IDLE', error: '' };
+  });
+
+  /** True when team names for a group event could not be read. */
+  readonly teamsFailed = computed(() =>
+    this.selectedEvent()?.mode === 'GROUP' && this.teamsState().status === 'ERROR'
+  );
+
   setEvent(eventId: string): void {
     this.selectedEventId.set(eventId);
     this.search.set('');
     this.errors.set([]);
     this.message.set('');
+    void this.loadEvent(eventId);
+  }
+
+  /**
+   * Reads persisted scores (and, for group events, teams so names resolve).
+   *
+   * Load state is held per event by the services and read through the current
+   * selection, so a late response for a previous event never shows here.
+   */
+  async loadEvent(eventId: string): Promise<void> {
+    if (!eventId) return;
+    const isGroup = this.eventService.getById(eventId)?.mode === 'GROUP';
+    await Promise.allSettled([
+      this.scoringService.loadScores(eventId),
+      isGroup ? this.teamService.loadTeams(eventId) : Promise.resolve(true),
+    ]);
+  }
+
+  async retryScores(): Promise<void> {
+    const id = this.selectedEventId();
+    if (id) await this.scoringService.loadScores(id, true);
+  }
+
+  async retryTeams(): Promise<void> {
+    const id = this.selectedEventId();
+    if (id) await this.teamService.loadTeams(id, true);
   }
 
   setSearch(value: string): void {

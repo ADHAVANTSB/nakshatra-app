@@ -9,9 +9,14 @@ import {
   Gender,
   Participant,
   ParticipantEvent,
+  SourceWriteBackResult,
 } from '../../core/models';
 import { EventService } from '../../core/services/events/event.service';
-import { ParticipantEventService } from '../../core/services/events/participant-event.service';
+import {
+  ParticipantEventService,
+  RegistrationResult,
+} from '../../core/services/events/participant-event.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import {
   EditableParticipantFields,
   ParticipantService,
@@ -26,10 +31,18 @@ const REGISTRATION_CATEGORY_ORDER: readonly EventCategory[] = [
   'CULTURAL',
 ];
 
-/** One resolved registration: the backend registration plus its event master. */
+/**
+ * One resolved registration. Event display data is taken from the registration
+ * row first, because the backend may inline it, and only then from the event
+ * master. Nothing is invented when both are absent.
+ */
 interface RegistrationEntry {
   registration: ParticipantEvent;
-  event: Event;
+  event?: Event;
+  name: string;
+  category?: EventCategory;
+  mode?: EventMode;
+  categoryKnown: boolean;
 }
 
 /** Registrations grouped under a single backend event category. */
@@ -66,6 +79,7 @@ export class Participants implements OnInit {
   private readonly participantEventService = inject(ParticipantEventService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
 
   // ---------------------------------------------------------
   // STATE
@@ -100,6 +114,14 @@ export class Participants implements OnInit {
   readonly saveError = signal('');
   readonly saveErrorCode = signal('');
   readonly saveSuccess = signal('');
+  /** Backend version of the last successful save. */
+  readonly saveVersion = signal<number | null>(null);
+  /** Non-blocking note about whether the source Google Sheet was written. */
+  readonly saveWriteBackNote = signal('');
+  /** Backend-supplied detail for the write-back note, when present. */
+  readonly saveWriteBackDetail = signal('');
+  /** Set when the post-save re-read of the participant failed. */
+  readonly saveReadBackNote = signal('');
 
   /** Only the four backend-editable fields are ever held here. */
   readonly editName = signal('');
@@ -216,22 +238,16 @@ export class Participants implements OnInit {
   readonly eventGroups = computed<RegistrationGroup[]>(() => {
     const list = this.registrations();
 
-    if (!list || !this.eventCatalogueReady()) {
+    if (!list) {
       return [];
     }
 
     const groups: RegistrationGroup[] = [];
 
     for (const category of REGISTRATION_CATEGORY_ORDER) {
-      const entries: RegistrationEntry[] = [];
-
-      for (const registration of list) {
-        const event = this.eventService.getById(registration.eventId);
-
-        if (event && event.category === category) {
-          entries.push({ registration, event });
-        }
-      }
+      const entries = list
+        .map(registration => this.resolveEntry(registration))
+        .filter(entry => entry.category === category);
 
       if (entries.length) {
         groups.push({ category, entries });
@@ -242,20 +258,33 @@ export class Participants implements OnInit {
   });
 
   /**
-   * Registrations whose event is no longer in the backend event list. They are
-   * reported as-is; no event name, category or mode is ever invented for them.
+   * Registrations that carry neither an inlined category nor a matching event
+   * master entry. They are reported as-is; no category, name or mode is invented.
    */
-  readonly unresolvedRegistrations = computed<ParticipantEvent[]>(() => {
+  readonly unresolvedRegistrations = computed<RegistrationEntry[]>(() => {
     const list = this.registrations();
 
-    if (!list || !this.eventCatalogueReady()) {
+    if (!list) {
       return [];
     }
 
-    return list.filter(
-      registration => !this.eventService.getById(registration.eventId)
-    );
+    return list
+      .map(registration => this.resolveEntry(registration))
+      .filter(entry => !entry.category);
   });
+
+  private resolveEntry(registration: ParticipantEvent): RegistrationEntry {
+    const event = this.eventService.getById(registration.eventId);
+
+    return {
+      registration,
+      event,
+      name: registration.eventName ?? event?.name ?? 'Event not in the current event list',
+      category: registration.category ?? event?.category,
+      mode: registration.mode ?? event?.mode,
+      categoryKnown: !!(registration.category ?? event?.category),
+    };
+  }
 
   /** Active backend events this participant has no registration row for. */
   readonly availableEvents = computed<Event[]>(() => {
@@ -274,11 +303,15 @@ export class Participants implements OnInit {
     return this.eventService.activeEvents().filter(event => !taken.has(event.id));
   });
 
-  /** The backend answered and there is genuinely nothing registered. */
+  /**
+   * The backend answered and there is no ACTIVE registration. Cancelled rows may
+   * still exist (and stay listed for Reactivate), but they are not registrations.
+   */
   readonly noRegisteredEvents = computed(() => {
     const list = this.registrations();
 
-    return list !== null && list.length === 0;
+    return list !== null &&
+      !list.some(registration => registration.registrationStatus === 'REGISTERED');
   });
 
   // ---------------------------------------------------------
@@ -414,7 +447,7 @@ export class Participants implements OnInit {
     this.editStandard.set(participant.standard);
     this.saveError.set('');
     this.saveErrorCode.set('');
-    this.saveSuccess.set('');
+    this.clearSaveSuccess();
     this.editing.set(true);
   }
 
@@ -469,7 +502,7 @@ export class Participants implements OnInit {
     this.saving.set(true);
     this.saveError.set('');
     this.saveErrorCode.set('');
-    this.saveSuccess.set('');
+    this.clearSaveSuccess();
 
     const changes: EditableParticipantFields = {
       fullName: this.editName(),
@@ -483,28 +516,126 @@ export class Participants implements OnInit {
     this.saving.set(false);
 
     if (!result.success) {
+      const message = this.describeSaveFailure(result.errorCode, result.errors);
+
       this.saveErrorCode.set(result.errorCode ?? '');
-      this.saveError.set(this.describeSaveFailure(result.errorCode, result.errors));
+      this.saveError.set(message);
+      this.notifications.error(
+        result.errorCode === 'SOURCE_ROW_IDENTITY_UNVERIFIED'
+          ? 'Source identity could not be verified'
+          : 'The participant could not be updated',
+        message
+      );
       return;
     }
 
     this.editing.set(false);
 
-    const persisted = await this.participantService.loadParticipant(participant.id);
+    // Re-read the stored record and its registrations so the panel shows the
+    // backend version rather than the write response alone.
+    const [persisted] = await Promise.all([
+      this.participantService.loadParticipant(participant.id),
+      this.reloadRegistrations(participant.id),
+    ]);
 
     if (persisted) {
       this.participantService.replaceParticipant(persisted);
-      this.saveSuccess.set(
-        `${persisted.fullName} was saved by the backend at version ${persisted.version}.`
-      );
+    }
+
+    const version =
+      persisted?.version ?? result.participant?.version ?? participant.version;
+
+    const writeBack = this.describeSourceWriteBack(result.sourceWriteBack);
+
+    this.saveSuccess.set('Updated in Nakshatra');
+    this.saveVersion.set(version);
+    this.saveWriteBackNote.set(writeBack.label);
+    this.saveWriteBackDetail.set(writeBack.detail);
+    this.saveReadBackNote.set(
+      persisted ? '' : 'The saved record could not be read back; refresh to confirm.'
+    );
+
+    const toastDetail = [writeBack.label, writeBack.detail].filter(Boolean).join(' — ');
+
+    if (writeBack.label && result.sourceWriteBack?.status !== 'UPDATED') {
+      this.notifications.warning('Updated in Nakshatra', toastDetail);
+    } else {
+      this.notifications.success('Updated in Nakshatra', toastDetail || undefined);
+    }
+  }
+
+  /**
+   * Describes whether the backend also wrote a participant edit back to the
+   * source Google Sheet. An absent report makes no claim either way.
+   */
+  private describeSourceWriteBack(
+    writeBack: SourceWriteBackResult | undefined
+  ): { label: string; detail: string } {
+    if (!writeBack) {
+      return { label: '', detail: '' };
+    }
+
+    switch (writeBack.status) {
+      case 'UPDATED':
+        return { label: 'Google Sheet updated', detail: '' };
+
+      case 'SKIPPED':
+      case 'FAILED':
+        return { label: 'Google Sheet not updated', detail: writeBack.message ?? '' };
+
+      case 'UNVERIFIED':
+        return { label: 'Source identity could not be verified', detail: writeBack.message ?? '' };
+
+      default:
+        return { label: '', detail: '' };
+    }
+  }
+
+  /**
+   * Toasts the outcome of a successful registration write, including whether
+   * the backend wrote the change back to the Google Sheet. An absent report
+   * makes no sheet claim.
+   */
+  private notifyRegistrationSuccess(
+    message: string,
+    writeBack: SourceWriteBackResult | undefined
+  ): void {
+    if (!writeBack) {
+      this.notifications.success(message);
       return;
     }
 
-    this.saveSuccess.set(
-      `The backend saved this participant at version ${
-        result.participant?.version ?? participant.version
-      }, but the saved record could not be read back. Refresh to confirm.`
-    );
+    switch (writeBack.status) {
+      case 'UPDATED':
+        this.notifications.success(message, 'Google Sheet updated.');
+        return;
+
+      case 'SKIPPED':
+        this.notifications.success(
+          message,
+          'Registration updated in Nakshatra, but the Google Sheet was not changed.'
+        );
+        return;
+
+      case 'FAILED':
+        this.notifications.warning(
+          message,
+          writeBack.message
+            ?? 'Registration updated in Nakshatra, but the Google Sheet write-back failed.'
+        );
+        return;
+
+      case 'UNVERIFIED':
+        this.notifications.warning(
+          message,
+          writeBack.message
+            ?? 'Registration updated in Nakshatra, but the Google Sheet update could not be verified.'
+        );
+        return;
+
+      default:
+        this.notifications.success(message);
+    }
   }
 
   // ---------------------------------------------------------
@@ -544,17 +675,9 @@ export class Participants implements OnInit {
       event.id
     );
 
-    await this.reloadRegistrations(participant.id);
-
-    this.registrationBusy.set(false);
-
-    if (!result.success) {
-      this.registrationError.set(this.describeFailure(result.errors));
-      return;
+    if (await this.finishRegistrationWrite(participant.id, result, `Registered for ${event.name}.`)) {
+      this.pendingEventId.set('');
     }
-
-    this.pendingEventId.set('');
-    this.registrationSuccess.set(`Registered for ${event.name}.`);
   }
 
   async cancelEvent(registration: ParticipantEvent): Promise<void> {
@@ -579,16 +702,11 @@ export class Participants implements OnInit {
       registration.eventId
     );
 
-    await this.reloadRegistrations(participant.id);
-
-    this.registrationBusy.set(false);
-
-    if (!result.success) {
-      this.registrationError.set(this.describeFailure(result.errors));
-      return;
-    }
-
-    this.registrationSuccess.set(`Registration cancelled for ${eventName}.`);
+    await this.finishRegistrationWrite(
+      participant.id,
+      result,
+      `Registration cancelled for ${eventName}.`
+    );
   }
 
   async reactivateEvent(registration: ParticipantEvent): Promise<void> {
@@ -613,16 +731,39 @@ export class Participants implements OnInit {
       registration.eventId
     );
 
-    await this.reloadRegistrations(participant.id);
+    await this.finishRegistrationWrite(
+      participant.id,
+      result,
+      `Registration restored for ${eventName}.`
+    );
+  }
+
+  /**
+   * Common tail of add / cancel / reactivate. On success the service has
+   * already re-read this participant's registrations, so the list is rendered
+   * from that refreshed cache (a fresh request is issued only if that refresh
+   * did not land). Returns whether the backend accepted the write.
+   */
+  private async finishRegistrationWrite(
+    participantId: string,
+    result: RegistrationResult,
+    successMessage: string
+  ): Promise<boolean> {
+    await this.reloadRegistrations(participantId, false);
 
     this.registrationBusy.set(false);
 
     if (!result.success) {
-      this.registrationError.set(this.describeFailure(result.errors));
-      return;
+      const detail = this.describeFailure(result.errors);
+
+      this.registrationError.set(detail);
+      this.notifications.error('Event participation could not be changed.', detail);
+      return false;
     }
 
-    this.registrationSuccess.set(`Registration restored for ${eventName}.`);
+    this.registrationSuccess.set(successMessage);
+    this.notifyRegistrationSuccess(successMessage, result.sourceWriteBack);
+    return true;
   }
 
   // ---------------------------------------------------------
@@ -650,8 +791,10 @@ export class Participants implements OnInit {
   }
 
   /** Human event name; never the raw event id. */
-  eventName(eventId: string): string {
-    return this.eventService.getById(eventId)?.name ?? 'the event';
+  eventName(eventId: string, registration?: ParticipantEvent): string {
+    return registration?.eventName
+      ?? this.eventService.getById(eventId)?.name
+      ?? 'the event';
   }
 
   /** Source and import information the backend supplies for the record. */
@@ -698,10 +841,18 @@ export class Participants implements OnInit {
     this.detailError.set('');
     this.saveError.set('');
     this.saveErrorCode.set('');
-    this.saveSuccess.set('');
+    this.clearSaveSuccess();
     this.registrationError.set('');
     this.registrationSuccess.set('');
     this.pendingEventId.set('');
+  }
+
+  private clearSaveSuccess(): void {
+    this.saveSuccess.set('');
+    this.saveVersion.set(null);
+    this.saveWriteBackNote.set('');
+    this.saveWriteBackDetail.set('');
+    this.saveReadBackNote.set('');
   }
 
   private async reloadParticipant(participantId: string): Promise<void> {
@@ -717,13 +868,13 @@ export class Participants implements OnInit {
     this.participantService.replaceParticipant(fresh);
   }
 
-  private async reloadRegistrations(participantId: string): Promise<void> {
+  private async reloadRegistrations(participantId: string, force = true): Promise<void> {
     this.registrationsLoading.set(true);
     this.registrationsError.set('');
 
     const result = await this.participantEventService.loadParticipantEvents(
       participantId,
-      true
+      force
     );
 
     this.registrationsLoading.set(false);

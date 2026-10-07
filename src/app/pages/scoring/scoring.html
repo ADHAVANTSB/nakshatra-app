@@ -1,1 +1,181 @@
-<div class="scoring-page"><div class="page-header"><span class="eyebrow">JUDGING</span><h1>Scoring</h1><p>Record draft or final judge scores for valid event entries.</p></div><div class="controls"><select [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)" [disabled]="loading() || eventsLoading()"><option value="">Select an active event</option>@for (event of events(); track event.id) { @if (event.status === 'ACTIVE') { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option> } }</select><input placeholder="Search name, code, or home" [ngModel]="search()" (ngModelChange)="setSearch($event)" [disabled]="loading() || targetsLoading()" /></div>@if (eventsLoading()) { <div class="alert" role="status">Loading the event catalogue from the backend…</div> } @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span></div> } @if (loadError()) { <div class="alert error" role="alert"><strong>Participant records could not be loaded.</strong><span>{{ loadError() }}</span></div> } @if (registrationError()) { <div class="alert error" role="alert"><strong>Registrations could not be loaded.</strong><span>{{ registrationError() }}</span></div> } @if (errors().length) { <div class="alert error" role="alert"><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> } @if (message()) { <div class="alert success">✓ {{ message() }}</div> } @if (selectedEvent(); as event) { <div class="summary"><strong>{{ event.name }}</strong><span>{{ event.category }} · {{ modeLabel(event) }}</span><small>Attendance is context only; it is not required to score.</small></div>@if (loading() || targetsLoading()) { <div class="empty" role="status">Loading registered entries…</div> } @else if (targets().length) { <div class="score-list">@for (target of targets(); track target.participant?.id ?? target.team?.id) { <div class="score-card"><div><strong>{{ targetName(target) }}</strong><span>{{ target.reference }}</span>@if (target.homeLabel) { <small>{{ target.homeLabel }}</small> }@if (target.participant) { <small>Attendance: {{ target.attendance?.status ?? 'Not marked' }}</small> }</div><div class="score-details">@if (target.score?.status === 'FINALIZED') { <div class="final">Final · {{ target.score?.value }}</div> } @else { <input #value type="number" [value]="target.score?.value ?? ''" placeholder="Score" /><button (click)="save(event, target, value.value, false)">Save draft</button><button class="finalize" (click)="save(event, target, value.value, true)">Finalize</button> } @if (target.score; as score) { <small class="audit">{{ score.status }} · v{{ score.version }} · Updated by {{ score.updatedBy }}</small> }</div></div> }</div> } @else { <div class="empty">No registered, eligible {{ event.mode === 'SOLO' ? 'participants' : 'teams' }} were returned for this event.</div> } } @else { <div class="empty">Select an event to begin scoring.</div> }</div>
+<!--
+  Scoring page.
+
+  A score whose backend status is FINALIZED renders read-only: no input, no
+  draft button, no finalize button. Write outcomes are reported by the shell
+  toast outlet, so a rejected save never replaces this page and the value the
+  judge typed stays in the input.
+-->
+
+<div class="scoring-page">
+
+  <div class="page-header">
+    <span class="eyebrow">JUDGING</span>
+    <h1>Scoring</h1>
+    <p>Record draft or final judge scores for valid event entries.</p>
+  </div>
+
+  <div class="controls">
+
+    <select
+      [ngModel]="selectedEventId()"
+      (ngModelChange)="setEvent($event)"
+      [disabled]="loading() || eventsLoading()">
+      <option value="">Select an active event</option>
+      @for (event of events(); track event.id) {
+        @if (event.status === 'ACTIVE') {
+          <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option>
+        }
+      }
+    </select>
+
+    <input
+      placeholder="Search name, code, or home"
+      [ngModel]="search()"
+      (ngModelChange)="setSearch($event)"
+      [disabled]="loading() || targetsLoading()" />
+
+  </div>
+
+  @if (eventsLoading()) {
+    <div class="alert" role="status">Loading the event catalogue from the backend…</div>
+  }
+
+  @if (eventsError()) {
+    <div class="alert error" role="alert">
+      <strong>Events could not be loaded.</strong>
+      <span>{{ eventsError() }}</span>
+    </div>
+  }
+
+  @if (loadError()) {
+    <div class="alert error" role="alert">
+      <strong>Participant records could not be loaded.</strong>
+      <span>{{ loadError() }}</span>
+    </div>
+  }
+
+  @if (registrationError()) {
+    <div class="alert error" role="alert">
+      <strong>Registrations could not be loaded.</strong>
+      <span>{{ registrationError() }}</span>
+    </div>
+  }
+
+  @if (selectedEvent(); as event) {
+
+    <div class="summary">
+      <strong>{{ event.name }}</strong>
+      <span>{{ event.category }} · {{ modeLabel(event) }}</span>
+      <small>Attendance is context only; it is not required to score.</small>
+    </div>
+
+    <!--
+      A failed read keeps the registrations error above as its state. Rendering
+      an empty list here would read as "0 entries", which the backend never said.
+    -->
+    <!--
+      Entry is blocked until persisted scores (and, for group events, teams)
+      are loaded: blank inputs over a failed read would let a judge overwrite a
+      score they cannot see.
+    -->
+    @if (loading() || targetsLoading()) {
+      <div class="empty" role="status">Loading registered entries…</div>
+    } @else if (registrationsFailed()) {
+      <!-- The registrations error above is the state. -->
+    } @else if (scoresState().status === 'ERROR') {
+      <div class="alert error" role="alert">
+        <strong>Unable to load scores.</strong>
+        @if (scoresState().error) {
+          <span>{{ scoresState().error }}</span>
+        }
+        <button type="button" (click)="retryScores()">Retry</button>
+      </div>
+    } @else if (!scoresReady()) {
+      <div class="empty" role="status">Loading scores…</div>
+    } @else if (teamsFailed()) {
+      <div class="alert error" role="alert">
+        <strong>Unable to load teams.</strong>
+        @if (teamsState().error) {
+          <span>{{ teamsState().error }}</span>
+        }
+        <button type="button" (click)="retryTeams()">Retry</button>
+      </div>
+    } @else if (teamsPending()) {
+      <div class="empty" role="status">Loading teams…</div>
+    } @else if (targets().length > 0) {
+
+      @if (scoresRefreshing()) {
+        <div class="alert" role="status">Refreshing scores…</div>
+      }
+
+      <div class="score-list">
+        @for (target of targets(); track target.key) {
+
+          <div class="score-card">
+
+            <div>
+              <strong>{{ targetName(target) }}</strong>
+              <span>{{ target.reference }}</span>
+              @if (target.homeLabel) {
+                <small>{{ target.homeLabel }}</small>
+              }
+              @if (target.participant) {
+                <small>Attendance: {{ target.attendance?.status ?? 'Not marked' }}</small>
+              }
+            </div>
+
+            <div class="score-details">
+
+              @if (isFinalized(target)) {
+                <!-- Locked by the backend: nothing here can be edited or re-sent. -->
+                <div class="final">Final · {{ target.score?.value }}</div>
+              } @else {
+
+                <input
+                  #scoreValue
+                  type="number"
+                  [value]="target.score?.value ?? ''"
+                  placeholder="Score"
+                  [disabled]="isLocked(target)" />
+
+                <button
+                  type="button"
+                  [disabled]="isLocked(target)"
+                  (click)="saveDraft(event, target, scoreValue.value)">
+                  Save draft
+                </button>
+
+                <button
+                  type="button"
+                  class="finalize"
+                  [disabled]="isLocked(target)"
+                  (click)="finalize(event, target, scoreValue.value)">
+                  Finalize
+                </button>
+
+              }
+
+              <!-- Audit line uses the status, version and author the backend returned. -->
+              @if (target.score; as score) {
+                <small class="audit">{{ scoreStatusLabel(score) }} · Updated by {{ score.updatedBy }}</small>
+              } @else {
+                <small class="audit">No score recorded yet</small>
+              }
+
+            </div>
+
+          </div>
+
+        }
+      </div>
+
+    } @else {
+      <div class="empty">{{ emptyState() }}</div>
+    }
+
+  } @else {
+    <div class="empty">Select an event to begin scoring.</div>
+  }
+
+</div>

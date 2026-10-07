@@ -1,44 +1,161 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
-  Event,
   Participant,
   Team,
   TeamMember,
-  TeamStatus,
   TeamValidationError,
   TeamValidationResult
 } from '../../models';
 
+import { ApiClientService } from '../api/api-client.service';
 import { EventService } from '../events/event.service';
 import { ParticipantEventService } from '../events/participant-event.service';
 import { ParticipantService } from '../participants/participant.service';
 
+export type TeamLoadStatus = 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR';
+
+export interface TeamLoadState {
+  status: TeamLoadStatus;
+  error: string;
+}
+
+export interface TeamWriteResult {
+  success: boolean;
+  team?: Team;
+  errors: string[];
+  errorCode?: string;
+}
+
+const IDLE: TeamLoadState = { status: 'IDLE', error: '' };
+
+/**
+ * Teams and team members for group events.
+ *
+ * Teams are persisted by the backend. This service holds a per-event read cache
+ * filled by `listTeams(eventId)` and refreshed after every `createTeam`,
+ * `addTeamMember` and `removeTeamMember`; it never keeps a second team dataset
+ * and never reports a write as successful unless the backend accepted it.
+ *
+ * The validation methods are pure rules evaluated against backend data so the
+ * UI can explain why a member or team is not admissible before a request.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class TeamService {
+  private readonly apiClient = inject(ApiClientService);
+  private readonly eventService = inject(EventService);
+  private readonly participantService = inject(ParticipantService);
+  private readonly participantEventService = inject(ParticipantEventService);
 
   private readonly teams = signal<Team[]>([]);
   private readonly teamMembers = signal<TeamMember[]>([]);
+  private readonly loadStates = signal<Record<string, TeamLoadState>>({});
+
+  /** In-flight reads, so concurrent callers share one request per event. */
+  private readonly pending = new Map<string, Promise<boolean>>();
 
   readonly teams$ = this.teams.asReadonly();
   readonly teamMembers$ = this.teamMembers.asReadonly();
 
   readonly activeTeams = computed(() =>
-    this.teams().filter(team =>
-      team.status !== 'CANCELLED'
-    )
+    this.teams().filter(team => team.status !== 'CANCELLED')
   );
 
-  constructor(
-    private readonly eventService: EventService,
-    private readonly participantService: ParticipantService,
-    private readonly participantEventService: ParticipantEventService
-  ) {}
+  // ---------------------------------------------------------
+  // BACKEND READS
+  // ---------------------------------------------------------
+
+  /** Load state for one event's teams; distinguishes empty from failed. */
+  loadState(eventId: string): TeamLoadState {
+    return this.loadStates()[eventId] ?? IDLE;
+  }
+
+  /**
+   * Reads persisted teams for one event. Repeated calls reuse the cached result
+   * unless `force` is set, and concurrent calls share a single request.
+   */
+  loadTeams(eventId: string, force = false): Promise<boolean> {
+    const inFlight = this.pending.get(eventId);
+
+    if (inFlight) {
+      return inFlight;
+    }
+
+    if (!force && this.loadState(eventId).status === 'LOADED') {
+      return Promise.resolve(true);
+    }
+
+    const request = this.fetchTeams(eventId).finally(() => {
+      this.pending.delete(eventId);
+    });
+
+    this.pending.set(eventId, request);
+    return request;
+  }
+
+  /** Re-reads one team from the backend and replaces it in the cache. */
+  async refreshTeam(teamId: string): Promise<boolean> {
+    const response = await this.apiClient.getTeam(teamId);
+
+    if (!response.success) {
+      return false;
+    }
+
+    this.mergeTeam(response.data.team, response.data.members);
+    return true;
+  }
+
+  private async fetchTeams(eventId: string): Promise<boolean> {
+    this.setLoadState(eventId, { status: 'LOADING', error: '' });
+
+    const response = await this.apiClient.listTeams(eventId);
+
+    if (!response.success) {
+      this.setLoadState(eventId, { status: 'ERROR', error: response.error.message });
+      return false;
+    }
+
+    const teamIds = new Set(response.data.teams.map(team => team.id));
+    const staleTeamIds = new Set(
+      this.teams().filter(team => team.eventId === eventId).map(team => team.id)
+    );
+
+    this.teams.update(current => [
+      ...current.filter(team => team.eventId !== eventId),
+      ...response.data.teams,
+    ]);
+    this.teamMembers.update(current => [
+      ...current.filter(
+        member => !teamIds.has(member.teamId) && !staleTeamIds.has(member.teamId)
+      ),
+      ...response.data.members,
+    ]);
+
+    this.setLoadState(eventId, { status: 'LOADED', error: '' });
+    return true;
+  }
+
+  private mergeTeam(team: Team, members: TeamMember[]): void {
+    this.teams.update(current => {
+      const exists = current.some(item => item.id === team.id);
+      return exists
+        ? current.map(item => (item.id === team.id ? team : item))
+        : [...current, team];
+    });
+    this.teamMembers.update(current => [
+      ...current.filter(member => member.teamId !== team.id),
+      ...members,
+    ]);
+  }
+
+  private setLoadState(eventId: string, state: TeamLoadState): void {
+    this.loadStates.update(current => ({ ...current, [eventId]: state }));
+  }
 
   // ---------------------------------------------------------
-  // TEAM QUERIES
+  // CACHE QUERIES
   // ---------------------------------------------------------
 
   getAll(): Team[] {
@@ -67,364 +184,138 @@ export class TeamService {
     return this.getMembers(teamId).length;
   }
 
-  getParticipantTeam(
-    participantId: string,
-    eventId: string
-  ): Team | undefined {
-
-    const eventTeams = this.getTeamsByEvent(eventId);
-
-    for (const team of eventTeams) {
-      const memberExists = this.getMembers(team.id)
-        .some(member => member.participantId === participantId);
-
-      if (memberExists) {
-        return team;
-      }
-    }
-
-    return undefined;
+  getParticipantTeam(participantId: string, eventId: string): Team | undefined {
+    return this.getTeamsByEvent(eventId).find(team =>
+      this.getMembers(team.id).some(member => member.participantId === participantId)
+    );
   }
 
   // ---------------------------------------------------------
-  // TEAM CREATION
+  // BACKEND WRITES
   // ---------------------------------------------------------
 
-  createTeam(
-    eventId: string,
-    name: string,
-    createdBy = 'ADMIN'
-  ): TeamValidationResult & { team?: Team } {
-
+  async createTeam(eventId: string, name: string): Promise<TeamWriteResult> {
     const event = this.eventService.getById(eventId);
+    const trimmed = name.trim();
 
     if (!event) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_FOUND',
-            message: 'Event not found.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Event not found.'] };
     }
 
     if (event.mode !== 'GROUP') {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_GROUP',
-            message: 'Teams can only be created for group events.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Teams can only be created for group events.'] };
     }
 
     if (event.status !== 'ACTIVE') {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_ACTIVE',
-            message: 'Teams cannot be created for an inactive or cancelled event.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Teams cannot be created for an inactive or cancelled event.'] };
     }
 
-    const now = new Date().toISOString();
+    if (!trimmed) {
+      return { success: false, errors: ['Enter a team name.'] };
+    }
 
-    const team: Team = {
-      id: `TEAM-${Date.now()}`,
-      teamCode: `NK26-T-${String(this.teams().length + 1).padStart(4, '0')}`,
-      eventId,
-      name: name.trim(),
-      status: 'DRAFT',
-      validationStatus: 'NOT_VALIDATED',
-      version: 1,
-      createdAt: now,
-      createdBy,
-      updatedAt: now,
-      updatedBy: createdBy
-    };
+    const response = await this.apiClient.createTeam({ eventId, name: trimmed });
 
-    this.teams.update(current => [
-      ...current,
-      team
-    ]);
+    if (!response.success) {
+      return { success: false, errors: [response.error.message], errorCode: response.error.code };
+    }
 
-    return {
-      valid: true,
-      errors: [],
-      warnings: [],
-      team
-    };
+    await this.loadTeams(eventId, true);
+
+    return { success: true, team: this.getById(response.data.team.id) ?? response.data.team, errors: [] };
   }
 
-  // ---------------------------------------------------------
-  // ADD MEMBER
-  // ---------------------------------------------------------
-
-  addMember(
-    teamId: string,
-    participantId: string,
-    addedBy = 'ADMIN'
-  ): TeamValidationResult & { member?: TeamMember } {
-
+  async addMember(teamId: string, participantId: string): Promise<TeamWriteResult> {
     const team = this.getById(teamId);
 
     if (!team) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'TEAM_NOT_FOUND',
-            message: 'Team not found.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Team not found.'] };
     }
 
-    const participant =
-      this.participantService.getParticipantById(participantId);
+    const participant = this.participantService.getParticipantById(participantId);
 
     if (!participant) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'PARTICIPANT_NOT_FOUND',
-            message: 'Participant not found.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Participant not found.'] };
     }
 
-    const validation =
-      this.validateMember(team, participant);
+    const validation = this.validateMember(team, participant);
 
     if (!validation.valid) {
-      return validation;
+      return { success: false, errors: validation.errors.map(error => error.message) };
     }
 
-    const now = new Date().toISOString();
+    const response = await this.apiClient.addTeamMember({ teamId, participantId });
 
-    const member: TeamMember = {
-      id: `TM-${Date.now()}`,
-      teamId,
-      participantId,
-      status: 'ACTIVE',
-      joinedAt: now,
-      joinedBy: addedBy
-    };
+    if (!response.success) {
+      return { success: false, errors: [response.error.message], errorCode: response.error.code };
+    }
 
-    this.teamMembers.update(current => [
-      ...current,
-      member
-    ]);
+    await this.loadTeams(team.eventId, true);
 
-    this.touchTeam(teamId, addedBy);
-
-    return {
-      valid: true,
-      errors: [],
-      warnings: [],
-      member
-    };
+    return { success: true, team: this.getById(teamId), errors: [] };
   }
 
-  // ---------------------------------------------------------
-  // REMOVE MEMBER
-  // ---------------------------------------------------------
-
-  removeMember(
-    teamId: string,
-    participantId: string,
-    removedBy = 'ADMIN'
-  ): TeamValidationResult {
-
+  async removeMember(teamId: string, participantId: string): Promise<TeamWriteResult> {
     const team = this.getById(teamId);
 
     if (!team) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'TEAM_NOT_FOUND',
-            message: 'Team not found.'
-          }
-        ],
-        warnings: []
-      };
+      return { success: false, errors: ['Team not found.'] };
     }
 
-    if (
-      team.status === 'LOCKED' ||
-      team.status === 'CANCELLED'
-    ) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'TEAM_LOCKED',
-            message: 'Locked or cancelled teams cannot be modified.'
-          }
-        ],
-        warnings: []
-      };
+    if (team.status === 'LOCKED' || team.status === 'CANCELLED') {
+      return { success: false, errors: ['Locked or cancelled teams cannot be modified.'] };
     }
 
-    const member = this.teamMembers().find(item =>
-      item.teamId === teamId &&
-      item.participantId === participantId &&
-      item.status === 'ACTIVE'
-    );
-
-    if (!member) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'PARTICIPANT_NOT_FOUND',
-            message: 'Participant is not currently part of this team.'
-          }
-        ],
-        warnings: []
-      };
+    if (!this.getMembers(teamId).some(member => member.participantId === participantId)) {
+      return { success: false, errors: ['Participant is not currently part of this team.'] };
     }
 
-    const now = new Date().toISOString();
+    const response = await this.apiClient.removeTeamMember({ teamId, participantId });
 
-    this.teamMembers.update(current =>
-      current.map(item =>
-        item.id === member.id
-          ? {
-              ...item,
-              status: 'REMOVED',
-              removedAt: now,
-              removedBy
-            }
-          : item
-      )
-    );
+    if (!response.success) {
+      return { success: false, errors: [response.error.message], errorCode: response.error.code };
+    }
 
-    this.touchTeam(teamId, removedBy);
+    await this.loadTeams(team.eventId, true);
 
-    return {
-      valid: true,
-      errors: [],
-      warnings: []
-    };
+    return { success: true, team: this.getById(teamId), errors: [] };
   }
 
   // ---------------------------------------------------------
-  // MEMBER VALIDATION
+  // VALIDATION (pure rules over backend data)
   // ---------------------------------------------------------
 
-  validateMember(
-    team: Team,
-    participant: Participant
-  ): TeamValidationResult {
-
+  validateMember(team: Team, participant: Participant): TeamValidationResult {
     const errors: TeamValidationError[] = [];
-    const warnings: string[] = [];
-
     const event = this.eventService.getById(team.eventId);
 
     if (!event) {
-      errors.push({
-        code: 'EVENT_NOT_FOUND',
-        message: 'Event not found.',
-        teamId: team.id
-      });
-
       return {
         valid: false,
-        errors,
-        warnings
+        errors: [{ code: 'EVENT_NOT_FOUND', message: 'Event not found.', teamId: team.id }],
+        warnings: []
       };
     }
 
     if (event.mode !== 'GROUP') {
-      errors.push({
-        code: 'EVENT_NOT_GROUP',
-        message: 'This event is not a group event.',
-        teamId: team.id
-      });
+      errors.push({ code: 'EVENT_NOT_GROUP', message: 'This event is not a group event.', teamId: team.id });
     }
 
     if (event.status !== 'ACTIVE') {
-      errors.push({
-        code: 'EVENT_NOT_ACTIVE',
-        message: 'Teams can only be modified for an active event.',
-        teamId: team.id
-      });
+      errors.push({ code: 'EVENT_NOT_ACTIVE', message: 'Teams can only be modified for an active event.', teamId: team.id });
     }
 
     if (team.status === 'LOCKED') {
-      errors.push({
-        code: 'TEAM_LOCKED',
-        message: 'This team is locked.',
-        teamId: team.id
-      });
+      errors.push({ code: 'TEAM_LOCKED', message: 'This team is locked.', teamId: team.id });
     }
 
     if (team.status === 'CANCELLED') {
-      errors.push({
-        code: 'TEAM_CANCELLED',
-        message: 'This team has been cancelled.',
-        teamId: team.id
-      });
+      errors.push({ code: 'TEAM_CANCELLED', message: 'This team has been cancelled.', teamId: team.id });
     }
 
-    if (participant.eligibilityStatus !== 'ELIGIBLE') {
-      errors.push({
-        code: 'PARTICIPANT_NOT_ELIGIBLE',
-        message: `${participant.fullName} is not eligible.`,
-        participantId: participant.id,
-        teamId: team.id
-      });
-    }
+    errors.push(...this.eligibilityErrors(team, participant));
 
-    if (
-      participant.level &&
-      event.eligibleLevels.length > 0 &&
-      !event.eligibleLevels.includes(participant.level)
-    ) {
-      errors.push({
-        code: 'PARTICIPANT_NOT_ELIGIBLE',
-        message:
-          `${participant.fullName} is not eligible for ${event.name}.`,
-        participantId: participant.id,
-        teamId: team.id
-      });
-    }
-
-    if (!this.participantEventService.isAlreadyRegistered(
-      participant.id,
-      event.id
-    )) {
-      errors.push({
-        code: 'PARTICIPANT_NOT_REGISTERED',
-        message:
-          `${participant.fullName} is not registered for ${event.name}.`,
-        participantId: participant.id,
-        teamId: team.id
-      });
-    }
-
-    const alreadyInTeam =
-      this.getMembers(team.id)
-        .some(member => member.participantId === participant.id);
-
-    if (alreadyInTeam) {
+    if (this.getMembers(team.id).some(member => member.participantId === participant.id)) {
       errors.push({
         code: 'PARTICIPANT_ALREADY_IN_TEAM',
         message: `${participant.fullName} is already in this team.`,
@@ -433,17 +324,12 @@ export class TeamService {
       });
     }
 
-    const participantTeam =
-      this.getParticipantTeam(participant.id, event.id);
+    const otherTeam = this.getParticipantTeam(participant.id, event.id);
 
-    if (
-      participantTeam &&
-      participantTeam.id !== team.id
-    ) {
+    if (otherTeam && otherTeam.id !== team.id) {
       errors.push({
         code: 'PARTICIPANT_ALREADY_IN_TEAM',
-        message:
-          `${participant.fullName} is already assigned to another team for this event.`,
+        message: `${participant.fullName} is already assigned to another team for this event.`,
         participantId: participant.id,
         teamId: team.id
       });
@@ -462,30 +348,16 @@ export class TeamService {
       });
     }
 
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings
-    };
+    return { valid: errors.length === 0, errors, warnings: [] };
   }
 
-  // ---------------------------------------------------------
-  // TEAM VALIDATION
-  // ---------------------------------------------------------
-
   validateTeam(teamId: string): TeamValidationResult {
-
     const team = this.getById(teamId);
 
     if (!team) {
       return {
         valid: false,
-        errors: [
-          {
-            code: 'TEAM_NOT_FOUND',
-            message: 'Team not found.'
-          }
-        ],
+        errors: [{ code: 'TEAM_NOT_FOUND', message: 'Team not found.' }],
         warnings: []
       };
     }
@@ -495,13 +367,7 @@ export class TeamService {
     if (!event) {
       return {
         valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_FOUND',
-            message: 'Event not found.',
-            teamId
-          }
-        ],
+        errors: [{ code: 'EVENT_NOT_FOUND', message: 'Event not found.', teamId }],
         warnings: []
       };
     }
@@ -509,13 +375,7 @@ export class TeamService {
     if (event.mode !== 'GROUP') {
       return {
         valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_GROUP',
-            message: 'This event is not a group event.',
-            teamId
-          }
-        ],
+        errors: [{ code: 'EVENT_NOT_GROUP', message: 'This event is not a group event.', teamId }],
         warnings: []
       };
     }
@@ -523,27 +383,16 @@ export class TeamService {
     if (event.status !== 'ACTIVE') {
       return {
         valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_ACTIVE',
-            message: 'This event is not currently active.',
-            teamId
-          }
-        ],
+        errors: [{ code: 'EVENT_NOT_ACTIVE', message: 'This event is not currently active.', teamId }],
         warnings: []
       };
     }
 
     const members = this.getMembers(teamId);
-
     const errors: TeamValidationError[] = [];
-    const warnings: string[] = [];
 
-    // Minimum team size
-    if (
-      event.minimumTeamSize !== undefined &&
-      members.length < event.minimumTeamSize
-    ) {
+    // Size limits are enforced only when the event actually configures them.
+    if (event.minimumTeamSize !== undefined && members.length < event.minimumTeamSize) {
       errors.push({
         code: 'TEAM_MINIMUM_SIZE_NOT_MET',
         message:
@@ -553,11 +402,7 @@ export class TeamService {
       });
     }
 
-    // Maximum team size
-    if (
-      event.maximumTeamSize !== undefined &&
-      members.length > event.maximumTeamSize
-    ) {
+    if (event.maximumTeamSize !== undefined && members.length > event.maximumTeamSize) {
       errors.push({
         code: 'TEAM_MAXIMUM_SIZE_EXCEEDED',
         message:
@@ -567,65 +412,32 @@ export class TeamService {
       });
     }
 
-    // Validate every member
     for (const member of members) {
-
-      const participant =
-        this.participantService.getParticipantById(
-          member.participantId
-        );
+      const participant = this.participantService.getParticipantById(member.participantId);
 
       if (!participant) {
         errors.push({
           code: 'PARTICIPANT_NOT_FOUND',
-          message: 'Team contains a participant that no longer exists.',
+          message: 'Team contains a participant that is not loaded.',
           participantId: member.participantId,
           teamId
         });
-
         continue;
       }
 
-      const memberValidation =
-        this.validateMemberWithoutDuplicateCheck(
-          team,
-          participant
-        );
-
-      errors.push(...memberValidation.errors);
-      warnings.push(...memberValidation.warnings);
+      errors.push(...this.eligibilityErrors(team, participant));
     }
 
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings
-    };
+    return { valid: errors.length === 0, errors, warnings: [] };
   }
 
-  private validateMemberWithoutDuplicateCheck(
-    team: Team,
-    participant: Participant
-  ): TeamValidationResult {
-
+  private eligibilityErrors(team: Team, participant: Participant): TeamValidationError[] {
     const event = this.eventService.getById(team.eventId);
+    const errors: TeamValidationError[] = [];
 
     if (!event) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'EVENT_NOT_FOUND',
-            message: 'Event not found.',
-            teamId: team.id
-          }
-        ],
-        warnings: []
-      };
+      return errors;
     }
-
-    const errors: TeamValidationError[] = [];
-    const warnings: string[] = [];
 
     if (participant.eligibilityStatus !== 'ELIGIBLE') {
       errors.push({
@@ -643,157 +455,21 @@ export class TeamService {
     ) {
       errors.push({
         code: 'PARTICIPANT_NOT_ELIGIBLE',
-        message:
-          `${participant.fullName} is not eligible for ${event.name}.`,
+        message: `${participant.fullName} is not eligible for ${event.name}.`,
         participantId: participant.id,
         teamId: team.id
       });
     }
 
-    if (!this.participantEventService.isAlreadyRegistered(
-      participant.id,
-      event.id
-    )) {
+    if (!this.participantEventService.isAlreadyRegistered(participant.id, event.id)) {
       errors.push({
         code: 'PARTICIPANT_NOT_REGISTERED',
-        message:
-          `${participant.fullName} is not registered for ${event.name}.`,
+        message: `${participant.fullName} is not registered for ${event.name}.`,
         participantId: participant.id,
         teamId: team.id
       });
     }
 
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings
-    };
-  }
-
-  // ---------------------------------------------------------
-  // TEAM STATUS
-  // ---------------------------------------------------------
-
-  markReady(
-    teamId: string,
-    updatedBy = 'ADMIN'
-  ): TeamValidationResult {
-
-    const validation = this.validateTeam(teamId);
-
-    if (!validation.valid) {
-      return validation;
-    }
-
-    this.updateTeamStatus(
-      teamId,
-      'READY',
-      updatedBy
-    );
-
-    return validation;
-  }
-
-  lockTeam(
-    teamId: string,
-    updatedBy = 'ADMIN'
-  ): TeamValidationResult {
-
-    const validation = this.validateTeam(teamId);
-
-    if (!validation.valid) {
-      return validation;
-    }
-
-    this.updateTeamStatus(
-      teamId,
-      'LOCKED',
-      updatedBy
-    );
-
-    return validation;
-  }
-
-  cancelTeam(
-    teamId: string,
-    updatedBy = 'ADMIN'
-  ): TeamValidationResult {
-
-    const team = this.getById(teamId);
-
-    if (!team) {
-      return {
-        valid: false,
-        errors: [
-          {
-            code: 'TEAM_NOT_FOUND',
-            message: 'Team not found.'
-          }
-        ],
-        warnings: []
-      };
-    }
-
-    this.updateTeamStatus(
-      teamId,
-      'CANCELLED',
-      updatedBy
-    );
-
-    return {
-      valid: true,
-      errors: [],
-      warnings: []
-    };
-  }
-
-  private updateTeamStatus(
-    teamId: string,
-    status: TeamStatus,
-    updatedBy: string
-  ): void {
-
-    const now = new Date().toISOString();
-
-    this.teams.update(current =>
-      current.map(team =>
-        team.id === teamId
-          ? {
-              ...team,
-              status,
-              validationStatus:
-                status === 'READY' || status === 'LOCKED'
-                  ? 'PASSED'
-                  : team.validationStatus,
-              version: team.version + 1,
-              updatedAt: now,
-              updatedBy
-            }
-          : team
-      )
-    );
-  }
-
-  private touchTeam(
-    teamId: string,
-    updatedBy: string
-  ): void {
-
-    const now = new Date().toISOString();
-
-    this.teams.update(current =>
-      current.map(team =>
-        team.id === teamId
-          ? {
-              ...team,
-              status: 'DRAFT',
-              validationStatus: 'NOT_VALIDATED',
-              version: team.version + 1,
-              updatedAt: now,
-              updatedBy
-            }
-          : team
-      )
-    );
+    return errors;
   }
 }

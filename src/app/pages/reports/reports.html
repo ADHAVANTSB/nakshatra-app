@@ -5,16 +5,16 @@
     <div>
       <span class="eyebrow">OPERATIONS</span>
       <h1>Reports</h1>
-      <p>Read-only summaries derived from current Nakshatra records.</p>
+      <p>Read-only summaries and report rows produced by the Nakshatra backend.</p>
     </div>
 
     <div class="page-actions">
       <button
         type="button"
         class="secondary-button"
-        [disabled]="loading() || registrationsLoading()"
+        [disabled]="busy()"
         (click)="reload()">
-        {{ loading() || registrationsLoading() ? 'Reloading…' : 'Reload' }}
+        {{ busy() ? 'Reloading…' : 'Reload' }}
       </button>
     </div>
   </div>
@@ -51,90 +51,77 @@
     <select id="report-home" [ngModel]="homeId()" (ngModelChange)="setHome($event)">
       <option value="">All homes</option>
       @for (home of homes(); track home.id) {
-        <option [value]="home.id">{{ home.homeCode }} · {{ home.name }}</option>
+        <option [value]="home.id">{{ home.homeCode }} · {{ home.homeName }}</option>
       }
     </select>
+
+    @if (filterOptionsError()) {
+      <p role="status">{{ filterOptionsError() }}</p>
+    }
   </div>
 
-  <!-- REGISTRATION READ STATE -->
-  @if (registrationsLoading()) {
-    <div class="empty-state" role="status">
-      <h3>Loading registrations…</h3>
-      <p>Registrations are read per event from the backend. Registration figures are labelled as not loaded until that read completes, so a pending request is never shown as a count of zero.</p>
-    </div>
-  }
-
-  @if (registrationsError()) {
-    <div class="empty-state" role="alert">
-      <h3>Registrations could not be loaded</h3>
-      <p>{{ registrationsError() }}</p>
-      <p>Registration columns are therefore shown as not loaded rather than as zero.</p>
-      <p><button type="button" class="secondary-button" (click)="reload()">Retry</button></p>
-    </div>
-  }
-
-  <!-- LOADING / ERROR GATE -->
-  @if (loading()) {
-    <div class="empty-state" role="status">
-      <h3>Loading reports…</h3>
-      <p>Reading connected shelter homes and participant records from the Nakshatra backend.</p>
-    </div>
-  } @else if (error()) {
-    <div class="empty-state" role="alert">
-      <h3>Reports could not be loaded</h3>
-      <p>{{ error() }}</p>
-      <p>Shelter homes and participants are owned by the backend. Retry the read, or reconnect a shelter home Google Sheet from the Homes module.</p>
-      <p><button type="button" class="secondary-button" (click)="reload()">Retry</button></p>
-    </div>
-  } @else if (tab() === 'SUMMARY') {
+  @if (tab() === 'SUMMARY') {
 
     <!-- =========================================================
-         SUMMARY
+         SUMMARY (getDashboardSummary — not affected by the filters)
          ========================================================= -->
-    <div class="metric-grid">
-      <div class="metric">
-        <span>Homes</span>
-        <strong>{{ summary().homes }}</strong>
+    @if (summaryError()) {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>{{ summaryError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="retrySummary()">Retry</button></p>
       </div>
-      <div class="metric">
-        <span>Participants</span>
-        <strong>{{ summary().participants }}</strong>
+    } @else if (summaryPending()) {
+      <div class="empty-state" role="status">
+        <h3>Loading reports…</h3>
       </div>
-      <div class="metric">
-        <span>Events</span>
-        <strong>{{ summary().events }}</strong>
-        <small>{{ summary().activeEvents }} active</small>
+    } @else if (summary(); as counts) {
+      <div class="metric-grid">
+        <div class="metric">
+          <span>Homes</span>
+          <strong>{{ counts.homes }}</strong>
+          <small>Connected shelter homes</small>
+        </div>
+        <div class="metric">
+          <span>Participants</span>
+          <strong>{{ counts.participants }}</strong>
+          <small>Participant records imported by homes</small>
+        </div>
+        <div class="metric">
+          <span>Events</span>
+          <strong>{{ counts.events }}</strong>
+          <small>{{ counts.activeEvents }} active</small>
+        </div>
+        <div class="metric">
+          <span>Registrations</span>
+          <strong>{{ counts.registrations }}</strong>
+          <small>{{ counts.teams }} active teams</small>
+        </div>
+        <div class="metric">
+          <span>Attendance recorded</span>
+          <strong>{{ counts.attendance.recorded }}</strong>
+          <small>{{ counts.attendance.present }} present · {{ counts.attendance.absent }} absent</small>
+        </div>
+        <div class="metric">
+          <span>Finalized scores</span>
+          <strong>{{ counts.finalizedScores }}</strong>
+          <small>Finalized score submissions</small>
+        </div>
+        <div class="metric">
+          <span>Certificates</span>
+          <strong>{{ figure(certificateTotal()) }}</strong>
+          <small>{{ counts.certificates.generated }} generated · {{ counts.certificates.issued }} issued</small>
+        </div>
       </div>
-      <div class="metric">
-        <span>Registrations</span>
-        <strong>{{ registrationFigure(summary().registrations) }}</strong>
-        <small>{{ registrationsNote() }}</small>
-      </div>
-      <div class="metric">
-        <span>Active teams</span>
-        <strong>{{ summary().teams }}</strong>
-      </div>
-      <div class="metric">
-        <span>Attendance recorded</span>
-        <strong>{{ summary().attendance.recorded }}</strong>
-        <small>{{ summary().attendance.present }} present · {{ summary().attendance.absent }} absent</small>
-      </div>
-      <div class="metric">
-        <span>Finalized scores</span>
-        <strong>{{ summary().finalizedScores }}</strong>
-      </div>
-      <div class="metric">
-        <span>Certificates</span>
-        <strong>{{ summary().certificates.generated + summary().certificates.issued }}</strong>
-        <small>{{ summary().certificates.generated }} generated · {{ summary().certificates.issued }} issued</small>
-      </div>
-    </div>
 
-    @if (!homes().length) {
-      <div class="empty-state">
-        <h3>No shelter homes are connected yet</h3>
-        <p>Connect a shelter home Google Sheet from the Homes module. Once a home is connected, its imported participants flow into these summaries automatically.</p>
-      </div>
+      <p>The summary covers every home and event; the filters above apply to the Homes, Events and Participants tabs.</p>
+
+      @if (counts.homes === 0) {
+        <div class="empty-state">
+          <h3>No shelter homes are connected yet</h3>
+          <p>Connect a shelter home Google Sheet from the Homes module. Once a home is connected, its imported participants flow into these summaries automatically.</p>
+        </div>
+      }
     }
 
   } @else if (tab() === 'HOMES') {
@@ -142,18 +129,26 @@
     <!-- =========================================================
          HOMES
          ========================================================= -->
-    @if (!homes().length) {
-      <div class="empty-state">
-        <h3>No shelter homes are connected yet</h3>
-        <p>Connect one from the Homes module. Home reports are built from connected homes only.</p>
+    @if (homesView() === 'LOADING') {
+      <div class="empty-state" role="status">
+        <h3>Loading reports…</h3>
       </div>
-    } @else if (!homeReports().length) {
+    } @else if (homesView() === 'ERROR') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>{{ rowsError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (homesView() === 'MISSING') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>The backend did not return this report.</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (homesView() === 'EMPTY' || homesView() === 'FILTERED') {
       <div class="empty-state">
-        <h3>No shelter homes match the current filters</h3>
-        <p>Clear the Event or Home filter above to include every connected shelter home.</p>
-        <p>
-          <button type="button" class="secondary-button" (click)="setHome(''); setEvent('')">Clear filters</button>
-        </p>
+        <h3>No rows for this scope.</h3>
+        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
       </div>
     } @else {
       <div class="report-card table-wrapper">
@@ -171,26 +166,27 @@
             </tr>
           </thead>
           <tbody>
-            @for (report of homeReports(); track report.home.id) {
+            @for (row of homeRows(); track row.key) {
               <tr>
                 <td>
-                  <strong>{{ report.home.name }}</strong>
-                  <small>{{ report.home.homeCode }}</small>
+                  <strong>{{ row.name }}</strong>
+                  <small>{{ row.homeCode }}</small>
                 </td>
-                <td>{{ report.participants }}</td>
-                <td>{{ report.boys }} / {{ report.girls }}</td>
-                <td>{{ registrationFigure(report.registrations) }}</td>
-                <td>{{ report.teams }}</td>
+                <td>{{ figure(row.participants) }}</td>
+                <td>{{ figure(row.boys) }} / {{ figure(row.girls) }}</td>
+                <td>{{ figure(row.registrations) }}</td>
+                <td>{{ figure(row.teams) }}</td>
                 <td>
-                  {{ report.attendance.recorded }} recorded
-                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                  {{ figure(attendanceOf(row.attendance).recorded) }} recorded
+                  <small>{{ attendanceBreakdown(row.attendance) }}</small>
                 </td>
-                <td>{{ report.finalizedSoloScores }}</td>
-                <td>{{ report.participantCertificates }}</td>
+                <td>{{ figure(row.finalizedSoloScores) }}</td>
+                <td>{{ figure(row.participantCertificates) }}</td>
               </tr>
             }
           </tbody>
         </table>
+        <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
       </div>
     }
 
@@ -209,17 +205,32 @@
       </select>
     </div>
 
-    @if (!events().length) {
-      <div class="empty-state">
-        <h3>No events have been created yet</h3>
-        <p>Create an event and its categories from the Events module to build event reports.</p>
+    @if (eventsView() === 'LOADING') {
+      <div class="empty-state" role="status">
+        <h3>Loading reports…</h3>
       </div>
-    } @else if (!eventReports().length) {
+    } @else if (eventsView() === 'ERROR') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>{{ rowsError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (eventsView() === 'MISSING') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>The backend did not return this report.</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (eventsView() === 'EMPTY') {
       <div class="empty-state">
-        <h3>No events match the current filters</h3>
-        <p>Clear the Category, Event or Status filter above to include every event.</p>
+        <h3>No rows for this scope.</h3>
+        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
+      </div>
+    } @else if (eventsView() === 'FILTERED') {
+      <div class="empty-state">
+        <h3>No events match the selected status</h3>
         <p>
-          <button type="button" class="secondary-button" (click)="setCategory(''); setEvent(''); setEventStatus('')">Clear filters</button>
+          <button type="button" class="secondary-button" (click)="clearEventStatus()">Show all statuses</button>
         </p>
       </div>
     } @else {
@@ -238,29 +249,33 @@
             </tr>
           </thead>
           <tbody>
-            @for (report of eventReports(); track report.event.id) {
+            @for (row of eventRows(); track row.key) {
               <tr>
                 <td>
-                  <strong>{{ report.event.name }}</strong>
-                  <small>{{ report.event.eventCode }}</small>
+                  <strong>{{ row.name }}</strong>
+                  <small>{{ row.eventCode }}</small>
                 </td>
-                <td>{{ report.event.category }}</td>
+                <td>{{ row.category ?? '—' }}</td>
                 <td>
-                  {{ report.event.mode }}
-                  <small>{{ report.event.status }}</small>
+                  {{ row.mode ?? '—' }}
+                  <small>{{ row.status ?? '—' }}</small>
                 </td>
-                <td>{{ registrationFigure(report.registrations) }}</td>
-                <td>{{ report.teams ?? '—' }}</td>
+                <td>{{ figure(row.registrations) }}</td>
+                <td>{{ figure(row.teams) }}</td>
                 <td>
-                  {{ report.attendance.recorded }} recorded
-                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                  {{ figure(attendanceOf(row.attendance).recorded) }} recorded
+                  <small>{{ attendanceBreakdown(row.attendance) }}</small>
                 </td>
-                <td>{{ report.finalizedScores }}</td>
-                <td>{{ report.certificates.generated + report.certificates.issued }}</td>
+                <td>{{ figure(row.finalizedScores) }}</td>
+                <td>
+                  {{ figure(certificatesOf(row.certificates).generated) }} / {{ figure(certificatesOf(row.certificates).issued) }}
+                  <small>generated / issued</small>
+                </td>
               </tr>
             }
           </tbody>
         </table>
+        <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
       </div>
     }
 
@@ -279,17 +294,32 @@
         (ngModelChange)="setParticipantSearch($event)" />
     </div>
 
-    @if (!homes().length) {
-      <div class="empty-state">
-        <h3>No shelter homes are connected yet</h3>
-        <p>Connect one from the Homes module. Participant reports come from the records imported by each connected home.</p>
+    @if (participantsView() === 'LOADING') {
+      <div class="empty-state" role="status">
+        <h3>Loading reports…</h3>
       </div>
-    } @else if (!participantReports().length) {
+    } @else if (participantsView() === 'ERROR') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>{{ rowsError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (participantsView() === 'MISSING') {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>The backend did not return this report.</p>
+        <p><button type="button" class="secondary-button" (click)="retryRows()">Retry</button></p>
+      </div>
+    } @else if (participantsView() === 'EMPTY') {
       <div class="empty-state">
-        <h3>No participants match the current filters</h3>
-        <p>Adjust the Home or Event filter, or clear the participant search box to include every imported participant.</p>
+        <h3>No rows for this scope.</h3>
+        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
+      </div>
+    } @else if (participantsView() === 'FILTERED') {
+      <div class="empty-state">
+        <h3>No participants match the search</h3>
         <p>
-          <button type="button" class="secondary-button" (click)="setHome(''); setEvent(''); setParticipantSearch('')">Clear filters</button>
+          <button type="button" class="secondary-button" (click)="clearParticipantSearch()">Clear search</button>
         </p>
       </div>
     } @else {
@@ -307,28 +337,29 @@
             </tr>
           </thead>
           <tbody>
-            @for (report of participantReports(); track report.participant.id) {
+            @for (row of participantRows(); track row.key) {
               <tr>
                 <td>
-                  <strong>{{ report.participant.fullName }}</strong>
-                  <small>{{ report.participant.participantCode }}</small>
+                  <strong>{{ row.fullName }}</strong>
+                  <small>{{ row.participantCode }}</small>
                 </td>
                 <td>
-                  <strong>{{ getHomeName(report.participant.shelterHomeId) }}</strong>
-                  <small>{{ getHomeCode(report.participant.shelterHomeId) }}</small>
+                  <strong>{{ row.homeName }}</strong>
+                  <small>{{ row.homeCode }}</small>
                 </td>
-                <td>{{ report.participant.level ?? 'Unavailable' }}</td>
-                <td>{{ registrationFigure(report.registrations) }}</td>
+                <td>{{ row.level ?? '—' }}</td>
+                <td>{{ figure(row.registrations) }}</td>
                 <td>
-                  {{ report.attendance.recorded }} recorded
-                  <small>{{ report.attendance.present }} present · {{ report.attendance.absent }} absent</small>
+                  {{ figure(attendanceOf(row.attendance).recorded) }} recorded
+                  <small>{{ attendanceBreakdown(row.attendance) }}</small>
                 </td>
-                <td>{{ report.finalizedSoloScores }}</td>
-                <td>{{ report.certificates }}</td>
+                <td>{{ figure(row.finalizedSoloScores) }}</td>
+                <td>{{ figure(row.certificates) }}</td>
               </tr>
             }
           </tbody>
         </table>
+        <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
       </div>
     }
   }

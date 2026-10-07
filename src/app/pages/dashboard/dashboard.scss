@@ -31,6 +31,13 @@
   margin-top: 6px;
 }
 
+/* Placeholder shown while the backend summary is being read. */
+.stats-loading p {
+  margin: 0;
+  color: var(--nk-muted);
+  font-size: 13px;
+}
+
 /* Seven cards across the 4-column global grid: the 5th card fills the gap
    so the second row stays flush. */
 .stat-card--wide {

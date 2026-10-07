@@ -97,6 +97,23 @@ export class Homes implements OnInit {
   }
 
   /**
+   * Opens the backend-supplied spreadsheet link in a new tab.
+   *
+   * The URL always comes from `listShelterHomes`; it is never constructed from a
+   * spreadsheet identifier here. Plain left-click is intercepted so the sheet
+   * always opens in a new tab, while middle-click and Ctrl/Cmd-click keep the
+   * browser's native "open in new tab" behaviour.
+   */
+  openSpreadsheet(event: MouseEvent, url: string): void {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    event.preventDefault();
+    window.open(url, '_blank', 'noopener');
+  }
+
+  /**
    * First per-home backend error, so a failed participant, import or validation
    * read is visible on the card it belongs to instead of disappearing.
    */

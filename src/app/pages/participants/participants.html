@@ -199,7 +199,21 @@
         }
 
         @if (saveSuccess()) {
-          <p class="alert success" role="status">{{ saveSuccess() }}</p>
+          <div class="alert success" role="status">
+            <span>{{ saveSuccess() }}</span>
+            @if (saveVersion() !== null) {
+              <small>Backend version {{ saveVersion() }}</small>
+            }
+            @if (saveWriteBackNote()) {
+              <small>{{ saveWriteBackNote() }}</small>
+            }
+            @if (saveWriteBackDetail()) {
+              <small>{{ saveWriteBackDetail() }}</small>
+            }
+            @if (saveReadBackNote()) {
+              <small>{{ saveReadBackNote() }}</small>
+            }
+          </div>
         }
 
         @if (saveError()) {
@@ -208,7 +222,7 @@
               @if (saveErrorCode() === 'VERSION_CONFLICT') {
                 Update rejected — nothing was overwritten
               } @else if (saveErrorCode() === 'SOURCE_ROW_IDENTITY_UNVERIFIED') {
-                The Google Sheet was not changed
+                Source identity could not be verified
               } @else {
                 The participant could not be updated
               }
@@ -438,7 +452,7 @@
 
           } @else if (registrationsError()) {
             <div class="alert error" role="alert">
-              <strong>Registered events could not be loaded.</strong>
+              <strong>Unable to load registrations.</strong>
               <span>{{ registrationsError() }}</span>
             </div>
 
@@ -448,21 +462,27 @@
               <span>{{ eventsLoadError() }}</span>
             </div>
 
-          } @else if (noRegisteredEvents()) {
-            <p class="panel-note">No registered events</p>
-
           } @else {
+
+            @if (noRegisteredEvents()) {
+              <p class="panel-note">No registered events</p>
+            }
 
             @for (group of eventGroups(); track group.category) {
               <div class="event-group">
                 <h5 class="event-group-title">{{ group.category }}</h5>
                 <ul class="event-list">
                   @for (entry of group.entries; track entry.registration.id) {
-                    <li class="event-item">
+                    <li
+                      class="event-item"
+                      [class.event-item--cancelled]="entry.registration.registrationStatus === 'CANCELLED'">
                       <div>
-                        <strong>{{ entry.event.name }}</strong>
+                        <strong>{{ entry.name }}</strong>
                         <small>
-                          {{ entry.event.category }} · {{ modeLabel(entry.event.mode) }} ·
+                          {{ group.category }} ·
+                          @if (entry.mode) {
+                            {{ modeLabel(entry.mode) }} ·
+                          }
                           {{ entry.registration.registrationStatus }}
                         </small>
                       </div>
@@ -495,14 +515,37 @@
               <div class="event-group">
                 <h5 class="event-group-title">UNRESOLVED</h5>
                 <ul class="event-list">
-                  @for (registration of unresolvedRegistrations(); track registration.id) {
-                    <li class="event-item">
+                  @for (entry of unresolvedRegistrations(); track entry.registration.id) {
+                    <li
+                      class="event-item"
+                      [class.event-item--cancelled]="entry.registration.registrationStatus === 'CANCELLED'">
                       <div>
-                        <strong>Event not in the current event list</strong>
+                        <strong>{{ entry.name }}</strong>
                         <small>
-                          {{ registration.registrationStatus }} · added via
-                          {{ registration.source }}
+                          {{ entry.registration.registrationStatus }}
+                          @if (entry.registration.source) {
+                            · added via {{ entry.registration.source }}
+                          }
                         </small>
+                      </div>
+                      <div class="detail-actions">
+                        @if (entry.registration.registrationStatus === 'CANCELLED') {
+                          <button
+                            class="secondary-button"
+                            type="button"
+                            (click)="reactivateEvent(entry.registration)"
+                            [disabled]="registrationBusy()">
+                            Reactivate
+                          </button>
+                        } @else {
+                          <button
+                            class="secondary-button"
+                            type="button"
+                            (click)="cancelEvent(entry.registration)"
+                            [disabled]="registrationBusy()">
+                            Cancel
+                          </button>
+                        }
                       </div>
                     </li>
                   }
@@ -510,9 +553,6 @@
               </div>
             }
 
-            @if (eventGroups().length === 0 && unresolvedRegistrations().length === 0) {
-              <p class="panel-note">No registered events</p>
-            }
           }
 
           <!-- ADD EVENT -->

@@ -1,4 +1,4 @@
-import { Injectable, computed, inject } from '@angular/core';
+﻿import { Injectable, computed, inject } from '@angular/core';
 
 import {
   EVENT_CATEGORY_LABELS,
@@ -10,8 +10,7 @@ import {
   Participant,
   Event,
   ParticipantEvent,
-  RegistrationStatus,
-  UpdateParticipantData,
+  SourceWriteBackResult,
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
@@ -29,6 +28,8 @@ export interface RegistrationResult {
   success: boolean;
   registration?: ParticipantEvent;
   errors: string[];
+  /** Present when the backend reported whether the Event wise sheet was written. */
+  sourceWriteBack?: SourceWriteBackResult;
 }
 
 /**
@@ -224,6 +225,7 @@ export class ParticipantEventService {
     return {
       success: true,
       registration: response.data.participantEvent,
+      sourceWriteBack: response.data.sourceWriteBack,
       errors: [],
     };
   }
@@ -243,6 +245,7 @@ export class ParticipantEventService {
     return {
       success: true,
       registration: response.data.participantEvent,
+      sourceWriteBack: response.data.sourceWriteBack,
       errors: [],
     };
   }
@@ -262,6 +265,7 @@ export class ParticipantEventService {
     return {
       success: true,
       registration: response.data.participantEvent,
+      sourceWriteBack: response.data.sourceWriteBack,
       errors: [],
     };
   }

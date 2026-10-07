@@ -12,10 +12,10 @@
         type="button"
         class="secondary-button"
         (click)="reload()"
-        [disabled]="loading() || registrationsLoading()"
+        [disabled]="busy()"
         aria-label="Refresh dashboard data from the backend"
       >
-        {{ loading() || registrationsLoading() ? 'Refreshing…' : 'Refresh' }}
+        {{ busy() ? 'Refreshing…' : 'Refresh' }}
       </button>
     </div>
   </div>
@@ -33,44 +33,7 @@
     <div class="welcome-icon" aria-hidden="true">✦</div>
   </div>
 
-  @if (loading()) {
-    <div class="section-card">
-      <div class="empty-state" role="status">
-        <div class="empty-state-icon" aria-hidden="true">✦</div>
-        <h3>Loading your data</h3>
-        <p>Reading shelter homes and participants from the backend. This should only take a moment.</p>
-      </div>
-    </div>
-  } @else if (error()) {
-    <div class="section-card">
-      <div class="alert error" role="alert">
-        <strong>Data could not be loaded</strong>
-        <span>{{ error() }}</span>
-        <span>
-          Retry the connection, or connect a shelter home to populate the dashboard.
-        </span>
-      </div>
-
-      <div class="quick-actions">
-        <button
-          type="button"
-          class="primary-button"
-          (click)="reload()"
-          aria-label="Retry loading dashboard data"
-        >
-          Retry
-        </button>
-        <button
-          type="button"
-          class="secondary-button"
-          (click)="goTo('/homes')"
-          aria-label="Go to shelter homes to connect a Google Sheet"
-        >
-          Connect a shelter home
-        </button>
-      </div>
-    </div>
-  } @else if (!hasHomes()) {
+  @if (firstRun()) {
     <div class="section-card">
       <div class="empty-state">
         <div class="empty-state-icon" aria-hidden="true">🏠</div>
@@ -94,126 +57,149 @@
       </div>
     </div>
   } @else {
-    <div class="stats-grid">
 
-      <div class="stat-card stat-card--primary">
-        <span>Connected Homes</span>
-        <strong>{{ summary().homes }}</strong>
-        <small>Synced from backend</small>
-      </div>
-
-      <div class="stat-card stat-card--purple">
-        <span>Participants</span>
-        <strong>{{ summary().participants }}</strong>
-        <small>{{ totalParticipants() }} loaded in store</small>
-      </div>
-
-      <div class="stat-card">
-        <span>Events</span>
-        <strong>{{ summary().events }}</strong>
-        <small>{{ summary().activeEvents }} active</small>
-      </div>
-
-      <div class="stat-card stat-card--wide">
-        <span>Registrations</span>
-        <strong>{{ registrationFigure() }}</strong>
-        <small>
-          @if (registrationsReady()) {
-            {{ summary().teams }} active teams
-          } @else if (registrationsLoading()) {
-            Registrations are being read…
-          } @else {
-            Registrations not loaded yet
-          }
-        </small>
-      </div>
-
-      <div class="stat-card">
-        <span>Attendance Recorded</span>
-        <strong>{{ summary().attendance.recorded }}</strong>
-        <small>
-          {{ summary().attendance.present }} present ·
-          {{ summary().attendance.absent }} absent
-        </small>
-      </div>
-
-      <div class="stat-card stat-card--success">
-        <span>Finalized Scores</span>
-        <strong>{{ summary().finalizedScores }}</strong>
-        <small>Locked submissions</small>
-      </div>
-
-      <div class="stat-card">
-        <span>Certificates</span>
-        <strong>{{ summary().certificates.generated }}</strong>
-        <small>{{ summary().certificates.issued }} issued</small>
-      </div>
-
-    </div>
-
-    @if (registrationsError()) {
+    <!-- STAT CARDS: backend summary only -->
+    @if (summaryError()) {
       <div class="section-card">
         <div class="alert error" role="alert">
-          <strong>Registrations could not be loaded</strong>
-          <span>{{ registrationsError() }}</span>
-          <span>
-            Registrations are read per event from the backend, so the total is
-            shown as not loaded rather than as zero.
-          </span>
+          <strong>Unable to load the operational summary.</strong>
+          <span>{{ summaryError() }}</span>
         </div>
-      </div>
-    }
 
-    <div class="section-card">
-      <h3>Connected Homes</h3>
-
-      <div class="home-list">
-        @for (home of homes(); track home.id) {
-          <div class="home-row">
-            <div class="home-identity">
-              <strong>{{ home.name }}</strong>
-              <span class="badge badge--primary">{{ home.homeCode }}</span>
-            </div>
-            <span class="home-count">
-              {{ home.participants }} participants
-            </span>
-          </div>
-        } @empty {
-          <p>No connected homes to display.</p>
-        }
-      </div>
-
-      @if (summary().homes > homes().length) {
         <div class="quick-actions">
           <button
             type="button"
             class="secondary-button"
-            (click)="goTo('/homes')"
-            aria-label="View all connected shelter homes"
+            (click)="retrySummary()"
+            [disabled]="summaryLoading()"
+            aria-label="Retry reading the backend summary"
           >
-            View all {{ summary().homes }} homes
+            Retry
           </button>
         </div>
-      }
-    </div>
+      </div>
+    } @else if (summary(); as counts) {
+      <div class="stats-grid">
 
+        <div class="stat-card stat-card--primary">
+          <span>Connected Homes</span>
+          <strong>{{ counts.homes }}</strong>
+          <small>Connected to a Google Sheet</small>
+        </div>
+
+        <div class="stat-card stat-card--purple">
+          <span>Participants</span>
+          <strong>{{ counts.participants }}</strong>
+          <small>Records imported by homes</small>
+        </div>
+
+        <div class="stat-card">
+          <span>Events</span>
+          <strong>{{ counts.events }}</strong>
+          <small>{{ counts.activeEvents }} active</small>
+        </div>
+
+        <div class="stat-card stat-card--wide">
+          <span>Registrations</span>
+          <strong>{{ counts.registrations }}</strong>
+          <small>{{ counts.teams }} active teams</small>
+        </div>
+
+        <div class="stat-card">
+          <span>Attendance Recorded</span>
+          <strong>{{ counts.attendance.recorded }}</strong>
+          <small>{{ attendanceCaption() }}</small>
+        </div>
+
+        <div class="stat-card stat-card--success">
+          <span>Finalized Scores</span>
+          <strong>{{ counts.finalizedScores }}</strong>
+          <small>Finalized score submissions</small>
+        </div>
+
+        <div class="stat-card">
+          <span>Certificates</span>
+          <strong>{{ counts.certificates.generated }}</strong>
+          <small>{{ certificateCaption() }}</small>
+        </div>
+
+      </div>
+    } @else {
+      <div class="section-card stats-loading" role="status" aria-live="polite">
+        <p>Loading summary…</p>
+      </div>
+    }
+
+    <!-- CONNECTED HOMES: listShelterHomes only -->
     <div class="section-card">
-      <h3>Quick Actions</h3>
-      <p>Jump straight into the module you need to work on next.</p>
+      <h3>Connected Homes</h3>
 
-      <div class="quick-actions">
-        @for (action of quickActions; track action.path) {
+      @if (homesStatus() === 'LOADING') {
+        <p role="status" aria-live="polite">Loading connected homes…</p>
+      } @else if (homesStatus() === 'ERROR') {
+        <div class="alert error" role="alert">
+          <strong>Unable to load connected homes.</strong>
+          <span>{{ homesError() }}</span>
+        </div>
+
+        <div class="quick-actions">
           <button
             type="button"
             class="secondary-button"
-            (click)="goTo(action.path)"
-            [attr.aria-label]="action.description + ': ' + action.label"
+            (click)="retryHomes()"
+            aria-label="Retry loading connected shelter homes"
           >
-            {{ action.label }}
+            Retry
           </button>
+        </div>
+      } @else {
+        <div class="home-list">
+          @for (home of homes(); track home.id) {
+            <div class="home-row">
+              <div class="home-identity">
+                <strong>{{ home.name }}</strong>
+                <span class="badge badge--primary">{{ home.homeCode }}</span>
+              </div>
+              <span class="home-count">{{ home.status }}</span>
+            </div>
+          } @empty {
+            <p>No connected homes to display.</p>
+          }
+        </div>
+
+        @if (totalHomes() > homes().length) {
+          <div class="quick-actions">
+            <button
+              type="button"
+              class="secondary-button"
+              (click)="goTo('/homes')"
+              aria-label="View all connected shelter homes"
+            >
+              View all {{ totalHomes() }} homes
+            </button>
+          </div>
         }
-      </div>
+      }
     </div>
+
   }
+
+  <div class="section-card">
+    <h3>Quick Actions</h3>
+    <p>Jump straight into the module you need to work on next.</p>
+
+    <div class="quick-actions">
+      @for (action of quickActions; track action.path) {
+        <button
+          type="button"
+          class="secondary-button"
+          (click)="goTo(action.path)"
+          [attr.aria-label]="action.description + ': ' + action.label"
+        >
+          {{ action.label }}
+        </button>
+      }
+    </div>
+  </div>
 
 </div>

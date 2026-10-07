@@ -1,12 +1,19 @@
 import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild, inject, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { GOOGLE_IDENTITY_CONFIG } from '../../core/constants/google-identity.config';
 import { ApplicationRole, ApplicationSession } from '../../core/models';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 
+/**
+ * The identity Google proved for this visitor. Only `email` is guaranteed; the
+ * display name is a pre-fill convenience and is never trusted for access.
+ */
 interface VerifiedGoogleUser {
   email: string;
-  role: string;
+  displayName?: string;
 }
 
 interface ApprovedGoogleUser extends VerifiedGoogleUser {
@@ -19,6 +26,19 @@ interface ApprovedGoogleUser extends VerifiedGoogleUser {
 }
 
 type NakshatraAccess = 'NOT_REGISTERED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED' | 'DENIED';
+
+interface ApplicationRoleOption {
+  value: ApplicationRole;
+  label: string;
+}
+
+const APPLICATION_ROLE_OPTIONS: readonly ApplicationRoleOption[] = [
+  { value: 'ADMIN', label: 'Administrator' },
+  { value: 'SUPPORT', label: 'Support' },
+  { value: 'EVENTS_TEAM', label: 'Events team' },
+  { value: 'LIAISON_TEAM', label: 'Liaison team' },
+  { value: 'CERTIFICATE_TEAM', label: 'Certificate team' },
+];
 
 interface GoogleVerificationResponse {
   success: boolean;
@@ -105,9 +125,11 @@ function waitForGoogleIdentity(): Promise<GoogleIdentity> {
   });
 }
 
-@Component({ selector: 'nk-login', imports: [RouterLink], templateUrl: './login.html', styleUrl: './login.scss' })
+@Component({ selector: 'nk-login', imports: [FormsModule], templateUrl: './login.html', styleUrl: './login.scss' })
 export class Login implements AfterViewInit, OnDestroy {
   private readonly auth = inject(AuthService);
+  private readonly apiClient = inject(ApiClientService);
+  private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
   private googleButtonElement: HTMLElement | null = null;
   private googleButtonWaiters: Array<(element: HTMLElement | null) => void> = [];
@@ -121,6 +143,19 @@ export class Login implements AfterViewInit, OnDestroy {
   readonly error = signal('');
   readonly loading = signal(false);
   readonly verifiedUser = signal<(VerifiedGoogleUser & { access: NakshatraAccess }) | null>(null);
+
+  /* ================================================================
+     REGISTRATION REQUEST
+     ================================================================ */
+
+  readonly roles = APPLICATION_ROLE_OPTIONS;
+  readonly registrationOpen = signal(false);
+  readonly registrationSubmitting = signal(false);
+  readonly registrationSubmitted = signal(false);
+  readonly registrationDisplayName = signal('');
+  readonly registrationRole = signal<ApplicationRole | ''>('');
+  readonly registrationError = signal('');
+
   private destroyed = false;
   private buttonRendered = false;
   private readonly onCredential = (credential: string): void => void this.verifyCredential(credential);
@@ -203,7 +238,9 @@ export class Login implements AfterViewInit, OnDestroy {
         await this.router.navigateByUrl('/dashboard');
         return;
       }
-      this.verifiedUser.set({ ...result.user, access: result.access });
+      // Anything other than APPROVED stops here: no session is established and
+      // no protected route is reachable from this page.
+      this.verifiedUser.set({ email: result.user.email, displayName: result.user.displayName, access: result.access });
     } catch (error) {
       console.error('Google account verification request failed.', error);
       if (!this.destroyed) this.error.set('Unable to verify your Google account. Check your connection and try again.');
@@ -235,13 +272,110 @@ export class Login implements AfterViewInit, OnDestroy {
   accessMessage(access: NakshatraAccess): string {
     const messages: Record<NakshatraAccess, string> = {
       NOT_REGISTERED: 'Google account verified, but your Nakshatra account is not registered yet.',
-      PENDING: 'Your Nakshatra account is pending admin approval.',
+      PENDING: 'Your Nakshatra access request is pending administrator approval.',
       APPROVED: 'Google account verified and Nakshatra access approved.',
       REJECTED: 'Your Nakshatra access request was rejected.',
       DISABLED: 'Your Nakshatra account is disabled.',
       DENIED: 'Your Nakshatra access is denied.',
     };
     return messages[access];
+  }
+
+  /* ================================================================
+     REGISTRATION REQUEST
+     ================================================================ */
+
+  /**
+   * Only an unregistered or rejected identity may request access. A visitor
+   * who is already pending is never offered a second request.
+   */
+  canRegister(access: NakshatraAccess | undefined): boolean {
+    return access === 'NOT_REGISTERED' || access === 'REJECTED';
+  }
+
+  openRegistration(): void {
+    const user = this.verifiedUser();
+
+    if (!user || !this.canRegister(user.access)) return;
+
+    this.registrationError.set('');
+    this.registrationRole.set('');
+    this.registrationDisplayName.set(user.displayName ?? '');
+    this.registrationOpen.set(true);
+  }
+
+  cancelRegistration(): void {
+    if (this.registrationSubmitting()) return;
+
+    this.registrationOpen.set(false);
+    this.registrationError.set('');
+  }
+
+  setRegistrationDisplayName(value: unknown): void {
+    this.registrationDisplayName.set(typeof value === 'string' ? value : '');
+  }
+
+  setRegistrationRole(value: unknown): void {
+    this.registrationRole.set(this.isApplicationRole(value) ? value : '');
+  }
+
+  /**
+   * Submits a pending registration request for the verified identity.
+   *
+   * This deliberately establishes no application session, sets no
+   * authenticated user, and never navigates: a submitted request is not an
+   * approval. Only the APPROVED branch of `verifyCredential` may sign in.
+   */
+  async submitRegistration(): Promise<void> {
+    if (this.registrationSubmitting() || this.registrationSubmitted()) return;
+
+    const user = this.verifiedUser();
+
+    if (!user || !this.canRegister(user.access)) {
+      this.registrationError.set('Verify your Google account again before requesting access.');
+      return;
+    }
+
+    const email = user.email.trim();
+    const displayName = this.registrationDisplayName().trim();
+    const selectedRole = this.registrationRole();
+
+    const invalid: string[] = [];
+    if (!displayName) invalid.push('Enter your display name.');
+    if (!this.isEmail(email)) invalid.push('The verified Google email address is not valid.');
+    if (invalid.length) {
+      this.registrationError.set(invalid.join(' '));
+      return;
+    }
+
+    if (!this.isApplicationRole(selectedRole)) {
+      this.registrationError.set('Select the role you are requesting.');
+      return;
+    }
+
+    const requestedRole: ApplicationRole = selectedRole;
+    this.registrationError.set('');
+    this.registrationSubmitting.set(true);
+    try {
+      const response = await this.apiClient.requestRegistration({ email, displayName, requestedRole });
+      if (this.destroyed) return;
+      if (!response.success) {
+        // The backend message is shown as-is; a request is never faked as accepted.
+        this.registrationError.set(response.error.message);
+        return;
+      }
+      this.registrationSubmitted.set(true);
+      this.registrationOpen.set(false);
+      this.notifications.success(
+        'Registration request submitted.',
+        'An administrator must approve it before any Nakshatra access is granted.'
+      );
+    } catch (error) {
+      console.error('Registration request submission failed.', error);
+      if (!this.destroyed) this.registrationError.set('Unable to submit your registration request. Please try again.');
+    } finally {
+      if (!this.destroyed) this.registrationSubmitting.set(false);
+    }
   }
 
   private isVerifiedResponse(value: unknown): value is GoogleVerificationResponse & {
@@ -254,7 +388,11 @@ export class Login implements AfterViewInit, OnDestroy {
       && 'access' in value && this.isNakshatraAccess(value.access)
       && 'user' in value && typeof value.user === 'object' && value.user !== null
       && 'email' in value.user && typeof value.user.email === 'string'
-      && 'role' in value.user && typeof value.user.role === 'string';
+      && (!('displayName' in value.user) || value.user.displayName === undefined || typeof value.user.displayName === 'string');
+  }
+
+  private isEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 
   private isNakshatraAccess(value: unknown): value is NakshatraAccess {

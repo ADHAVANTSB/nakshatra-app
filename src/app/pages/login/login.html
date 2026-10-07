@@ -1,1 +1,72 @@
-<main class="auth-page"><section class="auth-card"><span class="eyebrow">NAKSHATRA</span><h1>Sign in</h1>@if (verifiedUser(); as user) { <div class="alert success"><strong>{{ accessMessage(user.access) }}</strong><span>{{ user.email }}</span>@if (user.access === 'APPROVED') { <p>Role: {{ user.role }}</p> }</div> } @else { <p>Sign in with your approved Google account to verify your identity.</p>@if (error()) { <div class="alert error">{{ error() }}</div> }<div class="google-sign-in" [class.loading]="loading()"><div #googleButton></div>@if (loading()) { <span>Verifying your Google account…</span> }</div><p class="auth-link">Need access? <a routerLink="/register">Submit a registration request</a></p> }</section></main>
+<main class="auth-page">
+  <section class="auth-card">
+    <span class="eyebrow">NAKSHATRA</span>
+    <h1>Sign in</h1>
+
+    @if (verifiedUser(); as user) {
+      <div class="alert success">
+        <strong>{{ accessMessage(user.access) }}</strong>
+        <span>{{ user.email }}</span>
+      </div>
+
+      @if (registrationSubmitted()) {
+        <div class="alert success" role="status"><strong>Your request has been submitted and is awaiting admin approval.</strong></div>
+      }
+
+      @if (canRegister(user.access) && !registrationSubmitted()) {
+        @if (registrationOpen()) {
+          <form class="registration-form" (ngSubmit)="submitRegistration()">
+            <p class="form-hint">Request access for the verified Google account above. An administrator must review and approve it.</p>
+
+            @if (registrationError()) {
+              <div class="alert error" role="alert">{{ registrationError() }}</div>
+            }
+
+            <label for="registration-display-name">Display Name</label>
+            <input id="registration-display-name" name="displayName" type="text" autocomplete="name"
+              [ngModel]="registrationDisplayName()" (ngModelChange)="setRegistrationDisplayName($event)"
+              [disabled]="registrationSubmitting()" />
+
+            <label for="registration-email">Email</label>
+            <input id="registration-email" name="email" type="email" autocomplete="email"
+              [ngModel]="user.email" readonly aria-readonly="true" [disabled]="registrationSubmitting()" />
+            <small class="field-note">Read-only. This is the address Google verified for this sign-in, so it cannot be changed here.</small>
+
+            <label for="registration-role">Requested Role</label>
+            <select id="registration-role" name="requestedRole"
+              [ngModel]="registrationRole()" (ngModelChange)="setRegistrationRole($event)"
+              [disabled]="registrationSubmitting()">
+              <option value="">Select a role</option>
+              @for (option of roles; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+            <small class="field-note">An administrator assigns the final role when approving your request.</small>
+
+            @if (registrationSubmitting()) {
+              <p class="form-status" role="status">Submitting your registration request…</p>
+            }
+
+            <button type="submit" [disabled]="registrationSubmitting()">
+              {{ registrationSubmitting() ? 'Submitting…' : 'Submit registration request' }}
+            </button>
+            <button type="button" class="secondary" [disabled]="registrationSubmitting()" (click)="cancelRegistration()">Cancel</button>
+          </form>
+        } @else {
+          <button type="button" (click)="openRegistration()">Register</button>
+        }
+      }
+    } @else {
+      <p>Sign in with your approved Google account to verify your identity.</p>
+      @if (error()) {
+        <div class="alert error" role="alert">{{ error() }}</div>
+      }
+      <div class="google-sign-in" [class.loading]="loading()">
+        <div #googleButton></div>
+        @if (loading()) {
+          <span role="status">Verifying your Google account…</span>
+        }
+      </div>
+    }
+  </section>
+</main>

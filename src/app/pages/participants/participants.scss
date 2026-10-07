@@ -335,6 +335,17 @@
   font-size: 11px;
 }
 
+/* Cancelled registrations stay listed (for Reactivate) but read as inactive. */
+.event-item--cancelled {
+  border-style: dashed;
+  background: #f6f8fb;
+}
+
+.event-item--cancelled strong {
+  color: #6f8297;
+  text-decoration: line-through;
+}
+
 .add-event {
   display: flex;
   align-items: flex-end;

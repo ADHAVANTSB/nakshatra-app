@@ -9,7 +9,6 @@ const protectedRoute = (section: ApplicationSection) => ({
 
 export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./pages/login/login').then(m => m.Login) },
-  { path: 'register', loadComponent: () => import('./pages/register/register').then(m => m.Register) },
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
   { path: 'dashboard', ...protectedRoute('DASHBOARD'), loadComponent: () => import('./pages/dashboard/dashboard').then(m => m.Dashboard) },
   { path: 'homes', ...protectedRoute('HOMES'), loadComponent: () => import('./pages/homes/homes').then(m => m.Homes) },

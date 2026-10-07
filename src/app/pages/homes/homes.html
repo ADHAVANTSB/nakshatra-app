@@ -255,7 +255,8 @@
                     [href]="sheetOpenUrl"
                     target="_blank"
                     rel="noopener noreferrer"
-                    [attr.aria-label]="home.homeName + ' — opens the connected Google Sheet in a new tab'">
+                    [attr.aria-label]="home.homeName + ' — opens the connected Google Sheet in a new tab'"
+                    (click)="openSpreadsheet($event, sheetOpenUrl)">
                     {{ home.homeName }}<span aria-hidden="true"> ↗</span>
                   </a>
                 } @else {

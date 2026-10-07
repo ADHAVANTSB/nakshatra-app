@@ -9,6 +9,7 @@ import {
   Gender,
   Participant,
   ParticipantLevel,
+  SourceWriteBackResult,
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
@@ -207,7 +208,12 @@ export class ParticipantService {
 
     this.replaceParticipant(response.data.participant);
 
-    return { success: true, participant: response.data.participant, errors: [] };
+    return {
+      success: true,
+      participant: response.data.participant,
+      sourceWriteBack: response.data.sourceWriteBack,
+      errors: [],
+    };
   }
 
   /** Replaces the cached record with a freshly read backend version. */
@@ -254,6 +260,8 @@ export interface EditableParticipantFields {
 export interface UpdateParticipantResult {
   success: boolean;
   participant?: Participant;
+  /** Present when the backend reported whether the source sheet was written. */
+  sourceWriteBack?: SourceWriteBackResult;
   errors: string[];
   errorCode?: string;
 }

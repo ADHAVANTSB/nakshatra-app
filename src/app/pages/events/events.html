@@ -555,7 +555,14 @@
               <span>·</span>
               <span>{{ modeLabel(event.mode) }}</span>
               <span>·</span>
-              <span>{{ teamRegisteredCount() }} registered</span>
+              @if (teamRegistrationStatus() === 'LOADED') {
+                <span>{{ teamRegisteredCount() }} registered</span>
+              } @else if (teamRegistrationStatus() === 'ERROR') {
+                <span>Unable to load registrations.</span>
+                <button type="button" class="mini-action" (click)="retryTeamRegistrations()">Retry</button>
+              } @else {
+                <span>Loading registrations…</span>
+              }
             </div>
 
           }
@@ -586,7 +593,15 @@
             </div>
             <div>
               <span>Teams</span>
-              <strong>{{ teamsForSelectedEvent().length }}</strong>
+              <strong>
+                @if (teamsListVisible()) {
+                  {{ teamsForSelectedEvent().length }}
+                } @else if (teamsLoadState().status === 'ERROR') {
+                  —
+                } @else {
+                  …
+                }
+              </strong>
             </div>
             <div>
               <span>Team-size rule</span>
@@ -598,10 +613,6 @@
             <div class="team-rule-note">
               Team-size values are only enforced when configured for this event.
             </div>
-          }
-
-          @if (teamSuccessMessage()) {
-            <div class="success-message"><span>✓</span>{{ teamSuccessMessage() }}</div>
           }
 
           @if (teamFormError()) {
@@ -639,12 +650,18 @@
           <div class="section-heading team-section-heading">
             <div>
               <h3>Teams</h3>
-              <span>{{ teamsForSelectedEvent().length }} team{{ teamsForSelectedEvent().length === 1 ? '' : 's' }}</span>
+              @if (teamsListVisible()) {
+                <span>{{ teamsForSelectedEvent().length }} team{{ teamsForSelectedEvent().length === 1 ? '' : 's' }}</span>
+              } @else if (teamsLoadState().status === 'ERROR') {
+                <span>Unable to load teams.</span>
+              } @else {
+                <span>Loading teams…</span>
+              }
             </div>
             <button
               type="button"
               class="primary-button small-button"
-              [disabled]="event.status !== 'ACTIVE'"
+              [disabled]="event.status !== 'ACTIVE' || teamBusy() !== null"
               (click)="openCreateTeam()">
               + Create Team
             </button>
@@ -653,15 +670,31 @@
           @if (showCreateTeam()) {
             <div class="team-form-card">
               <label for="team-name">Team name</label>
-              <input id="team-name" type="text" [(ngModel)]="teamName" placeholder="Enter team name" />
+              <input id="team-name" type="text" [(ngModel)]="teamName" [disabled]="teamBusy() === 'create'" placeholder="Enter team name" />
               <div class="team-form-actions">
-                <button type="button" class="secondary-button small-button" (click)="closeCreateTeam()">Cancel</button>
-                <button type="button" class="primary-button small-button" (click)="createTeam()">Create Team</button>
+                <button type="button" class="secondary-button small-button" [disabled]="teamBusy() === 'create'" (click)="closeCreateTeam()">Cancel</button>
+                <button type="button" class="primary-button small-button" [disabled]="teamBusy() !== null" (click)="createTeam()">
+                  {{ teamBusy() === 'create' ? 'Creating…' : 'Create Team' }}
+                </button>
               </div>
             </div>
           }
 
-          @if (teamsForSelectedEvent().length > 0) {
+          @if (teamsLoadState().status === 'ERROR') {
+            <div class="validation-box error" role="alert">
+              <div class="validation-title"><span>!</span>Unable to load teams.</div>
+              @if (teamsLoadState().error) {
+                <p>{{ teamsLoadState().error }}</p>
+              }
+              <button type="button" class="secondary-button small-button" (click)="retryLoadTeams()">Retry</button>
+            </div>
+          } @else if (!teamsListVisible()) {
+            <div class="participant-empty">
+              <div class="participant-empty-icon">◈</div>
+              <strong>Loading teams…</strong>
+              <span>Reading persisted teams for this event from the backend.</span>
+            </div>
+          } @else if (teamsForSelectedEvent().length > 0) {
             <div class="team-list">
               @for (team of teamsForSelectedEvent(); track team.id) {
                 <article class="team-card">
@@ -680,14 +713,7 @@
                   </div>
                   <div class="team-actions">
                     <button type="button" class="mini-action" (click)="viewTeamMembers(team)">Members</button>
-                    <button type="button" class="mini-action" (click)="validateTeam(team)">Validate</button>
-                    @if (team.status === 'DRAFT') {
-                      <button type="button" class="mini-action success" (click)="markTeamReady(team)">Ready</button>
-                    }
-                    @if (team.status !== 'LOCKED' && team.status !== 'CANCELLED') {
-                      <button type="button" class="mini-action" (click)="lockTeam(team)">Lock</button>
-                      <button type="button" class="mini-action danger" (click)="cancelTeam(team)">Cancel</button>
-                    }
+                    <button type="button" class="mini-action" title="Check team rules (does not change status)" (click)="validateTeam(team)">Validate</button>
                   </div>
                 </article>
               }
@@ -695,7 +721,7 @@
           } @else {
             <div class="participant-empty">
               <div class="participant-empty-icon">◉</div>
-              <strong>No teams yet</strong>
+              <strong>No teams have been created for this event.</strong>
               <span>Create a team after participants are registered for this group event.</span>
             </div>
           }
@@ -711,7 +737,7 @@
               </div>
 
               @if (canModifyTeam(team)) {
-                <button type="button" class="primary-button small-button" (click)="openAddTeamMember()">+ Add Participant</button>
+                <button type="button" class="primary-button small-button" [disabled]="teamBusy() !== null" (click)="openAddTeamMember()">+ Add Participant</button>
               } @else {
                 <div class="team-rule-note">Locked and cancelled teams cannot be edited.</div>
               }
@@ -726,7 +752,9 @@
                         <small>{{ participant.gender }} · Age {{ participant.age }} · Class {{ participant.standard }} · {{ participant.level ? levelLabel(participant.level) : 'No level' }}</small>
                       </div>
                       @if (canModifyTeam(team)) {
-                        <button type="button" class="mini-action danger" (click)="removeTeamMember(participant.id)">Remove</button>
+                        <button type="button" class="mini-action danger" [disabled]="teamBusy() !== null" (click)="removeTeamMember(participant.id)">
+                          {{ teamBusy() === 'remove:' + participant.id ? 'Removing…' : 'Remove' }}
+                        </button>
                       }
                     </div>
                   }
@@ -771,9 +799,9 @@
                           <button
                             type="button"
                             class="mini-action"
-                            [disabled]="!candidate.isRegistered || !candidate.isEligible || !!candidate.assignedTeam"
+                            [disabled]="!candidate.isRegistered || !candidate.isEligible || !!candidate.assignedTeam || teamBusy() !== null"
                             (click)="addTeamMember(candidate.participant.id)">
-                            Add
+                            {{ teamBusy() === 'add:' + candidate.participant.id ? 'Adding…' : 'Add' }}
                           </button>
                         </div>
                       }
@@ -881,10 +909,12 @@
 
             <strong>
 
-              @if (registrationsLoading()) {
-                …
-              } @else {
+              @if (registrationsReady()) {
                 {{ registeredCount() }}
+              } @else if (registrationsFailed()) {
+                —
+              } @else {
+                …
               }
 
             </strong>
@@ -907,52 +937,6 @@
         </div>
 
 
-        <!-- WRITE ERRORS -->
-
-        @if (registrationErrors().length > 0) {
-
-          <div class="validation-box error" role="alert">
-
-            <div class="validation-title">
-              <span>!</span>
-              The registration could not be saved
-            </div>
-
-            <ul>
-
-              @for (
-                error of registrationErrors();
-                track error
-              ) {
-
-                <li>
-                  {{ error }}
-                </li>
-
-              }
-
-            </ul>
-
-          </div>
-
-        }
-
-
-        <!-- SUCCESS -->
-
-        @if (registrationNotice()) {
-
-          <div class="success-message">
-
-            <span>✓</span>
-
-            {{ registrationNotice() }}
-
-          </div>
-
-        }
-
-
         <!-- REGISTERED PARTICIPANTS -->
 
         <div class="section-heading">
@@ -965,13 +949,14 @@
 
             <span>
 
-              @if (registrationsLoading()) {
-                Loading registrations...
-              } @else if (registrationsReady()) {
+              @if (registrationsReady()) {
                 {{ registeredCount() }}
                 participant{{ registeredCount() === 1 ? '' : 's' }}
+                registered
+              } @else if (registrationsFailed()) {
+                Unable to load registrations.
               } @else {
-                Registrations not read
+                Loading registrations...
               }
 
             </span>
@@ -998,7 +983,34 @@
         </div>
 
 
-        @if (registrationsLoading()) {
+        @if (registrationsFailed()) {
+
+          <div class="participant-empty" role="alert">
+
+            <div class="participant-empty-icon">
+              !
+            </div>
+
+            <strong>
+              Unable to load registrations.
+            </strong>
+
+            <span>
+              The participant list for this event could not be read from the backend.
+            </span>
+
+            <button
+              type="button"
+              class="secondary-button small-button"
+              (click)="retryRegistrations()">
+
+              Retry
+
+            </button>
+
+          </div>
+
+        } @else if (!registrationsReady()) {
 
           <div class="participant-empty">
 
@@ -1109,7 +1121,7 @@
 
           </div>
 
-        } @else if (registrationsReady()) {
+        } @else {
 
           <div class="participant-empty">
 
@@ -1118,29 +1130,11 @@
             </div>
 
             <strong>
-              No participants registered
+              No participants registered.
             </strong>
 
             <span>
               Add eligible participants to this event.
-            </span>
-
-          </div>
-
-        } @else {
-
-          <div class="participant-empty">
-
-            <div class="participant-empty-icon">
-              ◈
-            </div>
-
-            <strong>
-              Registrations unavailable
-            </strong>
-
-            <span>
-              Reopen this event to try reading the participant list again.
             </span>
 
           </div>

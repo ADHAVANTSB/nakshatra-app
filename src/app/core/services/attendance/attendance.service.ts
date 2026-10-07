@@ -5,6 +5,7 @@ import {
   AttendanceStatus
 } from '../../models';
 
+import { ApiClientService } from '../api/api-client.service';
 import { EventService } from '../events/event.service';
 import { ParticipantEventService } from '../events/participant-event.service';
 import { ParticipantService } from '../participants/participant.service';
@@ -14,11 +15,23 @@ export interface AttendanceResult {
   success: boolean;
   attendance?: Attendance;
   errors: string[];
+  errorCode?: string;
 }
 
+/**
+ * Attendance.
+ *
+ * Every mark is persisted by the backend through `markAttendance`, and the cache
+ * below holds only records the backend has returned. A mark is never reported
+ * as successful unless the backend accepted it.
+ *
+ * The backend contract exposes no attendance read action, so records persisted
+ * in an earlier session cannot be loaded here; those rows display "Not marked"
+ * until they are marked again in this session.
+ */
 @Injectable({ providedIn: 'root' })
 export class AttendanceService {
-
+  private readonly apiClient = inject(ApiClientService);
   private readonly eventService = inject(EventService);
   private readonly participantEventService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
@@ -42,14 +55,12 @@ export class AttendanceService {
     );
   }
 
-  markAttendance(
+  async markAttendance(
     participantId: string,
     eventId: string,
     status: AttendanceStatus,
-    teamId?: string,
-    updatedBy = 'ADMIN'
-  ): AttendanceResult {
-
+    teamId?: string
+  ): Promise<AttendanceResult> {
     const errors = this.validateAttendance(participantId, eventId, teamId);
 
     if (errors.length > 0) {
@@ -57,39 +68,27 @@ export class AttendanceService {
     }
 
     const existing = this.getByParticipantEvent(participantId, eventId);
-    const now = new Date().toISOString();
 
-    if (existing) {
-      const attendance: Attendance = {
-        ...existing,
-        teamId,
-        status,
-        version: existing.version + 1,
-        updatedAt: now,
-        updatedBy
-      };
+    const response = await this.apiClient.markAttendance({
+      eventId,
+      participantId,
+      status,
+      ...(teamId ? { teamId } : {}),
+      ...(existing ? { expectedVersion: existing.version } : {}),
+    });
 
-      this.records.update(current => current.map(record =>
-        record.id === existing.id ? attendance : record
-      ));
-
-      return { success: true, attendance, errors: [] };
+    if (!response.success) {
+      return { success: false, errors: [response.error.message], errorCode: response.error.code };
     }
 
-    const attendance: Attendance = {
-      id: `ATT-${Date.now()}`,
-      participantId,
-      eventId,
-      teamId,
-      status,
-      version: 1,
-      createdAt: now,
-      createdBy: updatedBy,
-      updatedAt: now,
-      updatedBy
-    };
+    const attendance = response.data.attendance;
 
-    this.records.update(current => [...current, attendance]);
+    this.records.update(current => [
+      ...current.filter(record =>
+        !(record.participantId === attendance.participantId && record.eventId === attendance.eventId)
+      ),
+      attendance,
+    ]);
 
     return { success: true, attendance, errors: [] };
   }
@@ -99,7 +98,6 @@ export class AttendanceService {
     eventId: string,
     teamId?: string
   ): string[] {
-
     const errors: string[] = [];
     const participant = this.participantService.getParticipantById(participantId);
     const event = this.eventService.getById(eventId);

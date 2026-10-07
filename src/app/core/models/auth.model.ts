@@ -8,6 +8,12 @@ export interface ApplicationUser {
   email: string;
   role?: ApplicationRole;
   accessStatus: AccessStatus;
+  /** Role the user asked for; present while a request awaits approval. */
+  requestedRole?: ApplicationRole;
+  requestedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
   version: number;
   createdAt: string;
   createdBy: string;

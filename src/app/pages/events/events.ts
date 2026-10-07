@@ -10,6 +10,7 @@ import {
   ParticipantLevel,
   ParticipantEvent,
   RegistrationStatus,
+  SourceWriteBackResult,
   Team,
   TeamValidationResult
 } from '../../core/models';
@@ -20,10 +21,16 @@ import {
   RegistrationValidation
 } from '../../core/services/events/participant-event.service';
 
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
-import { TeamService } from '../../core/services/teams/team.service';
+import {
+  TeamLoadState,
+  TeamService
+} from '../../core/services/teams/team.service';
+
+type RegistrationLoadStatus = 'LOADING' | 'LOADED' | 'ERROR';
 
 @Component({
   selector: 'nk-events',
@@ -53,6 +60,9 @@ export class Events implements OnInit {
 
   private readonly shelterData =
     inject(ShelterDataService);
+
+  private readonly notifications =
+    inject(NotificationService);
 
 
   /**
@@ -255,30 +265,39 @@ export class Events implements OnInit {
   // REGISTERED PARTICIPANTS
   // =========================================================
 
-  /** True while the selected event's registrations are being read. */
-  registrationsLoading =
-    signal(false);
-
-  /** The event whose registrations finished loading, or null when nothing has. */
-  registrationsLoadedEventId =
-    signal<string | null>(null);
-
   /**
-   * Registrations live in the backend store. The synchronous getters on
-   * ParticipantEventService only see what has been read, so the drawer treats
-   * "not read yet" and "read and empty" as two different states.
+   * Per-event outcome of the latest registration read. Registrations live in
+   * the backend store and the synchronous getters on ParticipantEventService
+   * only see what has been read, so "not read yet", "read and empty" and
+   * "read failed" are kept as distinct states.
    */
+  private readonly registrationLoadStates =
+    signal<Record<string, RegistrationLoadStatus>>({});
+
+  private registrationLoadStatus(
+    eventId: string | undefined
+  ): RegistrationLoadStatus | null {
+
+    return eventId
+      ? this.registrationLoadStates()[eventId] ?? null
+      : null;
+  }
+
+  /** True while the selected event's registrations are being read. */
+  readonly registrationsLoading =
+    computed(() =>
+      this.registrationLoadStatus(this.selectedEvent()?.id) === 'LOADING'
+    );
+
   readonly registrationsReady =
-    computed(() => {
+    computed(() =>
+      this.registrationLoadStatus(this.selectedEvent()?.id) === 'LOADED'
+    );
 
-      const event =
-        this.selectedEvent();
-
-      return (
-        !!event &&
-        this.registrationsLoadedEventId() === event.id
-      );
-    });
+  readonly registrationsFailed =
+    computed(() =>
+      this.registrationLoadStatus(this.selectedEvent()?.id) === 'ERROR'
+    );
 
 
   readonly eventRegistrations =
@@ -301,12 +320,22 @@ export class Events implements OnInit {
 
   /**
    * Every persisted registration for the selected event, whether registered,
-   * cancelled or waitlisted, paired with the participant record the backend
-   * holds for it.
+   * cancelled or waitlisted. Active registrations are listed first.
+   *
+   * Display data is taken from the registration row first, because the backend
+   * may inline it, and only then from the cached participant record. A row is
+   * never dropped for lack of a cached participant.
    */
   readonly registeredParticipants =
     computed(() =>
-      this.eventRegistrations().map(registration => {
+      [
+        ...this.eventRegistrations().filter(
+          registration => registration.registrationStatus === 'REGISTERED'
+        ),
+        ...this.eventRegistrations().filter(
+          registration => registration.registrationStatus !== 'REGISTERED'
+        )
+      ].map(registration => {
 
         const participant =
           this.participantService
@@ -314,38 +343,43 @@ export class Events implements OnInit {
               registration.participantId
             );
 
+        const name =
+          registration.participantName ??
+          participant?.fullName ??
+          'Unknown participant';
+
+        const shelterHomeId =
+          registration.shelterHomeId ??
+          participant?.shelterHomeId;
+
+        const level = registration.level ?? participant?.level;
+
         return {
           registration,
-          name:
-            participant?.fullName ??
-            'Unknown participant',
+          name,
           code:
+            registration.participantCode ??
             participant?.participantCode ??
             '—',
-          homeName:
-            participant
-              ? this.getHomeName(
-                  participant.shelterHomeId
-                )
-              : 'Unknown Home',
-          levelText:
-            participant?.level
-              ? this.levelLabel(participant.level)
-              : 'No level',
+          homeName: shelterHomeId
+            ? this.getHomeName(shelterHomeId)
+            : 'Unknown Home',
+          levelText: level
+            ? this.levelLabel(level)
+            : 'No level',
           initial:
-            participant
-              ? participant.fullName
-                  .charAt(0)
-                  .toUpperCase()
-              : '?'
+            name.charAt(0).toUpperCase() || '?'
         };
       })
     );
 
 
+  /** Active registrations only; cancelled and waitlisted rows are not counted. */
   readonly registeredCount =
     computed(() =>
-      this.eventRegistrations().length
+      this.eventRegistrations().filter(
+        registration => registration.registrationStatus === 'REGISTERED'
+      ).length
     );
 
 
@@ -364,12 +398,6 @@ export class Events implements OnInit {
       null
     );
 
-  registrationNotice =
-    signal('');
-
-  registrationErrors =
-    signal<string[]>([]);
-
   /** Identifies the in-flight write so double clicks cannot submit twice. */
   registrationBusy =
     signal<string | null>(null);
@@ -387,40 +415,51 @@ export class Events implements OnInit {
 
     this.selectedEvent.set(event);
 
-    this.registrationsLoadedEventId.set(null);
-
     void this.loadRegistrations(event.id);
   }
 
 
+  /**
+   * Reads one event's registrations and records whether the read succeeded,
+   * so a failed request is never rendered as an empty list or a zero count.
+   */
   private async loadRegistrations(
     eventId: string,
     force = false
   ): Promise<void> {
 
-    if (this.selectedEvent()?.id === eventId) {
-      this.registrationsLoading.set(true);
-
-      this.registrationErrors.set([]);
-    }
+    this.setRegistrationLoadStatus(eventId, 'LOADING');
 
     const registrations =
       await this.participantEventService
         .loadEventRegistrations(eventId, force);
 
-    // A newer selection owns the loading and ready flags from here on.
-    if (this.selectedEvent()?.id !== eventId) {
-      return;
-    }
+    this.setRegistrationLoadStatus(
+      eventId,
+      registrations === null ? 'ERROR' : 'LOADED'
+    );
+  }
 
-    this.registrationsLoading.set(false);
 
-    this.registrationsLoadedEventId.set(eventId);
+  private setRegistrationLoadStatus(
+    eventId: string,
+    status: RegistrationLoadStatus
+  ): void {
 
-    if (registrations === null) {
-      this.registrationErrors.set([
-        'Registrations could not be read from the backend. Please try again.'
-      ]);
+    this.registrationLoadStates.update(current => ({
+      ...current,
+      [eventId]: status
+    }));
+  }
+
+
+  retryRegistrations(): void {
+
+    const event =
+      this.selectedEvent();
+
+    if (event) {
+      void this.loadRegistrations(event.id, true);
     }
   }
 
@@ -445,8 +484,6 @@ export class Events implements OnInit {
 
     this.registrationValidation.set(null);
 
-    this.registrationNotice.set('');
-
     this.showParticipantsDrawer.set(true);
   }
 
@@ -462,12 +499,6 @@ export class Events implements OnInit {
     this.selectedParticipantId.set('');
 
     this.registrationValidation.set(null);
-
-    this.registrationNotice.set('');
-
-    this.registrationErrors.set([]);
-
-    this.registrationsLoadedEventId.set(null);
   }
 
 
@@ -575,8 +606,6 @@ export class Events implements OnInit {
 
     this.registrationValidation.set(null);
 
-    this.registrationNotice.set('');
-
     this.showAddParticipant.set(true);
   }
 
@@ -600,10 +629,6 @@ export class Events implements OnInit {
     );
 
     this.registrationValidation.set(null);
-
-    this.registrationNotice.set('');
-
-    this.registrationErrors.set([]);
 
     const event =
       this.selectedEvent();
@@ -649,12 +674,10 @@ export class Events implements OnInit {
       `register:${participantId}`
     );
 
-    this.registrationErrors.set([]);
-
-    this.registrationNotice.set('');
-
     try {
 
+      // The service re-reads this event's registrations after the write, so
+      // the count and the list below reflect the backend.
       const result =
         await this.participantEventService
           .registerParticipant(
@@ -662,24 +685,22 @@ export class Events implements OnInit {
             event.id
           );
 
-      // The service re-reads this event's registrations after the write, so
-      // the count and the list below already reflect the backend.
-      this.registrationsLoadedEventId.set(
-        event.id
-      );
-
       if (!result.success) {
-        this.registrationErrors.set(
-          this.reportErrors(result.errors)
+        this.reportFailure(
+          'Participant could not be registered.',
+          result.errors
         );
         return;
       }
 
-      this.registrationNotice.set(
-        'Participant registered successfully.'
+      this.reportRegistrationSuccess(
+        'Participant registered.',
+        result.sourceWriteBack
       );
 
       this.selectedParticipantId.set('');
+
+      this.registrationValidation.set(null);
 
       // Close add mode after successful registration
       this.showAddParticipant.set(false);
@@ -706,10 +727,6 @@ export class Events implements OnInit {
       `cancel:${registration.id}`
     );
 
-    this.registrationErrors.set([]);
-
-    this.registrationNotice.set('');
-
     try {
 
       const result =
@@ -719,19 +736,17 @@ export class Events implements OnInit {
             registration.eventId
           );
 
-      this.registrationsLoadedEventId.set(
-        registration.eventId
-      );
-
       if (!result.success) {
-        this.registrationErrors.set(
-          this.reportErrors(result.errors)
+        this.reportFailure(
+          'Registration could not be cancelled.',
+          result.errors
         );
         return;
       }
 
-      this.registrationNotice.set(
-        'Registration cancelled.'
+      this.reportRegistrationSuccess(
+        'Registration cancelled.',
+        result.sourceWriteBack
       );
 
     } finally {
@@ -756,10 +771,6 @@ export class Events implements OnInit {
       `reactivate:${registration.id}`
     );
 
-    this.registrationErrors.set([]);
-
-    this.registrationNotice.set('');
-
     try {
 
       const result =
@@ -769,19 +780,17 @@ export class Events implements OnInit {
             registration.eventId
           );
 
-      this.registrationsLoadedEventId.set(
-        registration.eventId
-      );
-
       if (!result.success) {
-        this.registrationErrors.set(
-          this.reportErrors(result.errors)
+        this.reportFailure(
+          'Registration could not be reactivated.',
+          result.errors
         );
         return;
       }
 
-      this.registrationNotice.set(
-        'Registration reactivated.'
+      this.reportRegistrationSuccess(
+        'Registration reactivated.',
+        result.sourceWriteBack
       );
 
     } finally {
@@ -790,15 +799,67 @@ export class Events implements OnInit {
   }
 
 
-  private reportErrors(
-    errors: string[]
-  ): string[] {
+  /**
+   * Reports a successful registration write together with exactly what the
+   * backend said about the Google Sheet. Nothing is claimed about the sheet
+   * when the backend did not report on it.
+   */
+  private reportRegistrationSuccess(
+    message: string,
+    writeBack: SourceWriteBackResult | undefined
+  ): void {
 
-    return errors.length > 0
-      ? errors
-      : [
-          'The request could not be completed. Please try again.'
-        ];
+    if (!writeBack) {
+      this.notifications.success(message);
+      return;
+    }
+
+    switch (writeBack.status) {
+
+      case 'UPDATED':
+        this.notifications.success(
+          message,
+          'Google Sheet updated.'
+        );
+        return;
+
+      case 'SKIPPED':
+        this.notifications.success(
+          message,
+          'Registration updated in Nakshatra, but the Google Sheet was not changed.'
+        );
+        return;
+
+      case 'FAILED':
+        this.notifications.warning(
+          message,
+          writeBack.message?.trim() ||
+            'Registration updated in Nakshatra, but the Google Sheet could not be updated.'
+        );
+        return;
+
+      case 'UNVERIFIED':
+        this.notifications.warning(
+          message,
+          writeBack.message?.trim() ||
+            'Registration updated in Nakshatra, but the Google Sheet update could not be confirmed.'
+        );
+        return;
+    }
+  }
+
+
+  private reportFailure(
+    message: string,
+    errors: string[]
+  ): void {
+
+    this.notifications.error(
+      message,
+      errors.length > 0
+        ? errors.join(' ')
+        : 'The request could not be completed. Please try again.'
+    );
   }
 
 
@@ -809,8 +870,18 @@ export class Events implements OnInit {
   selectedTeamEvent =
     signal<Event | null>(null);
 
-  selectedTeam =
-    signal<Team | null>(null);
+  /** The open team is tracked by id so it always reflects the backend cache. */
+  private readonly selectedTeamId =
+    signal<string | null>(null);
+
+  readonly selectedTeam = computed(() => {
+
+    const teamId = this.selectedTeamId();
+
+    return teamId
+      ? this.teamService.getById(teamId) ?? null
+      : null;
+  });
 
   showTeamsDrawer =
     signal(false);
@@ -832,14 +903,25 @@ export class Events implements OnInit {
   teamParticipantHomeFilter =
     signal('ALL');
 
+  /** Result of the local, non-persisting team rule check. */
   teamValidation =
     signal<TeamValidationResult | null>(null);
 
-  teamSuccessMessage =
-    signal('');
-
   teamFormError =
     signal('');
+
+  /** Identifies the in-flight team write so double clicks cannot submit twice. */
+  teamBusy =
+    signal<string | null>(null);
+
+  readonly teamsLoadState = computed<TeamLoadState>(() => {
+
+    const event = this.selectedTeamEvent();
+
+    return event
+      ? this.teamService.loadState(event.id)
+      : { status: 'IDLE', error: '' };
+  });
 
   readonly teamsForSelectedEvent = computed(() => {
 
@@ -854,6 +936,25 @@ export class Events implements OnInit {
       .filter(team => team.eventId === event.id);
   });
 
+  /**
+   * The team list is rendered from the backend cache once it has been read.
+   * During a refresh after a write the previous backend result stays visible.
+   */
+  readonly teamsListVisible = computed(() => {
+
+    const status = this.teamsLoadState().status;
+
+    return (
+      status === 'LOADED' ||
+      (status === 'LOADING' && this.teamsForSelectedEvent().length > 0)
+    );
+  });
+
+  readonly teamRegistrationStatus = computed(() =>
+    this.registrationLoadStatus(this.selectedTeamEvent()?.id)
+  );
+
+  /** Active registrations only, matching the participants drawer. */
   readonly teamRegisteredCount = computed(() => {
 
     const event = this.selectedTeamEvent();
@@ -864,7 +965,10 @@ export class Events implements OnInit {
 
     return this.participantEventService
       .registrations$()
-      .filter(item => item.eventId === event.id)
+      .filter(item =>
+        item.eventId === event.id &&
+        item.registrationStatus === 'REGISTERED'
+      )
       .length;
   });
 
@@ -933,32 +1037,53 @@ export class Events implements OnInit {
     }
 
     this.selectedTeamEvent.set(event);
-    this.selectedTeam.set(null);
+    this.selectedTeamId.set(null);
     this.showCreateTeam.set(false);
     this.showTeamMembers.set(false);
     this.showAddTeamMember.set(false);
     this.teamValidation.set(null);
-    this.teamSuccessMessage.set('');
     this.teamFormError.set('');
 
-    // Team candidates and the registered count read the same registration
-    // cache as the participants drawer.
-    void this.loadRegistrations(event.id);
-
     this.showTeamsDrawer.set(true);
+
+    // Persisted teams and the registrations that team candidates depend on
+    // are both read from the backend; failures surface through load state.
+    void this.teamService.loadTeams(event.id);
+    void this.loadRegistrations(event.id);
+  }
+
+
+  async retryLoadTeams(): Promise<void> {
+
+    const event = this.selectedTeamEvent();
+
+    if (!event) {
+      return;
+    }
+
+    await this.teamService.loadTeams(event.id, true);
+  }
+
+
+  retryTeamRegistrations(): void {
+
+    const event = this.selectedTeamEvent();
+
+    if (event) {
+      void this.loadRegistrations(event.id, true);
+    }
   }
 
 
   closeTeams(): void {
     this.showTeamsDrawer.set(false);
     this.selectedTeamEvent.set(null);
-    this.selectedTeam.set(null);
+    this.selectedTeamId.set(null);
     this.showCreateTeam.set(false);
     this.showTeamMembers.set(false);
     this.showAddTeamMember.set(false);
     this.teamName = '';
     this.teamValidation.set(null);
-    this.teamSuccessMessage.set('');
     this.teamFormError.set('');
   }
 
@@ -966,7 +1091,6 @@ export class Events implements OnInit {
   openCreateTeam(): void {
     this.teamName = '';
     this.teamValidation.set(null);
-    this.teamSuccessMessage.set('');
     this.teamFormError.set('');
     this.showCreateTeam.set(true);
   }
@@ -979,11 +1103,11 @@ export class Events implements OnInit {
   }
 
 
-  createTeam(): void {
+  async createTeam(): Promise<void> {
 
     const event = this.selectedTeamEvent();
 
-    if (!event) {
+    if (!event || this.teamBusy()) {
       return;
     }
 
@@ -992,38 +1116,53 @@ export class Events implements OnInit {
       return;
     }
 
-    const result = this.teamService.createTeam(
-      event.id,
-      this.teamName,
-      'ADMIN'
-    );
+    this.teamFormError.set('');
+    this.teamValidation.set(null);
+    this.teamBusy.set('create');
 
-    this.teamValidation.set(result);
+    try {
 
-    if (!result.valid || !result.team) {
-      return;
+      const result = await this.teamService.createTeam(
+        event.id,
+        this.teamName
+      );
+
+      if (!result.success) {
+        this.reportFailure('Team could not be created.', result.errors);
+        return;
+      }
+
+      this.notifications.success(
+        result.team
+          ? `${result.team.name} has been created.`
+          : 'Team has been created.'
+      );
+
+      this.showCreateTeam.set(false);
+      this.teamName = '';
+
+      if (result.team) {
+        this.selectedTeamId.set(result.team.id);
+        this.showTeamMembers.set(true);
+      }
+
+    } finally {
+      this.teamBusy.set(null);
     }
-
-    this.teamSuccessMessage.set(`${result.team.name} has been created.`);
-    this.selectedTeam.set(result.team);
-    this.showCreateTeam.set(false);
-    this.showTeamMembers.set(true);
-    this.teamName = '';
   }
 
 
   viewTeamMembers(team: Team): void {
-    this.selectedTeam.set(team);
+    this.selectedTeamId.set(team.id);
     this.showTeamMembers.set(true);
     this.showAddTeamMember.set(false);
     this.teamValidation.set(null);
-    this.teamSuccessMessage.set('');
     this.teamFormError.set('');
   }
 
 
   closeTeamMembers(): void {
-    this.selectedTeam.set(null);
+    this.selectedTeamId.set(null);
     this.showTeamMembers.set(false);
     this.showAddTeamMember.set(false);
     this.teamValidation.set(null);
@@ -1041,7 +1180,6 @@ export class Events implements OnInit {
     this.teamParticipantSearch.set('');
     this.teamParticipantHomeFilter.set('ALL');
     this.teamValidation.set(null);
-    this.teamSuccessMessage.set('');
     this.showAddTeamMember.set(true);
   }
 
@@ -1062,96 +1200,83 @@ export class Events implements OnInit {
   }
 
 
-  addTeamMember(participantId: string): void {
+  async addTeamMember(participantId: string): Promise<void> {
 
     const team = this.selectedTeam();
 
-    if (!team) {
+    if (!team || this.teamBusy()) {
       return;
     }
 
-    const result = this.teamService.addMember(
-      team.id,
-      participantId,
-      'ADMIN'
-    );
+    this.teamValidation.set(null);
+    this.teamBusy.set(`add:${participantId}`);
 
-    this.teamValidation.set(result);
+    try {
 
-    if (!result.valid) {
-      return;
-    }
+      const result = await this.teamService.addMember(
+        team.id,
+        participantId
+      );
 
-    this.teamSuccessMessage.set('Participant has been added to the team.');
-    this.showAddTeamMember.set(false);
-  }
+      if (!result.success) {
+        this.reportFailure('Participant could not be added to the team.', result.errors);
+        return;
+      }
 
+      this.notifications.success('Participant has been added to the team.');
+      this.showAddTeamMember.set(false);
 
-  removeTeamMember(participantId: string): void {
-
-    const team = this.selectedTeam();
-
-    if (!team) {
-      return;
-    }
-
-    const result = this.teamService.removeMember(
-      team.id,
-      participantId,
-      'ADMIN'
-    );
-
-    this.teamValidation.set(result);
-
-    if (result.valid) {
-      this.teamSuccessMessage.set('Participant has been removed from the team. Revalidate before marking it ready.');
+    } finally {
+      this.teamBusy.set(null);
     }
   }
 
 
+  async removeTeamMember(participantId: string): Promise<void> {
+
+    const team = this.selectedTeam();
+
+    if (!team || this.teamBusy()) {
+      return;
+    }
+
+    this.teamValidation.set(null);
+    this.teamBusy.set(`remove:${participantId}`);
+
+    try {
+
+      const result = await this.teamService.removeMember(
+        team.id,
+        participantId
+      );
+
+      if (!result.success) {
+        this.reportFailure('Participant could not be removed from the team.', result.errors);
+        return;
+      }
+
+      this.notifications.success('Participant has been removed from the team.');
+
+    } finally {
+      this.teamBusy.set(null);
+    }
+  }
+
+
+  /**
+   * Runs the local team rules against the backend data in hand. This is a
+   * check only; it does not change the team's persisted status.
+   */
   validateTeam(team: Team): void {
     const result = this.teamService.validateTeam(team.id);
 
     this.teamValidation.set(result);
-    this.teamSuccessMessage.set(
-      result.valid ? `${team.name} is valid and ready for review.` : ''
-    );
-  }
-
-
-  markTeamReady(team: Team): void {
-    const result = this.teamService.markReady(team.id, 'ADMIN');
-
-    this.teamValidation.set(result);
 
     if (result.valid) {
-      this.teamSuccessMessage.set(`${team.name} is ready.`);
-    }
-  }
-
-
-  lockTeam(team: Team): void {
-    const result = this.teamService.lockTeam(team.id, 'ADMIN');
-
-    this.teamValidation.set(result);
-
-    if (result.valid) {
-      this.teamSuccessMessage.set(`${team.name} has been locked.`);
-    }
-  }
-
-
-  cancelTeam(team: Team): void {
-    const result = this.teamService.cancelTeam(team.id, 'ADMIN');
-
-    this.teamValidation.set(result);
-
-    if (result.valid) {
-      this.teamSuccessMessage.set(`${team.name} has been cancelled.`);
-
-      if (this.selectedTeam()?.id === team.id) {
-        this.closeTeamMembers();
-      }
+      this.notifications.info(
+        `${team.name} meets the team rules.`,
+        'This check does not change the team status.'
+      );
     }
   }
 

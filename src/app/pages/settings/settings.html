@@ -1,1 +1,459 @@
-<div class="settings-page"><div class="page-header"><span class="eyebrow">ADMINISTRATION</span><h1>Access management</h1><p>Frontend workflow state only. Real authentication and authorization require backend enforcement.</p></div><div class="filters"><input type="search" placeholder="Search name or email" [ngModel]="search()" (ngModelChange)="setSearch($event)" /><select [ngModel]="status()" (ngModelChange)="setStatus($event)"><option value="">All access statuses</option><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="DISABLED">Disabled</option></select><select [ngModel]="role()" (ngModelChange)="setRole($event)"><option value="">All roles</option><option value="ADMIN">Admin</option><option value="SUPPORT">Support</option><option value="EVENTS_TEAM">Events Team</option><option value="LIAISON_TEAM">Liaison Team</option><option value="CERTIFICATE_TEAM">Certificate Team</option></select></div>@if (errors().length) { <div class="alert error"><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> } @if (message()) { <div class="alert success">✓ {{ message() }}</div> } @if (filteredUsers().length) { <div class="table-wrapper"><table><thead><tr><th>User</th><th>Access</th><th>Role</th><th>Audit</th><th>Actions</th></tr></thead><tbody>@for (user of filteredUsers(); track user.id) { <tr><td><strong>{{ user.displayName }}</strong><small>{{ user.email }}</small></td><td><span class="status">{{ user.accessStatus }}</span></td><td><select [ngModel]="selectedRole(user)" (ngModelChange)="setPendingRole(user.id, $event)"><option value="ADMIN">Admin</option><option value="SUPPORT">Support</option><option value="EVENTS_TEAM">Events Team</option><option value="LIAISON_TEAM">Liaison Team</option><option value="CERTIFICATE_TEAM">Certificate Team</option></select><small>{{ roleLabel(user.role) }}</small></td><td><small>v{{ user.version }} · {{ user.updatedBy }}</small></td><td class="actions">@if (user.accessStatus === 'PENDING') { <button type="button" (click)="approve(user)">Approve</button><button type="button" class="danger" (click)="requestConfirmation(user, 'REJECT')">Reject</button> } @else if (user.accessStatus === 'DISABLED') { <button type="button" (click)="enable(user)">Enable</button> } @else { <button type="button" (click)="assignRole(user)">Save role</button>@if (user.accessStatus === 'APPROVED') { <button type="button" class="danger" (click)="requestConfirmation(user, 'DISABLE')">Disable</button> } }</td></tr> }</tbody></table></div> } @else { <div class="empty-state">No users match the current filters.</div> } @if (confirmation(); as item) { <div class="confirmation"><div><strong>Confirm {{ item.action.toLowerCase() }}</strong><p>Are you sure you want to {{ item.action.toLowerCase() }} {{ item.user.displayName }}?</p><button type="button" class="danger" (click)="confirm()">Confirm</button><button type="button" (click)="cancelConfirmation()">Cancel</button></div></div> }</div>
+<div class="settings-page">
+  <header class="page-header">
+    <span class="eyebrow">ADMINISTRATION</span>
+    <h1>Access management</h1>
+    <p>
+      Application users, roles and access requests are owned by the Nakshatra backend.
+      Every change on this page is sent to the server, and the list is re-read afterwards
+      so what you see is what was stored.
+    </p>
+  </header>
+
+  @if (!canManage()) {
+    <p class="notice" role="note">
+      Your account cannot manage access, so the list below is read-only and no administrative
+      controls are shown. Hiding them is a user-interface convenience only &mdash; the backend
+      checks every request.
+    </p>
+  }
+
+  <section class="filters" aria-label="Filter users">
+    <div class="field">
+      <label for="filter-search">Search</label>
+      <input
+        id="filter-search"
+        type="search"
+        placeholder="Name or email"
+        [ngModel]="search()"
+        (ngModelChange)="setSearch($event)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="filter-status">Access status</label>
+      <select id="filter-status" [ngModel]="status()" (ngModelChange)="setStatus($event)">
+        <option value="">All access statuses</option>
+        @for (option of accessStatuses; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="filter-role">Role</label>
+      <select id="filter-role" [ngModel]="role()" (ngModelChange)="setRole($event)">
+        <option value="">All roles</option>
+        @for (option of roles; track option) {
+          <option [value]="option">{{ roleLabel(option) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field actions">
+      <button type="button" class="secondary" (click)="clearFilters()" [disabled]="!hasFilters()">
+        Clear filters
+      </button>
+      <button type="button" class="secondary" (click)="reload()" [disabled]="refreshing()">
+        {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
+      </button>
+    </div>
+  </section>
+
+  @if (conflict(); as clash) {
+    <div class="panel alert-box conflict" role="alert">
+      <strong>{{ clash.message }}</strong>
+      <p>
+        The stored version for {{ clash.displayName }} has already moved on, so nothing was
+        overwritten. Refresh to load the current values, then repeat the change.
+      </p>
+      <div class="actions">
+        <button type="button" (click)="reload()" [disabled]="refreshing()">Refresh</button>
+        <button type="button" class="secondary" (click)="dismissConflict()">Dismiss</button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="panel state" role="status">Loading users&hellip;</div>
+  } @else if (loadError()) {
+    <div class="panel state error" role="alert">
+      <strong>Users could not be loaded.</strong>
+      <p>{{ loadError() }}</p>
+      <div class="actions">
+        <button type="button" (click)="reload()">Retry</button>
+      </div>
+    </div>
+  } @else if (!users().length) {
+    <div class="panel state" role="status">No users.</div>
+  } @else if (!filteredUsers().length) {
+    <div class="panel state" role="status">No users match the current filters.</div>
+  } @else {
+    <div class="panel table-wrapper">
+      <table>
+        <caption class="visually-hidden">Application users</caption>
+        <thead>
+          <tr>
+            <th scope="col">User</th>
+            <th scope="col">Access status</th>
+            <th scope="col">Role</th>
+            <th scope="col">Audit</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of filteredUsers(); track user.id) {
+            <tr>
+              <td class="identity">
+                <strong>{{ user.displayName }}</strong>
+                <small>{{ user.email }}</small>
+                @if (isSelf(user)) {
+                  <small class="tag">This is you</small>
+                }
+              </td>
+
+              <td>
+                <span [class]="statusTone(user.accessStatus)">{{ user.accessStatus }}</span>
+              </td>
+
+              <td class="role-cell">
+                @if (canManage()) {
+                  <label [for]="'row-role-' + user.id">Role for {{ user.displayName }}</label>
+                  <select
+                    [id]="'row-role-' + user.id"
+                    [ngModel]="roleDraft(user)"
+                    (ngModelChange)="setRoleDraft(user.id, $event)"
+                    [disabled]="busyUserId() === user.id"
+                  >
+                    @for (option of roles; track option) {
+                      <option [value]="option">{{ roleLabel(option) }}</option>
+                    }
+                  </select>
+                  <small>Stored role: {{ roleLabel(user.role) }}</small>
+                  @if (roleChangePending(user)) {
+                    <span class="actions">
+                      <button
+                        type="button"
+                        (click)="requestRoleChange(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Save role
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary"
+                        (click)="clearRoleDraft(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  }
+                } @else {
+                  <span class="role-value">{{ roleLabel(user.role) }}</span>
+                }
+              </td>
+
+              <td class="audit">
+                <small>v{{ user.version }}</small>
+                <small>by {{ user.updatedBy }}</small>
+                <small>{{ user.updatedAt }}</small>
+              </td>
+
+              <td class="actions">
+                @switch (user.accessStatus) {
+                  @case ('PENDING') {
+                    @if (canManage()) {
+                      <button
+                        type="button"
+                        (click)="openApproval(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        class="danger"
+                        (click)="requestRejection(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Reject
+                      </button>
+                    } @else {
+                      <small class="hint">Awaiting an administrator decision</small>
+                    }
+                  }
+                  @case ('APPROVED') {
+                    @if (canManage() && !isSelf(user)) {
+                      <button
+                        type="button"
+                        class="danger"
+                        (click)="requestDisable(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Disable
+                      </button>
+                    } @else if (isSelf(user)) {
+                      <small class="hint">You cannot disable your own account</small>
+                    } @else {
+                      <small class="hint">Read-only</small>
+                    }
+                  }
+                  @case ('DISABLED') {
+                    @if (canManage()) {
+                      <button
+                        type="button"
+                        (click)="requestEnable(user)"
+                        [disabled]="busyUserId() === user.id"
+                      >
+                        Enable
+                      </button>
+                    } @else {
+                      <small class="hint">Access is disabled</small>
+                    }
+                  }
+                  @case ('REJECTED') {
+                    <small class="hint">Request was rejected</small>
+                  }
+                  @default {
+                    <small class="hint">No action available</small>
+                  }
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (loaded()) {
+    <section class="panel requests" aria-labelledby="pending-heading">
+      <div class="panel-head">
+        <h2 id="pending-heading">
+          Pending requests
+          <span class="count">{{ pendingUsers().length }}</span>
+        </h2>
+      </div>
+
+      @if (!pendingUsers().length) {
+        <p class="hint">There are no pending access requests.</p>
+      } @else {
+        @for (user of pendingUsers(); track user.id) {
+          <article class="request">
+            <div class="request-main">
+              <strong>{{ user.displayName }}</strong>
+              <small>{{ user.email }}</small>
+            </div>
+
+            <div class="request-detail">
+              <span class="label">Requested role</span>
+              <span>{{ roleLabel(user.requestedRole) }}</span>
+            </div>
+
+            <div class="request-detail">
+              <span class="label">Date</span>
+              <span>{{ user.requestedAt ?? 'Not recorded' }}</span>
+            </div>
+
+            <div class="request-detail">
+              <span class="label">Status</span>
+              <span [class]="statusTone(user.accessStatus)">{{ user.accessStatus }}</span>
+            </div>
+
+            @if (canManage()) {
+              <div class="actions">
+                <button
+                  type="button"
+                  (click)="openApproval(user)"
+                  [disabled]="busyUserId() === user.id"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  class="danger"
+                  (click)="requestRejection(user)"
+                  [disabled]="busyUserId() === user.id"
+                >
+                  Reject
+                </button>
+              </div>
+            }
+          </article>
+        }
+      }
+    </section>
+  }
+
+  @if (canManage()) {
+    <section class="panel add-user" aria-labelledby="add-user-heading">
+      <div class="panel-head">
+        <h2 id="add-user-heading">Add user</h2>
+        @if (!addOpen()) {
+          <button type="button" (click)="openAddUser()">+ Add User</button>
+        }
+      </div>
+
+      @if (addOpen()) {
+        <form class="form" (ngSubmit)="submitNewUser()" novalidate>
+          <div class="field">
+            <label for="new-email">Email</label>
+            <input
+              id="new-email"
+              name="newEmail"
+              type="email"
+              autocomplete="off"
+              [ngModel]="newEmail()"
+              (ngModelChange)="setNewEmail($event)"
+              [attr.aria-invalid]="newFieldErrors().email ? 'true' : null"
+              [attr.aria-describedby]="newFieldErrors().email ? 'new-email-error' : null"
+              [disabled]="newSubmitting()"
+            />
+            @if (newFieldErrors().email; as emailError) {
+              <p class="field-error" id="new-email-error" role="alert">{{ emailError }}</p>
+            }
+          </div>
+
+          <div class="field">
+            <label for="new-display-name">Display name</label>
+            <input
+              id="new-display-name"
+              name="newDisplayName"
+              type="text"
+              autocomplete="off"
+              [ngModel]="newDisplayName()"
+              (ngModelChange)="setNewDisplayName($event)"
+              [attr.aria-invalid]="newFieldErrors().displayName ? 'true' : null"
+              [attr.aria-describedby]="newFieldErrors().displayName ? 'new-display-name-error' : null"
+              [disabled]="newSubmitting()"
+            />
+            @if (newFieldErrors().displayName; as displayNameError) {
+              <p class="field-error" id="new-display-name-error" role="alert">
+                {{ displayNameError }}
+              </p>
+            }
+          </div>
+
+          <div class="field">
+            <label for="new-role">Role</label>
+            <select
+              id="new-role"
+              name="newRole"
+              [ngModel]="newRole()"
+              (ngModelChange)="setNewRole($event)"
+              [attr.aria-invalid]="newFieldErrors().role ? 'true' : null"
+              [attr.aria-describedby]="newFieldErrors().role ? 'new-role-error' : null"
+              [disabled]="newSubmitting()"
+            >
+              <option value="">Choose a role</option>
+              @for (option of roles; track option) {
+                <option [value]="option">{{ roleLabel(option) }}</option>
+              }
+            </select>
+            @if (newFieldErrors().role; as roleError) {
+              <p class="field-error" id="new-role-error" role="alert">{{ roleError }}</p>
+            }
+          </div>
+
+          @if (newFormError()) {
+            <p class="field-error" role="alert">{{ newFormError() }}</p>
+          }
+
+          @if (newSuccess()) {
+            <p class="field-success" role="status">{{ newSuccess() }}</p>
+          }
+
+          <div class="actions">
+            <button type="submit" [disabled]="newSubmitting()">
+              {{ newSubmitting() ? 'Creating…' : 'Create user' }}
+            </button>
+            <button type="button" class="secondary" (click)="closeAddUser()" [disabled]="newSubmitting()">
+              Cancel
+            </button>
+          </div>
+
+          <p class="hint">
+            No password is asked for or sent. Credentials belong to the backend, and the new
+            user signs in with their own Google account.
+          </p>
+        </form>
+      }
+    </section>
+  }
+
+  @if (approval(); as item) {
+    <div class="overlay">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="approval-title"
+      >
+        <h2 id="approval-title">Approve {{ item.user.displayName }}</h2>
+        <p>
+          {{ item.user.email }} &middot; requested {{ roleLabel(item.user.requestedRole) }}
+        </p>
+
+        <div class="field">
+          <label for="approval-role">Final role</label>
+          <select
+            id="approval-role"
+            [ngModel]="item.role"
+            (ngModelChange)="setApprovalRole($event)"
+            [disabled]="busy()"
+          >
+            @for (option of roles; track option) {
+              <option [value]="option">{{ roleLabel(option) }}</option>
+            }
+          </select>
+        </div>
+
+        <p class="hint">
+          Approving grants access immediately with the role selected here. The stored version
+          {{ item.user.version }} is sent with the request, so a concurrent change is refused.
+        </p>
+
+        <div class="actions">
+          <button type="button" class="secondary" (click)="closeApproval()" [disabled]="busy()">
+            Cancel
+          </button>
+          <button type="button" (click)="confirmApproval()" [disabled]="busy()">
+            {{ busy() ? 'Approving…' : 'Approve' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (confirmation(); as action) {
+    <div class="overlay">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-title"
+      >
+        <h2 id="confirmation-title">{{ confirmationTitle(action) }}</h2>
+        <p>{{ confirmationBody(action) }}</p>
+        <div class="actions">
+          <button
+            type="button"
+            class="secondary"
+            (click)="cancelConfirmation()"
+            [disabled]="busy()"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            [class.danger]="action.kind !== 'ENABLE'"
+            (click)="confirmAction()"
+            [disabled]="busy()"
+          >
+            {{ busy() ? 'Working…' : confirmationCta(action) }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

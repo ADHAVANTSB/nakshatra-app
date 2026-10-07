@@ -4,6 +4,7 @@ import { Attendance as AttendanceRecord, AttendanceStatus, Event, Participant, T
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
@@ -52,10 +53,10 @@ export class Attendance implements OnInit {
   private readonly shelterData = inject(ShelterDataService);
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly teamService = inject(TeamService);
+  private readonly notifications = inject(NotificationService);
 
   readonly events = this.eventService.events$;
   readonly selectedEventId = signal('');
-  readonly message = signal('');
   readonly errors = signal<string[]>([]);
 
   /** True while the shared backend store is filling on direct navigation. */
@@ -107,6 +108,18 @@ export class Attendance implements OnInit {
         } : undefined;
       })
       .filter((item): item is Attendee => !!item);
+  });
+
+  /**
+   * Active registrations the backend returned for the selected event, whether or
+   * not their participant record could be resolved. Used to avoid reporting
+   * "no participants registered" when only the participant records are missing.
+   */
+  readonly activeRegistrationCount = computed(() => {
+    const event = this.selectedEvent();
+    if (!event) return 0;
+    return this.registrationService.getEventRegistrations(event.id)
+      .filter(registration => registration.registrationStatus === 'REGISTERED').length;
   });
 
   readonly presentCount = computed(() => this.attendees()
@@ -165,19 +178,98 @@ export class Attendance implements OnInit {
 
   setEvent(eventId: string): void {
     this.selectedEventId.set(eventId);
-    this.message.set('');
     this.errors.set([]);
-    void this.loadRegistrations(eventId);
+    void this.loadEventData(eventId);
   }
 
-  markAttendance(participantId: string, status: AttendanceStatus, teamId?: string): void {
+  /** Re-issues the registration (and, for group events, team) reads after a failure. */
+  retryRegistrations(): void {
+    const eventId = this.selectedEventId();
+    if (!eventId || this.attendeesLoading()) return;
+    void this.loadEventData(eventId, true);
+  }
+
+  /**
+   * Reads everything the attendee table needs for one event: its registrations
+   * and, for group events, its persisted teams so the Team column is real.
+   */
+  private async loadEventData(eventId: string, forceTeams = false): Promise<void> {
+    const event = eventId ? this.eventService.getById(eventId) : undefined;
+
+    await Promise.all([
+      this.loadRegistrations(eventId),
+      event?.mode === 'GROUP' ? this.teamService.loadTeams(event.id, forceTeams) : Promise.resolve(true),
+    ]);
+  }
+
+  /** Team read state for the selected group event. */
+  readonly teamsState = computed(() => {
     const event = this.selectedEvent();
-    if (!event) return;
-    const result = this.attendanceService.markAttendance(
-      participantId, event.id, status, teamId, 'ADMIN'
-    );
-    this.errors.set(result.errors);
-    this.message.set(result.success ? `Attendance marked ${status.toLowerCase()}.` : '');
+    return event?.mode === 'GROUP' ? this.teamService.loadState(event.id) : undefined;
+  });
+
+  /** Team cell text; a failed or pending team read is never shown as "no team". */
+  teamLabel(item: Attendee): string {
+    const state = this.teamsState();
+    if (item.team) return item.team.name;
+    if (!state || state.status === 'LOADING' || state.status === 'IDLE') return 'Loading teams…';
+    if (state.status === 'ERROR') return 'Team unavailable';
+    return 'No team assigned';
+  }
+
+  /** Exactly one of: Not marked / Present / Absent. */
+  statusLabel(attendance: AttendanceRecord | undefined): string {
+    if (attendance?.status === 'PRESENT') return 'Present';
+    if (attendance?.status === 'ABSENT') return 'Absent';
+    return 'Not marked';
+  }
+
+  /** Participant ids whose attendance write is currently in flight. */
+  readonly markingIds = signal<ReadonlySet<string>>(new Set<string>());
+
+  isMarking(participantId: string): boolean {
+    return this.markingIds().has(participantId);
+  }
+
+  async markAttendance(participant: Participant, status: AttendanceStatus, teamId?: string): Promise<void> {
+    const event = this.selectedEvent();
+    if (!event || this.isMarking(participant.id)) return;
+
+    this.setMarking(participant.id, true);
+    this.errors.set([]);
+
+    try {
+      const result = await this.attendanceService.markAttendance(
+        participant.id, event.id, status, teamId
+      );
+
+      if (result.success) {
+        this.notifications.success(
+          `${participant.fullName} marked ${this.statusLabel(result.attendance).toLowerCase()}.`
+        );
+        return;
+      }
+
+      const detail = result.errors.length > 0
+        ? result.errors.join(' ')
+        : 'The backend did not accept the attendance mark.';
+      this.errors.set(result.errors.length > 0 ? result.errors : [detail]);
+      this.notifications.error(`Attendance for ${participant.fullName} was not saved.`, detail);
+    } finally {
+      this.setMarking(participant.id, false);
+    }
+  }
+
+  private setMarking(participantId: string, active: boolean): void {
+    this.markingIds.update(current => {
+      const next = new Set(current);
+      if (active) {
+        next.add(participantId);
+      } else {
+        next.delete(participantId);
+      }
+      return next;
+    });
   }
 
   levelLabel(participant: Participant): string {

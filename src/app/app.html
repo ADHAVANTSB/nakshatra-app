@@ -1,3 +1,34 @@
+<!-- Compact, non-blocking notifications for normal mutation outcomes. -->
+
+<div class="nk-toasts" role="region" aria-label="Notifications">
+
+  @for (item of notifications(); track item.id) {
+
+    <div class="nk-toast" [class]="'nk-toast--' + item.tone" role="status">
+
+      <div class="nk-toast-body">
+        <strong>{{ item.message }}</strong>
+
+        @if (item.detail) {
+          <span>{{ item.detail }}</span>
+        }
+
+      </div>
+
+      <button
+        class="nk-toast-close"
+        type="button"
+        [attr.aria-label]="'Dismiss notification'"
+        (click)="dismissNotification(item.id)">
+        ×
+      </button>
+
+    </div>
+
+  }
+
+</div>
+
 @if (!isAuthenticated()) {
   <router-outlet></router-outlet>
 } @else {

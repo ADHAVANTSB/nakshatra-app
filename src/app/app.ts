@@ -8,6 +8,7 @@ import {
 import { ApplicationSection } from './core/models';
 import { AuthService } from './core/services/auth/auth.service';
 import { ApiClientService } from './core/services/api/api-client.service';
+import { NotificationService } from './core/services/notifications/notification.service';
 
 interface NavItem {
   label: string;
@@ -28,9 +29,11 @@ interface NavItem {
 export class App implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly notificationService = inject(NotificationService);
   private readonly router = inject(Router);
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly currentUser = this.auth.currentUser;
+  readonly notifications = this.notificationService.notifications;
 
   ngOnInit(): void {
     void this.validateStartupSession();
@@ -99,6 +102,7 @@ export class App implements OnInit {
   canAccess(section: ApplicationSection): boolean { return this.auth.canAccess(section); }
   userInitial(): string { return this.currentUser()?.displayName.charAt(0).toUpperCase() ?? '?'; }
   logout(): void { void this.signOut(); }
+  dismissNotification(id: number): void { this.notificationService.dismiss(id); }
 
   private async signOut(): Promise<void> {
     await this.apiClient.invalidateApplicationSession();
