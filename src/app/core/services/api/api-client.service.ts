@@ -467,10 +467,21 @@ export class ApiClientService {
       : { success: false, error: { code: 'INVALID_USER_RESPONSE', message: 'The server returned an invalid user response.' } };
   }
 
-  /** Best-effort server invalidation; local session state is always cleared. */
-  async invalidateApplicationSession(): Promise<void> {
-    if (this.activeSession()) await this.post<LogoutData>('logout');
+  /**
+   * Backend-backed logout: invalidates the server session, then always clears
+   * the local session. The backend result is returned so the caller can report
+   * a failed server invalidation honestly — the local logout is never faked
+   * as a server-confirmed one.
+   */
+  async invalidateApplicationSession(): Promise<ApiResponse<LogoutData>> {
+    let result: ApiResponse<LogoutData> = { success: true, data: { loggedOut: false } };
+
+    if (this.activeSession()) {
+      result = await this.post<LogoutData>('logout');
+    }
+
     this.auth.logout();
+    return result;
   }
 
   validateApplicationSession(): Promise<SessionValidationResponse> {

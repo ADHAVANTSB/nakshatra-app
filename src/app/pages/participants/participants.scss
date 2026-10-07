@@ -242,6 +242,11 @@
   font-size: 11px;
 }
 
+/* Name and shelter home span two columns so the identity grid reads top-down. */
+.detail-item--wide {
+  grid-column: span 2;
+}
+
 .readonly-note {
   margin: 16px 0 0;
   padding: 10px 12px;
@@ -346,6 +351,28 @@
   text-decoration: line-through;
 }
 
+/* Status pill and Open event link sit under the event name, not inside it. */
+.event-item-tags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.event-link {
+  color: #1d3557;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid #b9c8da;
+}
+
+.event-link:hover,
+.event-link:focus-visible {
+  border-bottom-color: #1d3557;
+}
+
 .add-event {
   display: flex;
   align-items: flex-end;
@@ -393,6 +420,10 @@ tr:focus-visible {
 
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-item--wide {
+    grid-column: auto;
   }
 
   .event-item {

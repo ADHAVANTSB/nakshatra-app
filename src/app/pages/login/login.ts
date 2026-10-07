@@ -201,6 +201,15 @@ export class Login implements AfterViewInit, OnDestroy {
     return new Promise(resolve => this.googleButtonWaiters.push(resolve));
   }
 
+  /**
+   * Verifies a Google credential with the backend.
+   *
+   * Error semantics mirror ApiClientService.post: a backend error body is
+   * displayed verbatim even over a non-200 status; a non-JSON body (Apps Script
+   * error or quota page) is reported as such instead of being blamed on the
+   * connection; a hung request is aborted at the same 120s ceiling the
+   * authenticated client uses, so loading always terminates.
+   */
   private async verifyCredential(credential: string): Promise<void> {
     if (this.destroyed || this.loading() || this.verifiedUser()) return;
     if (!credential) {
@@ -210,19 +219,43 @@ export class Login implements AfterViewInit, OnDestroy {
 
     this.error.set('');
     this.loading.set(true);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
     try {
       const response = await fetch(GOOGLE_IDENTITY_CONFIG.verificationEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ credential }),
+        signal: controller.signal,
       });
-      if (!response.ok) throw new Error('Verification request failed.');
-      const result: unknown = await response.json();
-      if (this.destroyed) return;
-      if (!this.isVerifiedResponse(result)) {
-        this.error.set(this.isVerificationFailure(result) ? result.error : 'Google account verification failed.');
+
+      let result: unknown;
+      try {
+        result = await response.json();
+      } catch {
+        if (this.destroyed) return;
+        this.error.set(
+          `The sign-in server returned a non-JSON response (HTTP ${response.status}). This is usually an Apps Script error or quota page. Please try again.`
+        );
         return;
       }
+
+      if (this.destroyed) return;
+
+      if (this.isVerificationFailure(result)) {
+        // The backend's real message (e.g. an Apps Script authorization
+        // failure) is shown verbatim; it is never replaced by a generic one.
+        this.error.set(result.error);
+        return;
+      }
+
+      if (!this.isVerifiedResponse(result)) {
+        this.error.set('Google account verification failed.');
+        return;
+      }
+
       if (result.access === 'APPROVED') {
         if (!this.isApprovedGoogleUser(result.user)) {
           this.error.set('Google account verification failed.');
@@ -238,13 +271,20 @@ export class Login implements AfterViewInit, OnDestroy {
         await this.router.navigateByUrl('/dashboard');
         return;
       }
+
       // Anything other than APPROVED stops here: no session is established and
       // no protected route is reachable from this page.
       this.verifiedUser.set({ email: result.user.email, displayName: result.user.displayName, access: result.access });
     } catch (error) {
-      console.error('Google account verification request failed.', error);
-      if (!this.destroyed) this.error.set('Unable to verify your Google account. Check your connection and try again.');
+      if (this.destroyed) return;
+      if (controller.signal.aborted) {
+        this.error.set('The sign-in server did not respond in time. Please try again.');
+      } else {
+        console.error('Google account verification request failed.', error);
+        this.error.set('Unable to verify your Google account. Check your connection and try again.');
+      }
     } finally {
+      clearTimeout(timeout);
       if (!this.destroyed) this.loading.set(false);
     }
   }

@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Attendance as AttendanceRecord, AttendanceStatus, Event, Participant, Team } from '../../core/models';
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
@@ -54,6 +55,7 @@ export class Attendance implements OnInit {
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly teamService = inject(TeamService);
   private readonly notifications = inject(NotificationService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly events = this.eventService.events$;
   readonly selectedEventId = signal('');
@@ -73,6 +75,12 @@ export class Attendance implements OnInit {
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
     void this.shelterData.refresh();
+
+    // Deep link from the Events page: /attendance?eventId=...
+    const deepLinked = this.route.snapshot.queryParamMap.get('eventId');
+    if (deepLinked) {
+      this.setEvent(deepLinked);
+    }
   }
 
   readonly selectedEvent = computed(() => this.selectedEventId()

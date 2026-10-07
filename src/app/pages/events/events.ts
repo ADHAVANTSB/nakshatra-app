@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import {
   Event,
@@ -34,7 +35,7 @@ type RegistrationLoadStatus = 'LOADING' | 'LOADED' | 'ERROR';
 
 @Component({
   selector: 'nk-events',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './events.html'
 })
 export class Events implements OnInit {
@@ -63,6 +64,9 @@ export class Events implements OnInit {
 
   private readonly notifications =
     inject(NotificationService);
+
+  private readonly route =
+    inject(ActivatedRoute);
 
 
   /**
@@ -97,12 +101,21 @@ export class Events implements OnInit {
    * backend store, so a single refresh fills every list this page renders.
    */
   ngOnInit(): void {
+
+    // Deep link in: /events?eventId=<id> expands that event's card once the
+    // event master has loaded.
+    const deepLinkEventId =
+      this.route.snapshot.queryParamMap.get('eventId') ?? undefined;
+
     void this.shelterData.refresh();
-    void this.loadEventMaster();
+
+    void this.loadEventMaster(deepLinkEventId);
   }
 
 
-  private async loadEventMaster(): Promise<void> {
+  private async loadEventMaster(
+    deepLinkEventId?: string
+  ): Promise<void> {
 
     this.eventBootstrapPending.set(true);
 
@@ -118,6 +131,18 @@ export class Events implements OnInit {
 
     if (preselected) {
       await this.loadRegistrations(preselected.id);
+    }
+
+    // A deep-linked event card opens as soon as the master contains the event.
+    if (deepLinkEventId) {
+
+      const target = this.events().find(
+        event => event.id === deepLinkEventId
+      );
+
+      if (target) {
+        this.expandCard(target);
+      }
     }
   }
 
@@ -274,7 +299,7 @@ export class Events implements OnInit {
   private readonly registrationLoadStates =
     signal<Record<string, RegistrationLoadStatus>>({});
 
-  private registrationLoadStatus(
+  registrationLoadStatus(
     eventId: string | undefined
   ): RegistrationLoadStatus | null {
 
@@ -381,6 +406,119 @@ export class Events implements OnInit {
         registration => registration.registrationStatus === 'REGISTERED'
       ).length
     );
+
+
+  // =========================================================
+  // COLLAPSIBLE EVENT CARDS
+  // =========================================================
+
+  /** Only one card is expanded at a time; null means every card is collapsed. */
+  expandedEventId =
+    signal<string | null>(null);
+
+
+  toggleCard(event: Event): void {
+
+    if (this.expandedEventId() === event.id) {
+      this.expandedEventId.set(null);
+      return;
+    }
+
+    this.expandCard(event);
+  }
+
+
+  private expandCard(event: Event): void {
+
+    this.expandedEventId.set(event.id);
+
+    this.ensureRegistrationsLoaded(event.id);
+  }
+
+
+  /**
+   * Reads an event's registrations the first time its card opens and again
+   * after a failed read; a successful read is never re-fetched on expand and
+   * registrations for closed cards are never preloaded.
+   */
+  private ensureRegistrationsLoaded(
+    eventId: string
+  ): void {
+
+    const status =
+      this.registrationLoadStatus(eventId);
+
+    if (status === 'LOADING' || status === 'LOADED') {
+      return;
+    }
+
+    void this.loadRegistrations(eventId, status === 'ERROR');
+  }
+
+
+  /** Active registrations for one event; the count shown on the card header. */
+  activeRegistrationCount(
+    eventId: string
+  ): number {
+
+    return this.participantEventService
+      .registrations$()
+      .filter(registration =>
+        registration.eventId === eventId &&
+        registration.registrationStatus === 'REGISTERED'
+      ).length;
+  }
+
+
+  /**
+   * Registered participants for the expanded card's table. Display data comes
+   * from the registration row first, then the cached participant record; a row
+   * is never dropped for lack of a cached participant.
+   */
+  cardParticipants(
+    eventId: string
+  ) {
+
+    return this.participantEventService
+      .registrations$()
+      .filter(registration =>
+        registration.eventId === eventId &&
+        registration.registrationStatus === 'REGISTERED'
+      )
+      .map(registration => {
+
+        const participant =
+          this.shelterData
+            .participants()
+            .find(item => item.id === registration.participantId);
+
+        const level =
+          registration.level ?? participant?.level;
+
+        const homeName =
+          participant?.shelterHomeId
+            ? this.shelterData
+                .getHomeById(participant.shelterHomeId)?.homeName ?? '—'
+            : '—';
+
+        return {
+          registration,
+          name:
+            registration.participantName ??
+            participant?.fullName ??
+            'Unknown participant',
+          age: registration.age ?? participant?.age,
+          standard: registration.standard ?? participant?.standard,
+          levelText: level ? this.levelLabel(level) : '—',
+          homeName
+        };
+      });
+  }
+
+
+  retryCardRegistrations(eventId: string): void {
+    void this.loadRegistrations(eventId, true);
+  }
 
 
   // =========================================================

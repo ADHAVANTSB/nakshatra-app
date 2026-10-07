@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 
 import { Attendance, Event, Participant, Score, Team } from '../../core/models';
@@ -81,6 +82,7 @@ export class Scoring implements OnInit {
   private readonly scoringService = inject(ScoringService);
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly shelterData = inject(ShelterDataService);
+  private readonly route = inject(ActivatedRoute);
   private readonly notify = inject(NotificationService);
 
   /** True while the shared backend store is filling on direct navigation. */
@@ -96,6 +98,12 @@ export class Scoring implements OnInit {
    */
   ngOnInit(): void {
     void this.shelterData.refresh();
+
+    // Deep link from the Events page: /scoring?eventId=...
+    const deepLinked = this.route.snapshot.queryParamMap.get('eventId');
+    if (deepLinked) {
+      this.selectedEventId.set(deepLinked);
+    }
 
     const preselected = this.selectedEventId();
     if (preselected) {

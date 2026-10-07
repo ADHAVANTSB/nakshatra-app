@@ -1,6 +1,6 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import {
   Event,
@@ -36,7 +36,8 @@ const REGISTRATION_CATEGORY_ORDER: readonly EventCategory[] = [
  * row first, because the backend may inline it, and only then from the event
  * master. Nothing is invented when both are absent.
  */
-interface RegistrationEntry {
+/** One resolved registration; exported for the detail-panel spec. */
+export interface RegistrationEntry {
   registration: ParticipantEvent;
   event?: Event;
   name: string;
@@ -67,7 +68,7 @@ interface RegistrationGroup {
  */
 @Component({
   selector: 'nk-participants',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './participants.html',
   styleUrl: './participants.scss',
 })
@@ -314,6 +315,45 @@ export class Participants implements OnInit {
       !list.some(registration => registration.registrationStatus === 'REGISTERED');
   });
 
+  /** Count of ACTIVE registrations, shown in the identity grid. */
+  readonly activeRegistrationCount = computed(() => {
+    const list = this.registrations();
+
+    return list
+      ? list.filter(registration => registration.registrationStatus === 'REGISTERED').length
+      : 0;
+  });
+
+  // ---------------------------------------------------------
+  // DEEP LINK
+  // ---------------------------------------------------------
+
+  /**
+   * `?participantId=` deep link (e.g. arriving from another module). The id is
+   * held here until the shared participant cache has finished loading, then
+   * resolved through `getParticipantById` and opened exactly once. An id the
+   * cache never resolves is ignored silently.
+   */
+  private readonly pendingDeepLinkParticipantId = signal<string | null>(null);
+  private handledDeepLinkId: string | null = null;
+
+  private readonly openDeepLinkedParticipant = effect(() => {
+    const participantId = this.pendingDeepLinkParticipantId();
+
+    if (!participantId || this.loading()) {
+      return;
+    }
+
+    this.pendingDeepLinkParticipantId.set(null);
+    this.handledDeepLinkId = participantId;
+
+    const participant = this.participantService.getParticipantById(participantId);
+
+    if (participant) {
+      void this.openParticipant(participant);
+    }
+  });
+
   // ---------------------------------------------------------
   // LIFECYCLE
   // ---------------------------------------------------------
@@ -322,8 +362,15 @@ export class Participants implements OnInit {
     void this.shelterData.refresh();
 
     // The Homes module navigates here with shelterHomeId; keep that filter.
+    // A participantId query param deep-links straight into the detail panel.
     this.route.queryParamMap.subscribe(params => {
       this.selectedHomeId.set(params.get('shelterHomeId') ?? params.get('homeId'));
+
+      const participantId = params.get('participantId');
+
+      if (participantId && participantId !== this.handledDeepLinkId) {
+        this.pendingDeepLinkParticipantId.set(participantId);
+      }
     });
   }
 
@@ -793,6 +840,15 @@ export class Participants implements OnInit {
     return mode === 'SOLO' ? 'Individual' : 'Group';
   }
 
+  /**
+   * Event id used by the "Open event" link. Registrations carry `eventId`, but
+   * a row known only by its denormalized name (no resolvable id) must not
+   * render a link that navigates nowhere.
+   */
+  eventLinkTarget(entry: RegistrationEntry): string | null {
+    return entry.registration.eventId || null;
+  }
+
   /** Human event name; never the raw event id. */
   eventName(eventId: string, registration?: ParticipantEvent): string {
     return registration?.eventName
@@ -818,7 +874,7 @@ export class Participants implements OnInit {
     const sourceVersionId = participant.sourceVersionId;
 
     if (!sourceVersionId) {
-      return 'Not sheet imported';
+      return '—';
     }
 
     return sourceVersionId.length > 14
@@ -829,7 +885,7 @@ export class Participants implements OnInit {
   sourceRowLabel(participant: Participant): string {
     return participant.sourceRowNumber
       ? `Sheet row ${participant.sourceRowNumber}`
-      : 'Not tracked';
+      : '—';
   }
 
   // ---------------------------------------------------------

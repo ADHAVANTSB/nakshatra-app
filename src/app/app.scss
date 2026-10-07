@@ -860,6 +860,8 @@ app-root {
 
 .nk-header-actions {
 
+  position: relative;
+
   display: flex;
 
   align-items: center;
@@ -1750,5 +1752,94 @@ app-root {
 
     transition-duration:
       .01ms !important;
+  }
+}
+
+/* =========================================================
+     HEADER USER MENU (My Account / Settings / Logout)
+     ========================================================= */
+
+.nk-user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 220px;
+  background: var(--nk-white);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  box-shadow: var(--nk-shadow-md);
+  overflow: hidden;
+}
+
+.nk-user-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--nk-border-light);
+  background: var(--nk-background-soft);
+
+  strong {
+    color: var(--nk-text-dark);
+    font-size: 0.95rem;
+  }
+
+  span {
+    color: var(--nk-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .nk-user-menu-email {
+    text-transform: none;
+    letter-spacing: 0;
+    word-break: break-all;
+  }
+}
+
+.nk-user-menu-items {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.nk-user-menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--nk-radius-sm);
+  background: transparent;
+  color: var(--nk-text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--nk-transition-fast), color var(--nk-transition-fast);
+
+  &:hover {
+    background: var(--nk-primary-light);
+    color: var(--nk-primary-dark);
+  }
+}
+
+.nk-user-menu-item--logout {
+  color: var(--nk-danger);
+
+  &:hover {
+    background: color-mix(in srgb, var(--nk-danger) 10%, transparent);
+    color: var(--nk-danger);
+  }
+
+  &:disabled {
+    color: var(--nk-muted);
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
   }
 }

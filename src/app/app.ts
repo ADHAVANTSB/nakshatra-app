@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import {
   RouterLink,
   RouterLinkActive,
@@ -24,7 +24,10 @@ interface NavItem {
     RouterLink,
     RouterLinkActive
   ],
-  templateUrl: './app.html'
+  templateUrl: './app.html',
+  host: {
+    '(document:click)': 'closeUserMenu()'
+  }
 })
 export class App implements OnInit {
   private readonly auth = inject(AuthService);
@@ -101,12 +104,49 @@ export class App implements OnInit {
   readonly visibleNavItems = computed(() => this.navItems.filter(item => this.auth.canAccess(item.section)));
   canAccess(section: ApplicationSection): boolean { return this.auth.canAccess(section); }
   userInitial(): string { return this.currentUser()?.displayName.charAt(0).toUpperCase() ?? '?'; }
-  logout(): void { void this.signOut(); }
   dismissNotification(id: number): void { this.notificationService.dismiss(id); }
 
+  /** Header user menu (My Account / Settings / Logout). */
+  readonly userMenuOpen = signal(false);
+  /** Backend-backed logout in flight; the button is disabled until it terminates. */
+  readonly loggingOut = signal(false);
+
+  toggleUserMenu(): void { this.userMenuOpen.update(open => !open); }
+
+  closeUserMenu(): void { this.userMenuOpen.set(false); }
+
+  logout(): void {
+    void this.signOut();
+  }
+
+  /**
+   * Backend-backed logout with a guaranteed terminal state.
+   *
+   * The server session is invalidated first; the local session is always
+   * cleared and the user is always returned to the login page, because a
+   * failed server call must never trap someone inside the application. A
+   * failed server invalidation is reported honestly as a device-level sign
+   * out, never as a server-confirmed one.
+   */
   private async signOut(): Promise<void> {
-    await this.apiClient.invalidateApplicationSession();
-    await this.router.navigateByUrl('/login');
+    if (this.loggingOut()) return;
+
+    this.loggingOut.set(true);
+    this.userMenuOpen.set(false);
+
+    try {
+      const result = await this.apiClient.invalidateApplicationSession();
+      await this.router.navigateByUrl('/login');
+
+      if (!result.success) {
+        this.notificationService.warning(
+          'You have been signed out on this device.',
+          `The server session could not be invalidated: ${result.error.message}`
+        );
+      }
+    } finally {
+      this.loggingOut.set(false);
+    }
   }
 
   private async validateStartupSession(): Promise<void> {

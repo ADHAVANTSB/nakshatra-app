@@ -234,251 +234,232 @@
 
     } @else if (filteredEvents().length > 0) {
 
-      <div class="table-wrapper">
+      <div class="events-card-list">
 
-        <table>
+        @for (
+          event of filteredEvents();
+          track event.id
+        ) {
 
-          <thead>
+          <article
+            class="event-card"
+            [class.expanded]="expandedEventId() === event.id">
 
-            <tr>
-              <th>Event</th>
-              <th>Category</th>
-              <th>Mode</th>
-              <th>Eligible Levels</th>
-              <th>Team Size</th>
-              <th>Status</th>
-              <th class="actions-column">
-                Actions
-              </th>
-            </tr>
+            <button
+              type="button"
+              class="event-card-header"
+              (click)="toggleCard(event)"
+              [attr.aria-expanded]="expandedEventId() === event.id">
 
-          </thead>
+              <span class="event-card-toggle">
+                {{ expandedEventId() === event.id ? '▼' : '▶' }}
+              </span>
+
+              <span class="event-card-titles">
+
+                <strong>
+                  {{ event.name }}
+                </strong>
+
+                <small>
+                  {{ event.category }} • {{ modeLabel(event.mode) }}
+                </small>
+
+              </span>
+
+              <span class="event-card-registered">
+
+                @if (registrationLoadStatus(event.id) === 'LOADED') {
+                  Registered: {{ activeRegistrationCount(event.id) }}
+                } @else {
+                  Registered: —
+                }
+
+              </span>
+
+            </button>
 
 
-          <tbody>
+            @if (expandedEventId() === event.id) {
 
-            @for (
-              event of filteredEvents();
-              track event.id
-            ) {
+              <div class="event-card-body">
 
-              <tr>
+                <!-- EVENT DETAILS -->
 
-                <!-- Event -->
+                <div class="event-card-details">
 
-                <td>
+                  <div>
+                    <span>Category</span>
+                    <strong>{{ event.category }}</strong>
+                  </div>
 
-                  <div class="event-cell">
+                  <div>
+                    <span>Mode</span>
+                    <strong>{{ modeLabel(event.mode) }}</strong>
+                  </div>
 
-                    <div class="event-code">
-                      {{ event.eventCode }}
-                    </div>
-
-                    <div>
-
-                      <strong>
-                        {{ event.name }}
-                      </strong>
-
-                      @if (
-                        event.venue ||
-                        event.schedule
-                      ) {
-
-                        <small>
-
-                          @if (event.schedule) {
-                            {{ event.schedule }}
-                          }
-
-                          @if (
-                            event.schedule &&
-                            event.venue
-                          ) {
-                            ·
-                          }
-
-                          @if (event.venue) {
-                            {{ event.venue }}
-                          }
-
-                        </small>
-
+                  <div>
+                    <span>Registered</span>
+                    <strong>
+                      @if (registrationLoadStatus(event.id) === 'LOADED') {
+                        {{ activeRegistrationCount(event.id) }}
+                      } @else {
+                        —
                       }
-
-                    </div>
-
+                    </strong>
                   </div>
 
-                </td>
-
-
-                <!-- Category -->
-
-                <td>
-
-                  <span
-                    class="category-badge"
-                    [class.arts]="
-                      event.category === 'ARTS'
-                    "
-                    [class.literary]="
-                      event.category === 'LITERARY'
-                    "
-                    [class.cultural]="
-                      event.category === 'CULTURAL'
-                    ">
-
-                    {{ categoryLabel(event.category) }}
-
-                  </span>
-
-                </td>
-
-
-                <!-- Mode -->
-
-                <td>
-
-                  <span class="mode-badge">
-
-                    @if (event.mode === 'SOLO') {
-                      Individual
-                    } @else {
-                      Group
-                    }
-
-                  </span>
-
-                </td>
-
-
-                <!-- Levels -->
-
-                <td>
-
-                  <div class="level-list">
-
-                    @for (
-                      level of event.eligibleLevels;
-                      track level
-                    ) {
-
-                      <span class="level-chip">
-                        {{ levelLabel(level) }}
-                      </span>
-
-                    }
-
+                  <div class="event-card-levels">
+                    <span>Eligible levels</span>
+                    <strong>
+                      @for (
+                        level of event.eligibleLevels;
+                        track level
+                      ) {
+                        <span class="level-chip">
+                          {{ levelLabel(level) }}
+                        </span>
+                      }
+                    </strong>
                   </div>
 
-                </td>
+                </div>
 
 
-                <!-- Team size -->
+                <!-- QUICK ACTIONS -->
 
-                <td>
+                <div class="event-card-actions">
+
+                  <a
+                    class="action-button"
+                    [routerLink]="['/attendance']"
+                    [queryParams]="{ eventId: event.id }">
+                    Attendance
+                  </a>
+
+                  <a
+                    class="action-button"
+                    [routerLink]="['/scoring']"
+                    [queryParams]="{ eventId: event.id }">
+                    Scoring
+                  </a>
+
+                  <a
+                    class="action-button"
+                    [routerLink]="['/results']"
+                    [queryParams]="{ eventId: event.id }">
+                    Results
+                  </a>
+
+                  <button
+                    type="button"
+                    class="action-button participant-action"
+                    (click)="openParticipants(event)">
+                    👥 Participants
+                  </button>
 
                   @if (event.mode === 'GROUP') {
 
-                    <span class="team-size">
-
-                      @if (event.minimumTeamSize) {
-                        {{ event.minimumTeamSize }}
-                      } @else {
-                        -
-                      }
-
-                      <span>–</span>
-
-                      @if (event.maximumTeamSize) {
-                        {{ event.maximumTeamSize }}
-                      } @else {
-                        -
-                      }
-
-                    </span>
-
-                  } @else {
-
-                    <span class="solo-label">
-                      1 participant
-                    </span>
+                    <button
+                      type="button"
+                      class="action-button team-action"
+                      (click)="openTeams(event)">
+                      Teams
+                    </button>
 
                   }
 
-                </td>
+                </div>
 
 
-                <!-- Status -->
+                <!-- REGISTERED PARTICIPANTS -->
 
-                <td>
+                @if (registrationLoadStatus(event.id) === 'ERROR') {
 
-                  <span
-                    class="status-badge"
-                    [class.active]="
-                      event.status === 'ACTIVE'
-                    "
-                    [class.cancelled]="
-                      event.status === 'CANCELLED'
-                    "
-                    [class.inactive]="
-                      event.status === 'INACTIVE'
-                    ">
+                  <div class="event-card-state error" role="alert">
 
-                    <span class="status-dot"></span>
-
-                    {{ statusLabel(event.status) }}
-
-                  </span>
-
-                </td>
-
-
-                <!-- Actions -->
-
-                <td class="actions-column">
-
-                  <div class="row-actions">
-
-                    <!-- PARTICIPANTS -->
+                    <span>
+                      Unable to load registrations.
+                    </span>
 
                     <button
                       type="button"
-                      class="action-button participant-action"
-                      title="View participants"
-                      (click)="openParticipants(event)">
-
-                      👥
-                      Participants
-
+                      class="secondary-button small-button"
+                      (click)="retryCardRegistrations(event.id)">
+                      Retry
                     </button>
-
-                    @if (event.mode === 'GROUP') {
-
-                      <button
-                        type="button"
-                        class="action-button team-action"
-                        title="Manage teams"
-                        (click)="openTeams(event)">
-
-                        Teams
-
-                      </button>
-
-                    }
 
                   </div>
 
-                </td>
+                } @else if (registrationLoadStatus(event.id) !== 'LOADED') {
 
-              </tr>
+                  <div class="event-card-state">
+                    Loading participants…
+                  </div>
+
+                } @else if (cardParticipants(event.id).length > 0) {
+
+                  <div class="event-card-table-wrapper">
+
+                    <table class="event-card-table">
+
+                      <thead>
+
+                        <tr>
+                          <th>Name</th>
+                          <th>Age</th>
+                          <th>Standard</th>
+                          <th>Level</th>
+                          <th>Shelter Home</th>
+                        </tr>
+
+                      </thead>
+
+
+                      <tbody>
+
+                        @for (
+                          row of cardParticipants(event.id);
+                          track row.registration.id
+                        ) {
+
+                          <tr>
+
+                            <td>{{ row.name }}</td>
+
+                            <td>{{ row.age ?? '—' }}</td>
+
+                            <td>{{ row.standard ?? '—' }}</td>
+
+                            <td>{{ row.levelText }}</td>
+
+                            <td>{{ row.homeName }}</td>
+
+                          </tr>
+
+                        }
+
+                      </tbody>
+
+                    </table>
+
+                  </div>
+
+                } @else {
+
+                  <div class="event-card-state">
+                    No participants registered.
+                  </div>
+
+                }
+
+              </div>
 
             }
 
-          </tbody>
+          </article>
 
-        </table>
+        }
 
       </div>
 

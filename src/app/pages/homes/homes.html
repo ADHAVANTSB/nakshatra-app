@@ -277,20 +277,8 @@
                 <dd>{{ home.contactPhone || '—' }}</dd>
               </div>
               <div>
-                <dt>Google Sheet</dt>
-                <dd>{{ home.spreadsheetName || 'Connected' }}</dd>
-              </div>
-              <div>
-                <dt>Source status</dt>
-                <dd>{{ home.sourceStatus || home.status || 'Unknown' }}</dd>
-              </div>
-              <div>
                 <dt>Import status</dt>
                 <dd>{{ importStatusLabel(home) }}</dd>
-              </div>
-              <div>
-                <dt>Last synced</dt>
-                <dd>{{ home.lastSyncedAt ?? 'Not synced yet' }}</dd>
               </div>
               <div>
                 <dt>Participants</dt>
@@ -303,6 +291,64 @@
                 </dd>
               </div>
             </dl>
+
+            <!--
+              Source section: only backend-supplied metadata from
+              listShelterHomes plus the latest import record. No status,
+              timestamp or version is ever produced locally.
+            -->
+            <section class="source-section" aria-label="Source sheet">
+              <h4>Source</h4>
+
+              <dl>
+                <div>
+                  <dt>Source Sheet</dt>
+                  <dd>
+                    @if (home.spreadsheetOpenUrl; as sourceSheetUrl) {
+                      <!--
+                        Backend-supplied link only. A home without
+                        spreadsheetOpenUrl stays plain text.
+                      -->
+                      <a
+                        class="home-name-link page-link"
+                        [href]="sourceSheetUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        [attr.aria-label]="(home.spreadsheetName || 'Source sheet') + ' — opens in a new tab'"
+                        (click)="openSpreadsheet($event, sourceSheetUrl)">
+                        {{ home.spreadsheetName || '—' }}<span aria-hidden="true"> ↗</span>
+                      </a>
+                    } @else {
+                      {{ home.spreadsheetName || '—' }}
+                    }
+                  </dd>
+                </div>
+                <div>
+                  <dt>Source Version</dt>
+                  <dd>{{ sourceVersion(home.id) }}</dd>
+                </div>
+                <div>
+                  <dt>Last Synced</dt>
+                  <dd>{{ lastSyncedLabel(home) }}</dd>
+                </div>
+                <div>
+                  <dt>Sync Status</dt>
+                  <dd>{{ home.sourceStatus || '—' }}</dd>
+                </div>
+              </dl>
+
+              @if (canManageHomes()) {
+                <div class="home-card-actions">
+                  <button
+                    type="button"
+                    class="secondary-action"
+                    (click)="syncFromSheet(home)"
+                    [disabled]="isSyncing(home.id)">
+                    {{ isSyncing(home.id) ? 'Syncing…' : 'Sync from Google Sheet' }}
+                  </button>
+                </div>
+              }
+            </section>
 
             @if (homeError(home.id); as message) {
               <p class="form-message error" role="alert">{{ message }}</p>
@@ -327,7 +373,7 @@
                 <p><strong>Google Sheet:</strong> {{ home.spreadsheetName || 'Connected' }}</p>
                 <p><strong>Source status:</strong> {{ home.sourceStatus || home.status || 'Unknown' }}</p>
                 <p><strong>Import status:</strong> {{ importStatusLabel(home) }}</p>
-                <p><strong>Last synced:</strong> {{ home.lastSyncedAt ?? 'Not synced yet' }}</p>
+                <p><strong>Last synced:</strong> {{ lastSyncedLabel(home) }}</p>
                 <p>
                   <strong>Participants:</strong>
                   @if (participantCount(home.id); as count) {

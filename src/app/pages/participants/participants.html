@@ -240,12 +240,21 @@
           </div>
         }
 
-        <!-- SERVER-DERIVED READ-ONLY VALUES -->
+        <!-- IDENTITY: everything a coordinator validates, in one grid -->
 
         <div class="detail-grid">
-          <div class="detail-item">
+          <div class="detail-item detail-item--wide">
             <span>Participant name</span>
             <strong>{{ participant.fullName }}</strong>
+          </div>
+          <div class="detail-item">
+            <span>Participant code</span>
+            <strong>{{ participant.participantCode }}</strong>
+          </div>
+          <div class="detail-item detail-item--wide">
+            <span>Shelter home</span>
+            <strong>{{ homeName(participant.shelterHomeId) }}</strong>
+            <small>{{ homeCode(participant.shelterHomeId) }}</small>
           </div>
           <div class="detail-item">
             <span>Gender</span>
@@ -309,25 +318,16 @@
             </strong>
           </div>
           <div class="detail-item">
-            <span>Shelter home</span>
-            <strong>{{ homeName(participant.shelterHomeId) }}</strong>
-            <small>{{ homeCode(participant.shelterHomeId) }}</small>
-          </div>
-          <div class="detail-item">
-            <span>Source</span>
-            <strong>{{ sourceLabel(participant) }}</strong>
+            <span>Source row</span>
+            <strong>{{ sourceRowLabel(participant) }}</strong>
           </div>
           <div class="detail-item">
             <span>Source version</span>
             <strong>{{ sourceVersionLabel(participant) }}</strong>
           </div>
           <div class="detail-item">
-            <span>Sheet row</span>
-            <strong>{{ sourceRowLabel(participant) }}</strong>
-          </div>
-          <div class="detail-item">
-            <span>Record version · server derived</span>
-            <strong>v{{ participant.version }}</strong>
+            <span>Registered events</span>
+            <strong>{{ activeRegistrationCount() }}</strong>
           </div>
         </div>
 
@@ -454,6 +454,13 @@
             <div class="alert error" role="alert">
               <strong>Unable to load registrations.</strong>
               <span>{{ registrationsError() }}</span>
+              <button
+                class="secondary-button"
+                type="button"
+                (click)="reloadRegistrationsNow()"
+                [disabled]="registrationBusy()">
+                Retry
+              </button>
             </div>
 
           } @else if (eventsLoadError()) {
@@ -479,12 +486,28 @@
                       <div>
                         <strong>{{ entry.name }}</strong>
                         <small>
-                          {{ group.category }} ·
+                          {{ group.category }}
                           @if (entry.mode) {
-                            {{ modeLabel(entry.mode) }} ·
+                            · {{ modeLabel(entry.mode) }}
                           }
-                          {{ entry.registration.registrationStatus }}
                         </small>
+                        <div class="event-item-tags">
+                          <span
+                            class="badge"
+                            [class.badge--success]="entry.registration.registrationStatus === 'REGISTERED'"
+                            [class.badge--warning]="entry.registration.registrationStatus === 'WAITLISTED'"
+                            [class.badge--danger]="entry.registration.registrationStatus === 'CANCELLED'">
+                            {{ entry.registration.registrationStatus }}
+                          </span>
+                          @if (eventLinkTarget(entry); as eventId) {
+                            <a
+                              class="event-link"
+                              [routerLink]="['/events']"
+                              [queryParams]="{ eventId: eventId }">
+                              Open event
+                            </a>
+                          }
+                        </div>
                       </div>
                       <div class="detail-actions">
                         @if (entry.registration.registrationStatus === 'CANCELLED') {
@@ -521,12 +544,26 @@
                       [class.event-item--cancelled]="entry.registration.registrationStatus === 'CANCELLED'">
                       <div>
                         <strong>{{ entry.name }}</strong>
-                        <small>
-                          {{ entry.registration.registrationStatus }}
-                          @if (entry.registration.source) {
-                            · added via {{ entry.registration.source }}
+                        @if (entry.registration.source) {
+                          <small>added via {{ entry.registration.source }}</small>
+                        }
+                        <div class="event-item-tags">
+                          <span
+                            class="badge"
+                            [class.badge--success]="entry.registration.registrationStatus === 'REGISTERED'"
+                            [class.badge--warning]="entry.registration.registrationStatus === 'WAITLISTED'"
+                            [class.badge--danger]="entry.registration.registrationStatus === 'CANCELLED'">
+                            {{ entry.registration.registrationStatus }}
+                          </span>
+                          @if (eventLinkTarget(entry); as eventId) {
+                            <a
+                              class="event-link"
+                              [routerLink]="['/events']"
+                              [queryParams]="{ eventId: eventId }">
+                              Open event
+                            </a>
                           }
-                        </small>
+                        </div>
                       </div>
                       <div class="detail-actions">
                         @if (entry.registration.registrationStatus === 'CANCELLED') {

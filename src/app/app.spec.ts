@@ -1,5 +1,5 @@
-import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+﻿import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { AuthService, type GoogleAuthenticatedUser } from './core/services/auth/auth.service';
 
@@ -130,7 +130,7 @@ describe('App', () => {
 
     const element = host(fixture);
 
-    // Dashboard, Results and Certificates — in `navItems` declaration order.
+    // Dashboard, Results and Certificates â€” in `navItems` declaration order.
     expect(sidebarNavLabels(element)).toEqual(['Dashboard', 'Results', 'Certificates']);
     // ACCESS_MANAGEMENT is not granted to CERTIFICATE_TEAM, so no settings link.
     expect(element.querySelector('.nk-sidebar-bottom')).toBeNull();
@@ -174,4 +174,89 @@ describe('App', () => {
     // session, so ApiClientService.post() never issues its fetch.
     expect(fetchCallCount).toBe(0);
   });
+
+  it('invokes the backend logout, clears the session and returns to the login page', async () => {
+    signIn(ADMIN_USER);
+    const auth = TestBed.inject(AuthService);
+    auth.setApplicationSession({
+      id: 'spec-session-logout',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    const logoutCalls: string[] = [];
+    vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+      logoutCalls.push(String(JSON.parse(init.body).action));
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: true, data: { loggedOut: true } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.isAuthenticated()).toBe(true);
+
+    const router = TestBed.inject(Router);
+    const navigate = vi.fn<(url: string) => Promise<boolean>>(() => Promise.resolve(true));
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl = navigate;
+
+    fixture.componentInstance.logout();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Exactly one backend logout action (concurrency guard holds); the shell
+    // also issues its normal validateSession on boot.
+    expect(logoutCalls.filter(action => action === 'logout')).toEqual(['logout']);
+    expect(navigate).toHaveBeenCalledWith('/login');
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.applicationSession()).toBeNull();
+    expect(fixture.componentInstance.loggingOut()).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('still signs the user out locally when the backend logout fails', async () => {
+    signIn(ADMIN_USER);
+    const auth = TestBed.inject(AuthService);
+    auth.setApplicationSession({
+      id: 'spec-session-logout-fail',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code: 'SERVER_ERROR', message: 'Logout action failed.' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // A failed server invalidation must never trap the user in the app, so the
+    // navigation is stubbed (no /login route in this spec's empty table) and
+    // only the sign-out guarantees are asserted.
+    const router = TestBed.inject(Router);
+    const navigate = vi.fn<(url: string) => Promise<boolean>>(() => Promise.resolve(true));
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl = navigate;
+
+    fixture.componentInstance.logout();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // A failed server invalidation must never trap the user in the app.
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.applicationSession()).toBeNull();
+    expect(fixture.componentInstance.loggingOut()).toBe(false);
+
+    // ...but it is reported honestly, not swallowed.
+    const notifications = fixture.componentInstance.notifications();
+    const last = notifications[notifications.length - 1];
+    expect(last?.tone).toBe('warning');
+    expect(last?.detail).toContain('Logout action failed.');
+
+    vi.unstubAllGlobals();
+  });
 });
+

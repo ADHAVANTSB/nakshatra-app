@@ -420,3 +420,36 @@
 .connected-homes-empty p {
   margin: 0;
 }
+
+/* ---------------------------------------------------------
+   SOURCE SECTION
+   Backend-supplied sheet metadata per connected home.
+   --------------------------------------------------------- */
+
+.source-section {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed #e7edf5;
+}
+
+.source-section h4 {
+  margin: 0 0 0.6rem;
+
+  color: #8495aa;
+
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.source-section dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.source-section .home-card-actions {
+  margin-top: 0.75rem;
+}

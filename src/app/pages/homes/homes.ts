@@ -10,6 +10,8 @@ import {
   ValidationResult,
 } from '../../core/models';
 import { ApiClientService } from '../../core/services/api/api-client.service';
+import { AuthService } from '../../core/services/auth/auth.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 
 /**
@@ -28,6 +30,8 @@ import { ShelterDataService } from '../../core/services/shelter-homes/shelter-da
 export class Homes implements OnInit {
   private readonly shelterData = inject(ShelterDataService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly auth = inject(AuthService);
+  private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
 
   readonly showAddHome = signal(false);
@@ -45,6 +49,15 @@ export class Homes implements OnInit {
   readonly importedParticipantCount = signal<number | null>(null);
   readonly connectedHome = signal<ConnectedHome | null>(null);
   readonly selectedHomeId = signal<string | null>(null);
+
+  /** Id of the home whose Google Sheet sync is currently in flight, if any. */
+  readonly syncingHomeId = signal<string | null>(null);
+
+  /**
+   * Syncing is a backend mutation, so the Sync button follows the same section
+   * gate that lets a user reach this page at all.
+   */
+  readonly canManageHomes = computed(() => this.auth.canAccess('HOMES'));
 
   // ---------------------------------------------------------
   // BACKEND STATE
@@ -123,6 +136,116 @@ export class Homes implements OnInit {
       this.shelterData.errorFor('IMPORTS', homeId) ||
       this.shelterData.errorFor('VALIDATIONS', homeId)
     );
+  }
+
+  // ---------------------------------------------------------
+  // SOURCE SECTION
+  // ---------------------------------------------------------
+
+  /**
+   * True while this home's sheet sync is in flight; drives that home's
+   * Sync button only, never the whole page.
+   */
+  isSyncing(homeId: string): boolean {
+    return this.syncingHomeId() === homeId;
+  }
+
+  /** Backend-reported import version for a home, rendered as "v<n>" or "—". */
+  sourceVersion(homeId: string): string {
+    const versionNumber =
+      this.shelterData.getImportStatusForHome(homeId)?.versionNumber;
+
+    return versionNumber === undefined || versionNumber === null
+      ? '—'
+      : `v${versionNumber}`;
+  }
+
+  /**
+   * Readable local date-time for the backend-supplied `lastSyncedAt`.
+   * Absent or unparseable values render as "Never synced"; a date is never
+   * invented here.
+   */
+  lastSyncedLabel(home: ConnectedShelterHome): string {
+    if (!home.lastSyncedAt) {
+      return 'Never synced';
+    }
+
+    const syncedAt = new Date(home.lastSyncedAt);
+
+    return Number.isNaN(syncedAt.getTime())
+      ? 'Never synced'
+      : syncedAt.toLocaleString();
+  }
+
+  // ---------------------------------------------------------
+  // SYNC FROM GOOGLE SHEET
+  // ---------------------------------------------------------
+
+  /**
+   * Re-syncs one connected home from its Google Sheet.
+   *
+   * The api client always resolves, so `syncingHomeId` is always cleared and
+   * the button always returns to idle. On success the homes list and that
+   * home's import status are refreshed through the existing read paths and a
+   * notification summarises the real fields the backend returned. On failure
+   * the backend's own message is shown. No polling, no auto-sync.
+   */
+  async syncFromSheet(home: ConnectedShelterHome): Promise<void> {
+    if (this.syncingHomeId() !== null) {
+      return;
+    }
+
+    this.syncingHomeId.set(home.id);
+
+    const sync = await this.apiClient.syncShelterSheet({
+      shelterHomeId: home.id,
+    });
+
+    if (!sync.success) {
+      this.syncingHomeId.set(null);
+      this.notifications.error('Google Sheet sync failed', sync.error.message);
+      return;
+    }
+
+    const importVersionId =
+      sync.data.importVersionId ?? sync.data.importVersion?.id;
+
+    await this.shelterData.loadImportStatus(home.id, importVersionId);
+    await this.shelterData.loadConnectedHomes();
+
+    this.syncingHomeId.set(null);
+
+    this.notifications.success(
+      `${home.homeName} synced`,
+      this.syncResultDetail(sync.data)
+    );
+  }
+
+  /** Summarises only the fields the backend actually returned for a sync. */
+  private syncResultDetail(data: SyncShelterSheetData): string {
+    const parts: string[] = [];
+
+    if (data.versionNumber != null) {
+      parts.push(`version v${data.versionNumber}`);
+    }
+
+    if (data.recordCount != null) {
+      parts.push(`${data.recordCount} records`);
+    }
+
+    if (data.validParticipantCount != null) {
+      parts.push(`${data.validParticipantCount} valid participants`);
+    }
+
+    if (data.errorCount != null) {
+      parts.push(`${data.errorCount} validation errors`);
+    }
+
+    if (data.warningCount != null) {
+      parts.push(`${data.warningCount} warnings`);
+    }
+
+    return parts.length ? parts.join(' · ') : data.status || 'Synced';
   }
 
   // ---------------------------------------------------------

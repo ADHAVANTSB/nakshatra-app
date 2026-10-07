@@ -387,14 +387,57 @@
         </button>
 
 
-        <!-- User -->
+        <!-- User menu -->
+
+        @if (userMenuOpen()) {
+          <div class="nk-user-menu" (click)="$event.stopPropagation()">
+
+            <div class="nk-user-menu-header">
+              <strong>{{ currentUser()?.displayName }}</strong>
+              <span>{{ currentUser()?.role?.replace('_', ' ') }}</span>
+              <span class="nk-user-menu-email">{{ currentUser()?.email }}</span>
+            </div>
+
+            <div class="nk-user-menu-items">
+
+              <button
+                class="nk-user-menu-item"
+                type="button"
+                (click)="closeUserMenu()"
+              >
+                My Account
+              </button>
+
+              @if (canAccess('ACCESS_MANAGEMENT')) {
+                <a
+                  class="nk-user-menu-item"
+                  routerLink="/settings"
+                  (click)="closeUserMenu()"
+                >
+                  Settings
+                </a>
+              }
+
+              <button
+                class="nk-user-menu-item nk-user-menu-item--logout"
+                type="button"
+                [disabled]="loggingOut()"
+                (click)="logout()"
+              >
+                {{ loggingOut() ? 'Signing out…' : 'Logout' }}
+              </button>
+
+            </div>
+
+          </div>
+        }
 
         <button
           class="nk-user"
           type="button"
-          aria-label="Sign out"
-          title="Sign out"
-          (click)="logout()"
+          aria-label="Open account menu"
+          [attr.aria-expanded]="userMenuOpen()"
+          (click)="toggleUserMenu(); $event.stopPropagation()"
         >
 
           <div class="nk-user-avatar">
