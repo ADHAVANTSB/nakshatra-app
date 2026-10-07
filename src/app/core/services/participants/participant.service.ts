@@ -162,10 +162,22 @@ export class ParticipantService {
       : 'No level';
   }
 
-  /** Re-reads one participant; the backend is authoritative for the record. */
-  async loadParticipant(participantId: string): Promise<Participant | null> {
+  /**
+   * Re-reads one participant; the backend is authoritative for the record.
+   *
+   * The failure message is carried back so the UI can show the backend's real
+   * error instead of a generic "not returned" claim that masks the cause.
+   */
+  async loadParticipant(
+    participantId: string
+  ): Promise<{ participant: Participant | null; errorMessage: string }> {
     const response = await this.apiClient.getParticipant(participantId);
-    return response.success ? response.data.participant : null;
+
+    if (!response.success) {
+      return { participant: null, errorMessage: response.error.message };
+    }
+
+    return { participant: response.data.participant, errorMessage: '' };
   }
 
   /**

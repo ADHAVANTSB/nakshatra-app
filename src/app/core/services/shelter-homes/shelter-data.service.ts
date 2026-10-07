@@ -418,15 +418,17 @@ export class ShelterDataService {
 
       const homes = this.homesState();
 
+      // The three reads per home are independent; running them sequentially
+      // would multiply the backend's per-request latency (measured 8–30s) by
+      // three for every home before this page can leave its loading state.
       await Promise.all(
-        homes.map(async home => {
-          await this.loadImportStatus(home.id, home.currentImportVersionId);
-          await this.loadValidationResults(
-            home.id,
-            home.currentImportVersionId
-          );
-          await this.loadParticipants(home.id);
-        })
+        homes.map(home =>
+          Promise.all([
+            this.loadImportStatus(home.id, home.currentImportVersionId),
+            this.loadValidationResults(home.id, home.currentImportVersionId),
+            this.loadParticipants(home.id),
+          ])
+        )
       );
 
       const errors = this.errorsState();

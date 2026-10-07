@@ -71,8 +71,23 @@ export class ApiClientService {
   private sessionValidationRequest: Promise<SessionValidationResponse> | null = null;
 
   /**
+   * Terminal-state guarantee for every request.
+   *
+   * The deployed backend measures 8–30s per call on the error path alone
+   * (verified 2026-10-07), so this ceiling is deliberately far above the
+   * observed latency. It exists so a hung request can never keep a loading
+   * signal true forever — it is not a UX delay and not a retry.
+   */
+  private static readonly REQUEST_TIMEOUT_MS = 120_000;
+
+  /**
    * Calls an authenticated Apps Script action. The session id is an opaque value
    * issued and validated by the backend; Angular never supplies a user or role.
+   *
+   * Error truthfulness: a JSON body carrying a backend error envelope is
+   * returned verbatim even over a non-200 status; only a non-JSON body
+   * (Apps Script HTML error/quota pages), an unrecognized envelope, a genuine
+   * network failure or a timeout produce a synthesized error.
    */
   async post<TData, TPayload = undefined>(action: string, payload?: TPayload): Promise<ApiResponse<TData>> {
     const session = this.activeSession();
@@ -83,20 +98,65 @@ export class ApiClientService {
     const request: AuthenticatedApiRequest<TPayload> = { action, sessionId: session.id };
     if (payload !== undefined) request.payload = payload;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      ApiClientService.REQUEST_TIMEOUT_MS
+    );
+
     try {
       const response = await fetch(GOOGLE_IDENTITY_CONFIG.verificationEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
-      const result: unknown = await response.json();
-      if (!response.ok || !this.isApiResponse<TData>(result)) {
-        return { success: false, error: { code: 'API_REQUEST_FAILED', message: 'The server could not process the request.' } };
+
+      let result: unknown;
+      try {
+        result = await response.json();
+      } catch {
+        return {
+          success: false,
+          error: {
+            code: 'SERVER_RESPONSE_MALFORMED',
+            message: `The server returned a non-JSON response (HTTP ${response.status}). This is usually an Apps Script error or quota page, not an application error.`,
+          },
+        };
       }
-      if (!result.success) this.handleAuthenticationFailure(result.error.code);
-      return result;
-    } catch {
+
+      if (this.isApiResponse<TData>(result)) {
+        if (!result.success) {
+          // Preserve the real backend error even over a non-200 status.
+          this.handleAuthenticationFailure(result.error.code);
+          return result;
+        }
+        if (!response.ok) {
+          return { success: false, error: { code: 'API_REQUEST_FAILED', message: `The server reported HTTP ${response.status} for a successful payload.` } };
+        }
+        return result;
+      }
+
+      return {
+        success: false,
+        error: {
+          code: 'SERVER_RESPONSE_MALFORMED',
+          message: `The server returned an unrecognized response (HTTP ${response.status}).`,
+        },
+      };
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return {
+          success: false,
+          error: {
+            code: 'REQUEST_TIMEOUT',
+            message: `The server did not answer within ${ApiClientService.REQUEST_TIMEOUT_MS / 1000} seconds. The request may still have been processed — refresh before retrying.`,
+          },
+        };
+      }
       return { success: false, error: { code: 'NETWORK_ERROR', message: 'Unable to reach the server. Please try again.' } };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -149,12 +209,17 @@ export class ApiClientService {
   /**
    * Persists an authorized participant edit. The backend compares
    * `expectedVersion` and rejects a stale write with VERSION_CONFLICT.
+   *
+   * The participant object alone decides success. The `sourceWriteBack` report
+   * is normalized (the backend emits `WRITTEN`; the frontend token is
+   * `UPDATED`) and never fails an otherwise-successful response.
    */
   async updateParticipant(payload: UpdateParticipantPayload): Promise<ApiResponse<UpdateParticipantData>> {
     const response = await this.post<UpdateParticipantData, UpdateParticipantPayload>('updateParticipant', payload);
     if (!response.success) return response;
-    return this.isUpdateParticipantData(response.data)
-      ? response
+    const data = this.readParticipantMutationData(response.data);
+    return data
+      ? { success: true, data }
       : { success: false, error: { code: 'INVALID_PARTICIPANT_RESPONSE', message: 'The server returned an invalid participant response.' } };
   }
 
@@ -201,16 +266,41 @@ export class ApiClientService {
       : { success: false, error: { code: 'INVALID_REGISTRATIONS_RESPONSE', message: 'The server returned an invalid registrations response.' } };
   }
 
-  registerParticipant(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
-    return this.post<EventRegistrationData, EventRegistrationPayload>('registerParticipant', payload);
+  async registerParticipant(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
+    return this.readEventRegistration('registerParticipant', payload);
   }
 
-  cancelRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
-    return this.post<EventRegistrationData, EventRegistrationPayload>('cancelRegistration', payload);
+  async cancelRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
+    return this.readEventRegistration('cancelRegistration', payload);
   }
 
-  reactivateRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
-    return this.post<EventRegistrationData, EventRegistrationPayload>('reactivateRegistration', payload);
+  async reactivateRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
+    return this.readEventRegistration('reactivateRegistration', payload);
+  }
+
+  /**
+   * Registration mutations pass the backend payload through with the
+   * `sourceWriteBack` report normalized to the frontend token set.
+   */
+  private async readEventRegistration(
+    action: string,
+    payload: EventRegistrationPayload
+  ): Promise<ApiResponse<EventRegistrationData>> {
+    const response = await this.post<EventRegistrationData, EventRegistrationPayload>(action, payload);
+    if (!response.success) return response;
+
+    if (!this.normalizeRegistration(response.data.participantEvent)) {
+      return { success: false, error: { code: 'INVALID_REGISTRATION_RESPONSE', message: 'The server returned an invalid registration response.' } };
+    }
+
+    const sourceWriteBack = this.normalizeSourceWriteBack(response.data.sourceWriteBack);
+    return {
+      success: true,
+      data: {
+        participantEvent: response.data.participantEvent,
+        ...(sourceWriteBack ? { sourceWriteBack } : {}),
+      },
+    };
   }
 
   /* ================================================================
@@ -284,16 +374,18 @@ export class ApiClientService {
   async saveScore(payload: SaveScorePayload): Promise<ApiResponse<ScoreData>> {
     const response = await this.post<ScoreData, SaveScorePayload>('saveScore', payload);
     if (!response.success) return response;
-    return this.isScoreData(response.data)
-      ? response
+    const data = this.readScoreData(response.data);
+    return data
+      ? { success: true, data: { score: data.score } }
       : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
   }
 
   async finalizeScore(payload: FinalizeScorePayload): Promise<ApiResponse<FinalizeScoreData>> {
     const response = await this.post<FinalizeScoreData, FinalizeScorePayload>('finalizeScore', payload);
     if (!response.success) return response;
-    return this.isScoreData(response.data)
-      ? response
+    const data = this.readScoreData(response.data);
+    return data
+      ? { success: true, data }
       : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
   }
 
@@ -514,10 +606,83 @@ export class ApiClientService {
       && 'version' in value && typeof value.version === 'number';
   }
 
-  private isScoreData(value: unknown): value is ScoreData & FinalizeScoreData {
-    return typeof value === 'object' && value !== null
-      && 'score' in value && this.isScore(value.score)
-      && (!('sourceWriteBack' in value) || value.sourceWriteBack === undefined || this.isSourceWriteBack(value.sourceWriteBack));
+  private readScoreData(value: unknown): (ScoreData & FinalizeScoreData) | null {
+    if (typeof value !== 'object' || value === null || !('score' in value) || !this.isScore(value.score)) {
+      return null;
+    }
+
+    const sourceWriteBack = this.normalizeSourceWriteBack(
+      (value as Record<string, unknown>)['sourceWriteBack']
+    );
+
+    return sourceWriteBack
+      ? { score: value.score, sourceWriteBack }
+      : { score: value.score };
+  }
+
+  /**
+   * Validates only the participant object of a mutation response; the
+   * `sourceWriteBack` report is normalized separately and never fails an
+   * otherwise-successful response.
+   */
+  private readParticipantMutationData(value: unknown): UpdateParticipantData | null {
+    if (typeof value !== 'object' || value === null || !('participant' in value)) {
+      return null;
+    }
+
+    if (!this.isParticipant(value.participant)) {
+      return null;
+    }
+
+    const sourceWriteBack = this.normalizeSourceWriteBack(
+      (value as Record<string, unknown>)['sourceWriteBack']
+    );
+
+    return sourceWriteBack
+      ? { participant: value.participant, sourceWriteBack }
+      : { participant: value.participant };
+  }
+
+  /**
+   * Normalizes a backend source write-back report to the frontend token set.
+   *
+   * The backend (Code.gs `writeParticipantBackToSource` /
+   * `attemptEventWiseWriteBack`) emits `WRITTEN` or `SKIPPED`; the frontend
+   * token for "the Google Sheet was updated" is `UPDATED`. Returns null for an
+   * unrecognizable report — the response stays successful but the UI makes no
+   * claim about the sheet either way.
+   */
+  private normalizeSourceWriteBack(value: unknown): SourceWriteBackResult | null {
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    const rawStatus = typeof record['status'] === 'string' ? record['status'] : '';
+
+    const status = rawStatus === 'WRITTEN'
+      ? 'UPDATED'
+      : rawStatus === 'UPDATED' || rawStatus === 'SKIPPED' || rawStatus === 'FAILED' || rawStatus === 'UNVERIFIED'
+        ? rawStatus
+        : null;
+
+    if (!status) {
+      return null;
+    }
+
+    const reason = typeof record['reason'] === 'string' && record['reason'].trim()
+      ? record['reason']
+      : undefined;
+    const message = typeof record['message'] === 'string' && record['message'].trim()
+      ? record['message']
+      : undefined;
+    const rowNumber = typeof record['rowNumber'] === 'number' ? record['rowNumber'] : undefined;
+
+    return {
+      status,
+      ...(message ?? reason ? { message: message ?? reason } : {}),
+      ...(rowNumber !== undefined ? { rowNumber } : {}),
+    };
   }
 
   private isApplicationUser(value: unknown): value is ApplicationUser {
@@ -623,33 +788,6 @@ export class ApiClientService {
   private isGetParticipantData(value: unknown): value is GetParticipantData {
     return typeof value === 'object' && value !== null
       && 'participant' in value && this.isParticipant(value.participant);
-  }
-
-  private isUpdateParticipantData(value: unknown): value is UpdateParticipantData {
-    if (typeof value !== 'object' || value === null || !('participant' in value)) {
-      return false;
-    }
-
-    if (!this.isParticipant(value.participant)) {
-      return false;
-    }
-
-    if (!('sourceWriteBack' in value) || value.sourceWriteBack === undefined) {
-      return true;
-    }
-
-    return this.isSourceWriteBack(value.sourceWriteBack);
-  }
-
-  private isSourceWriteBack(value: unknown): boolean {
-    if (typeof value !== 'object' || value === null) {
-      return false;
-    }
-
-    const status = (value as { status?: unknown }).status;
-
-    return status === 'UPDATED' || status === 'SKIPPED' || status === 'FAILED'
-      || status === 'UNVERIFIED';
   }
 
   private isListEventsData(value: unknown): value is ListEventsData {

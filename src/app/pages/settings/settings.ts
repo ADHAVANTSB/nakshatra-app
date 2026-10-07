@@ -128,8 +128,16 @@ export class Settings implements OnInit {
   // ---------------------------------------------------------
 
   readonly users = signal<ApplicationUser[]>([]);
-  /** First read; drives the page-level loading state. */
-  readonly loading = signal(true);
+  /**
+   * First read; drives the page-level loading state.
+   *
+   * Starts `false` so the initial `reload()` is not blocked by the
+   * in-flight guard — that guard exists to stop concurrent reads, and a
+   * value of `true` here would make the very first call (and therefore
+   * every later one) bail out before any request is sent. `reload()`
+   * flips this to `true` synchronously, before the first render.
+   */
+  readonly loading = signal(false);
   /** Re-read of an already-loaded list; keeps the table on screen. */
   readonly refreshing = signal(false);
   /** A failed list read, and the only page-level error state. */

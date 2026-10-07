@@ -533,10 +533,12 @@ export class Participants implements OnInit {
 
     // Re-read the stored record and its registrations so the panel shows the
     // backend version rather than the write response alone.
-    const [persisted] = await Promise.all([
+    const [readBack] = await Promise.all([
       this.participantService.loadParticipant(participant.id),
       this.reloadRegistrations(participant.id),
     ]);
+
+    const persisted = readBack.participant;
 
     if (persisted) {
       this.participantService.replaceParticipant(persisted);
@@ -552,7 +554,8 @@ export class Participants implements OnInit {
     this.saveWriteBackNote.set(writeBack.label);
     this.saveWriteBackDetail.set(writeBack.detail);
     this.saveReadBackNote.set(
-      persisted ? '' : 'The saved record could not be read back; refresh to confirm.'
+      readBack.errorMessage ||
+        (persisted ? '' : 'The saved record could not be read back; refresh to confirm.')
     );
 
     const toastDetail = [writeBack.label, writeBack.detail].filter(Boolean).join(' — ');
@@ -858,10 +861,13 @@ export class Participants implements OnInit {
   private async reloadParticipant(participantId: string): Promise<void> {
     this.detailError.set('');
 
-    const fresh = await this.participantService.loadParticipant(participantId);
+    const { participant: fresh, errorMessage } =
+      await this.participantService.loadParticipant(participantId);
 
     if (!fresh) {
-      this.detailError.set('The backend did not return this participant. Try refreshing.');
+      // The backend's real error is shown; the generic sentence alone would
+      // mask whether this was a session problem, a timeout or a bad response.
+      this.detailError.set(`The participant record could not be loaded. ${errorMessage}`);
       return;
     }
 
