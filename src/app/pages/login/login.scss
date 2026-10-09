@@ -1,6 +1,41 @@
 .auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(135deg, #f4fafc, #f0ebff); color: #39322d; }.auth-card { width: min(100%, 440px); padding: 32px; border: 1px solid #e5dfda; border-radius: 16px; background: #fff; box-shadow: 0 16px 40px rgba(57, 50, 45, .09); }.eyebrow { display: block; color: #70578c; font-size: 11px; font-weight: 700; letter-spacing: .08em; } h1 { margin: 6px 0; } p { color: #766f6a; }.alert { display: grid; gap: 6px; margin: 16px 0; padding: 12px; border-radius: 9px; font-size: 12px; }.alert.error { background: #fff4f4; color: #825959; }.alert.success { background: #f1faf3; color: #426b4b; }.alert p { margin: 4px 0 0; color: inherit; }.google-sign-in { min-height: 48px; margin-top: 24px; }.google-sign-in.loading { opacity: .65; pointer-events: none; }.google-sign-in span { display: block; margin-top: 10px; color: #766f6a; font-size: 12px; }.auth-link { margin: 20px 0 0; text-align: center; font-size: 13px; } a { color: #5f4d7c; font-weight: 700; }
 
 /* ================================================================
+   LOGIN STATE PANELS (status + error cards, account chip)
+   ================================================================ */
+
+.auth-lede { margin: 0 0 8px; font-size: 13px; }
+
+/* Backend access outcome (PENDING / REJECTED / DISABLED / NOT_REGISTERED). */
+.auth-status-card { display: grid; gap: 4px; margin: 16px 0; padding: 14px; border: 1px solid #efe6f7; border-radius: 9px; background: #f7f2fc; color: #5f4d7c; }
+.auth-status-card strong { font-size: 14px; }
+.auth-status-card p { margin: 0; font-size: 12px; color: inherit; }
+.auth-status-card span { font-size: 12px; color: #766f6a; word-break: break-all; }
+.auth-status-actions { display: grid; gap: 0; }
+
+/* Brief confirmation between a verified sign-in and the redirect. */
+.auth-success-card { display: grid; gap: 4px; margin: 16px 0 0; padding: 14px; border: 1px solid #cfe9d8; border-radius: 9px; background: #f1faf3; color: #426b4b; }
+.auth-success-card strong { font-size: 14px; }
+.auth-success-card p { margin: 0; font-size: 12px; color: inherit; }
+
+/* Structured failure panel: friendly title + explanation + next action. */
+.auth-error-card { display: grid; gap: 4px; margin: 16px 0 0; padding: 14px; border: 1px solid #f3d9d9; border-radius: 9px; background: #fff4f4; color: #825959; }
+.auth-error-card strong { font-size: 14px; }
+.auth-error-card p { margin: 0; font-size: 12px; color: inherit; }
+.auth-error-detail { font-weight: 700; word-break: break-all; }
+.auth-error-next-step { font-weight: 700; }
+.auth-error-help { color: #a38484; }
+.auth-error-actions { display: grid; gap: 8px; margin-top: 8px; }
+.auth-error-actions button { margin-top: 0; }
+.auth-error-actions button.secondary { border-color: #e5cfcd; background: transparent; color: #825959; }
+
+/* The Google identity currently in use, so a wrong account choice is obvious. */
+.google-account-chip { display: grid; gap: 2px; margin-top: 18px; padding: 12px; border: 1px dashed #e5dfda; border-radius: 9px; background: #faf9fb; text-align: center; }
+.google-account-label { color: #8a827c; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.google-account-chip strong { color: #39322d; font-size: 13px; }
+.google-account-chip span:last-child { color: #766f6a; font-size: 12px; word-break: break-all; }
+
+/* ================================================================
    REGISTRATION REQUEST (inline, inside the verified-identity state)
    ================================================================ */
 

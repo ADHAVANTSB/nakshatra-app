@@ -107,7 +107,7 @@ export class Events implements OnInit {
     const deepLinkEventId =
       this.route.snapshot.queryParamMap.get('eventId') ?? undefined;
 
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
 
     void this.loadEventMaster(deepLinkEventId);
   }
@@ -210,6 +210,34 @@ export class Events implements OnInit {
   readonly totalEvents = computed(() =>
     this.events().length
   );
+
+  /**
+   * Events grouped under the canonical ARTS / LITERARY / CULTURAL sections.
+   * Groups with no matching events are omitted; the existing search, category,
+   * mode and status filters all still apply.
+   */
+  readonly groupedEvents = computed(() => {
+    const order: readonly EventCategory[] = ['ARTS', 'LITERARY', 'CULTURAL'];
+
+    return order
+      .map(category => ({
+        category,
+        events: this.filteredEvents().filter(event => event.category === category),
+      }))
+      .filter(group => group.events.length > 0);
+  });
+
+  /**
+   * Collapsed-card label for the backend's eligible levels; an event with no
+   * levels configured renders an em dash, never an invented list.
+   */
+  eligibleLevelsLabel(event: Event): string {
+    if (!event.eligibleLevels.length) {
+      return '—';
+    }
+
+    return event.eligibleLevels.map(level => this.levelLabel(level)).join(', ');
+  }
 
   readonly activeEvents = computed(() =>
     this.events().filter(
@@ -471,9 +499,11 @@ export class Events implements OnInit {
 
 
   /**
-   * Registered participants for the expanded card's table. Display data comes
-   * from the registration row first, then the cached participant record; a row
-   * is never dropped for lack of a cached participant.
+   * Participants for the expanded card's table — every registration row the
+   * backend returned, each carrying its registration status; the header count
+   * stays REGISTERED-only (`activeRegistrationCount`). Display data comes from
+   * the registration row first, then the cached participant record; a row is
+   * never dropped for lack of a cached participant.
    */
   cardParticipants(
     eventId: string
@@ -481,10 +511,7 @@ export class Events implements OnInit {
 
     return this.participantEventService
       .registrations$()
-      .filter(registration =>
-        registration.eventId === eventId &&
-        registration.registrationStatus === 'REGISTERED'
-      )
+      .filter(registration => registration.eventId === eventId)
       .map(registration => {
 
         const participant =
@@ -503,6 +530,7 @@ export class Events implements OnInit {
 
         return {
           registration,
+          status: registration.registrationStatus,
           name:
             registration.participantName ??
             participant?.fullName ??
@@ -1570,3 +1598,4 @@ export class Events implements OnInit {
     return labels[status];
   }
 }
+

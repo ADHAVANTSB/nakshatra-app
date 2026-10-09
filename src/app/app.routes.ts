@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { adminAccessGuard, frontendAuthGuard, sectionAccessGuard } from './core/services/auth/auth.guards';
+import { adminAccessGuard, frontendAuthGuard, sectionAccessGuard, signInGuard } from './core/services/auth/auth.guards';
 import { ApplicationSection } from './core/models';
 
 const protectedRoute = (section: ApplicationSection) => ({
@@ -8,7 +8,7 @@ const protectedRoute = (section: ApplicationSection) => ({
 });
 
 export const routes: Routes = [
-  { path: 'login', loadComponent: () => import('./pages/login/login').then(m => m.Login) },
+  { path: 'login', canActivate: [signInGuard], loadComponent: () => import('./pages/login/login').then(m => m.Login) },
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
   { path: 'dashboard', ...protectedRoute('DASHBOARD'), loadComponent: () => import('./pages/dashboard/dashboard').then(m => m.Dashboard) },
   { path: 'homes', ...protectedRoute('HOMES'), loadComponent: () => import('./pages/homes/homes').then(m => m.Homes) },

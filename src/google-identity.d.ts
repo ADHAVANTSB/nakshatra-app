@@ -24,9 +24,19 @@ interface GoogleButtonConfiguration {
   ux_mode?: 'popup' | 'redirect';
 }
 
+interface GooglePromptNotification {
+  isNotDisplayed?(): boolean;
+  isSkippedMoment?(): boolean;
+  isDismissedMoment?(): boolean;
+}
+
 interface GoogleAccountsId {
   initialize(configuration: GoogleIdConfiguration): void;
   renderButton(parent: HTMLElement, options: GoogleButtonConfiguration): void;
+  /** Official GIS API: forgets the auto-selected account so the next sign-in asks again. */
+  disableAutoSelect(): void;
+  /** Official GIS API: opens the One Tap account chooser (includes "Use another account"). */
+  prompt(listener?: (notification: GooglePromptNotification) => void): void;
 }
 
 interface GoogleIdentity {

@@ -74,7 +74,7 @@ export class Attendance implements OnInit {
 
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
 
     // Deep link from the Events page: /attendance?eventId=...
     const deepLinked = this.route.snapshot.queryParamMap.get('eventId');
@@ -255,6 +255,15 @@ export class Attendance implements OnInit {
         this.notifications.success(
           `${participant.fullName} marked ${this.statusLabel(result.attendance).toLowerCase()}.`
         );
+        return;
+      }
+
+      if (result.errorCode === 'VERSION_CONFLICT') {
+        // Another coordinator marked this attendance first: nothing was
+        // overwritten, but the conflict must be explicit.
+        const conflictMessage = 'Attendance was updated elsewhere. Refresh and try again.';
+        this.errors.set([conflictMessage]);
+        this.notifications.error(`Attendance for ${participant.fullName} was not saved.`, conflictMessage);
         return;
       }
 

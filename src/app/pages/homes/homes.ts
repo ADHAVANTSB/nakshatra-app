@@ -82,7 +82,7 @@ export class Homes implements OnInit {
   });
 
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
   }
 
   // ---------------------------------------------------------
@@ -211,6 +211,9 @@ export class Homes implements OnInit {
       sync.data.importVersionId ?? sync.data.importVersion?.id;
 
     await this.shelterData.loadImportStatus(home.id, importVersionId);
+    // The sync may have changed the home's participant rows; re-read them so
+    // the card's participant count reflects the backend, not the last page load.
+    await this.shelterData.loadParticipants(home.id);
     await this.shelterData.loadConnectedHomes();
 
     this.syncingHomeId.set(null);
@@ -539,3 +542,4 @@ interface ConnectedHome {
   name: string;
   spreadsheetName?: string;
 }
+

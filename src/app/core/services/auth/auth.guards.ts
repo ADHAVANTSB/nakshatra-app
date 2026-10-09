@@ -9,6 +9,16 @@ export const frontendAuthGuard: CanActivateFn = () => {
   return auth.isAuthenticated() || inject(Router).createUrlTree(['/login']);
 };
 
+/**
+ * Keeps the sign-in page out of the shell: an already-authenticated visitor
+ * who opens /login directly is sent to the dashboard instead of seeing a
+ * sign-in form inside the authenticated application.
+ */
+export const signInGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return !auth.isAuthenticated() || inject(Router).createUrlTree(['/dashboard']);
+};
+
 export const adminAccessGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);

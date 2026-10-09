@@ -82,7 +82,13 @@
     @if (loading() || targetsLoading()) {
       <div class="empty" role="status">Loading registered entries…</div>
     } @else if (registrationsFailed()) {
-      <!-- The registrations error above is the state. -->
+      <div class="alert error" role="alert">
+        <strong>Unable to load registered entries.</strong>
+        @if (registrationError()) {
+          <span>{{ registrationError() }}</span>
+        }
+        <button type="button" (click)="retryRegistrations()">Retry</button>
+      </div>
     } @else if (scoresState().status === 'ERROR') {
       <div class="alert error" role="alert">
         <strong>Unable to load scores.</strong>

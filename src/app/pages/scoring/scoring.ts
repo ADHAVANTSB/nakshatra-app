@@ -97,7 +97,7 @@ export class Scoring implements OnInit {
    * navigation, and reads the event data if an event is already selected.
    */
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
 
     // Deep link from the Events page: /scoring?eventId=...
     const deepLinked = this.route.snapshot.queryParamMap.get('eventId');
@@ -337,6 +337,12 @@ export class Scoring implements OnInit {
     if (id) await this.teamService.loadTeams(id, true);
   }
 
+  /** Re-reads the selected event's registrations after a failed read. */
+  async retryRegistrations(): Promise<void> {
+    const id = this.selectedEventId();
+    if (id) await this.loadRegistrations(id);
+  }
+
   private async loadScores(eventId: string, force: boolean): Promise<void> {
     const loaded = await this.scoringService.loadScores(eventId, force);
     if (loaded) this.markScoresSeen(eventId);
@@ -513,6 +519,16 @@ export class Scoring implements OnInit {
     if (!result.success) {
       if (result.errorCode === 'SCORE_FINALIZED') {
         this.notify.warning('Score is already final.', `${name} was finalized and cannot be changed.`);
+        return;
+      }
+
+      if (result.errorCode === 'VERSION_CONFLICT') {
+        // Another judge saved this score first: nothing was overwritten, but
+        // the conflict must be explicit so the judge re-reads before retyping.
+        this.notify.warning(
+          'Score could not be saved.',
+          `This score was updated elsewhere. Refresh and try again. ${name} is unchanged.`
+        );
         return;
       }
 

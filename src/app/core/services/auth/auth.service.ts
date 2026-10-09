@@ -24,6 +24,8 @@ export interface GoogleAuthenticatedUser {
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private static readonly SESSION_STORAGE_KEY = 'nakshatra.applicationSession';
+
   private readonly users = signal<ApplicationUser[]>([]);
   private readonly sessionUserId = signal<string | null>(null);
   private readonly applicationSessionState = signal<ApplicationSession | null>(null);
@@ -41,14 +43,86 @@ export class AuthService {
   logout(): void {
     this.applicationSessionState.set(null);
     this.sessionUserId.set(null);
+    this.clearPersistedSession();
   }
 
   setApplicationSession(session: ApplicationSession): void {
     this.applicationSessionState.set({ ...session });
+    this.persistSession(session);
   }
 
   clearApplicationSession(): void {
     this.applicationSessionState.set(null);
+    this.clearPersistedSession();
+  }
+
+  /**
+   * Persists the session so a page refresh can restore it.
+   *
+   * Only the opaque session id and its expiry are stored (sessionStorage is
+   * tab-scoped and dies with the tab). Nothing else about the user is cached;
+   * the identity is re-established exclusively through the backend's
+   * `validateSession` action on the next boot.
+   */
+  private persistSession(session: ApplicationSession): void {
+    try {
+      sessionStorage.setItem(
+        AuthService.SESSION_STORAGE_KEY,
+        JSON.stringify({ id: session.id, expiresAt: session.expiresAt })
+      );
+    } catch {
+      // Storage can be unavailable (privacy mode); the session simply stays
+      // in memory and the user signs in again after a refresh.
+    }
+  }
+
+  private clearPersistedSession(): void {
+    try {
+      sessionStorage.removeItem(AuthService.SESSION_STORAGE_KEY);
+    } catch {
+      // Nothing to clear if storage is unavailable.
+    }
+  }
+
+  /**
+   * Returns the persisted session from a previous page load, or null.
+   *
+   * A malformed, expired or unreadable entry is discarded, so a stale local
+   * session can never reach the application unvalidated — the backend still
+   * re-validates whatever is returned here.
+   */
+  restorePersistedSession(): ApplicationSession | null {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(AuthService.SESSION_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null) {
+        this.clearPersistedSession();
+        return null;
+      }
+
+      const id = (parsed as { id?: unknown }).id;
+      const expiresAt = (parsed as { expiresAt?: unknown }).expiresAt;
+
+      if (typeof id !== 'string' || !id
+        || typeof expiresAt !== 'string'
+        || Number.isNaN(Date.parse(expiresAt))
+        || Date.parse(expiresAt) <= Date.now()) {
+        this.clearPersistedSession();
+        return null;
+      }
+
+      return { id, expiresAt };
+    } catch {
+      this.clearPersistedSession();
+      return null;
+    }
   }
 
   /** Records the backend-authorized identity issued for the current session. */

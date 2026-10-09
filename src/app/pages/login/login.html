@@ -2,10 +2,47 @@
   <section class="auth-card">
     <span class="eyebrow">NAKSHATRA</span>
     <h1>Sign in</h1>
+    <p class="auth-lede">Sign in with your approved Google account<br />to verify your identity.</p>
+
+    @if (phase(); as currentPhase) {
+      @if (currentPhase === 'SUCCESS') {
+        <div class="auth-success-card" role="status">
+          <strong>Sign-in successful</strong>
+          <p>Taking you to Nakshatra…</p>
+        </div>
+      }
+    }
+
+    @if (errorState(); as failure) {
+      <div class="auth-error-card" role="alert">
+        <strong>{{ failure.title }}</strong>
+        <p>{{ failure.message }}</p>
+
+        @if (failure.detail) {
+          <p class="auth-error-detail">{{ failure.detail }}</p>
+        }
+
+        @if (failure.nextStep) {
+          <p class="auth-error-next-step">{{ failure.nextStep }}</p>
+        }
+
+        @if (failure.help) {
+          <p class="auth-error-help">{{ failure.help }}</p>
+        }
+
+        <div class="auth-error-actions">
+          @if (failure.action === 'TRY_ANOTHER_ACCOUNT') {
+            <button type="button" (click)="tryAnotherAccount()">Try another Google account</button>
+          }
+          <button type="button" (click)="retryFromError()">Try again</button>
+        </div>
+      </div>
+    }
 
     @if (verifiedUser(); as user) {
-      <div class="alert success">
-        <strong>{{ accessMessage(user.access) }}</strong>
+      <div class="auth-status-card" role="status">
+        <strong>{{ statusPanel(user.access).title }}</strong>
+        <p>{{ statusPanel(user.access).message }}</p>
         <span>{{ user.email }}</span>
       </div>
 
@@ -53,19 +90,28 @@
             <button type="button" class="secondary" [disabled]="registrationSubmitting()" (click)="cancelRegistration()">Cancel</button>
           </form>
         } @else {
-          <button type="button" (click)="openRegistration()">Register</button>
+          <div class="auth-status-actions">
+            <button type="button" (click)="openRegistration()">Register</button>
+            <button type="button" class="secondary" (click)="tryAnotherAccount()">Try another Google account</button>
+          </div>
         }
       }
-    } @else {
-      <p>Sign in with your approved Google account to verify your identity.</p>
-      @if (error()) {
-        <div class="alert error" role="alert">{{ error() }}</div>
-      }
+    } @else if (phase() !== 'SUCCESS') {
       <div class="google-sign-in" [class.loading]="loading()">
         <div #googleButton></div>
         @if (loading()) {
-          <span role="status">Verifying your Google account…</span>
+          <span role="status">{{ statusLabel() }}</span>
         }
+      </div>
+    }
+
+    @if (currentGoogleAccount(); as account) {
+      <div class="google-account-chip" role="note">
+        <span class="google-account-label">Signed in as</span>
+        @if (account.name) {
+          <strong>{{ account.name }}</strong>
+        }
+        <span>{{ account.email }}</span>
       </div>
     }
   </section>

@@ -76,6 +76,13 @@ export class ShelterDataService {
   private readonly loadedParticipantRegistrations = new Set<string>();
 
   private pending: Promise<ShelterDataResult> | null = null;
+  private pendingEvents: Promise<Event[] | null> | null = null;
+  private pendingHomes: Promise<boolean> | null = null;
+  private readonly pendingEventRegistrations = new Map<string, Promise<ParticipantEvent[] | null>>();
+  private readonly pendingParticipantRegistrations = new Map<string, Promise<ParticipantEvent[] | null>>();
+  private readonly pendingParticipants = new Map<string, Promise<Participant[] | null>>();
+  private readonly pendingImports = new Map<string, Promise<ImportStatusEntry[] | null>>();
+  private readonly pendingValidations = new Map<string, Promise<ValidationResult[] | null>>();
 
   readonly homes = this.homesState.asReadonly();
   readonly participants = this.participantsState.asReadonly();
@@ -109,30 +116,60 @@ export class ShelterDataService {
     return this.pending;
   }
 
+  /**
+   * Loads the store only when no backend data has been read yet.
+   *
+   * Page navigation uses this instead of `refresh()` so revisiting a module
+   * never re-fires the full read fan-out over already-cached data; explicit
+   * Refresh buttons call `refresh()` for a forced re-read.
+   */
+  ensureLoaded(): Promise<ShelterDataResult> {
+    if (this.loadedState()) {
+      return Promise.resolve({ success: true, errors: [] });
+    }
+
+    return this.refresh();
+  }
+
   /* ================================================================
      EVENTS
      ================================================================ */
 
-  async loadEvents(): Promise<Event[] | null> {
-    if (this.loadingEventsState()) {
+  async loadEvents(force = false): Promise<Event[] | null> {
+    if (!force && this.eventsLoadedState()) {
       return this.eventsState();
     }
 
-    this.loadingEventsState.set(true);
-
-    const response = await this.apiClient.listEvents();
-
-    this.loadingEventsState.set(false);
-
-    if (!response.success) {
-      this.recordError({ scope: 'EVENTS', message: response.error.message });
-      return null;
+    // Concurrent callers share one in-flight read instead of racing.
+    if (this.pendingEvents) {
+      return this.pendingEvents;
     }
 
-    this.eventsState.set(response.data.events);
-    this.eventsLoadedState.set(true);
-    this.clearErrors('EVENTS');
-    return response.data.events;
+    this.pendingEvents = this.requestEvents().finally(() => {
+      this.pendingEvents = null;
+    });
+
+    return this.pendingEvents;
+  }
+
+  private async requestEvents(): Promise<Event[] | null> {
+    this.loadingEventsState.set(true);
+
+    try {
+      const response = await this.apiClient.listEvents();
+
+      if (!response.success) {
+        this.recordError({ scope: 'EVENTS', message: response.error.message });
+        return null;
+      }
+
+      this.eventsState.set(response.data.events);
+      this.eventsLoadedState.set(true);
+      this.clearErrors('EVENTS');
+      return response.data.events;
+    } finally {
+      this.loadingEventsState.set(false);
+    }
   }
 
   getEventById(eventId: string): Event | undefined {
@@ -157,22 +194,39 @@ export class ShelterDataService {
       return this.registrationsForEvent(eventId);
     }
 
-    this.loadingRegistrationsState.set(true);
-    const response = await this.apiClient.listEventRegistrations(eventId);
-    this.loadingRegistrationsState.set(false);
+    const pending = this.pendingEventRegistrations.get(eventId);
 
-    if (!response.success) {
-      this.setRegistrationError(eventId, response.error.message);
-      return null;
+    if (pending) {
+      return pending;
     }
 
-    this.registrationsState.update(current => [
-      ...current.filter(item => item.eventId !== eventId),
-      ...response.data.participantEvents,
-    ]);
-    this.loadedEventRegistrations.add(eventId);
-    this.clearRegistrationError(eventId);
-    return response.data.participantEvents;
+    const request = this.requestEventRegistrations(eventId)
+      .finally(() => this.pendingEventRegistrations.delete(eventId));
+    this.pendingEventRegistrations.set(eventId, request);
+    return request;
+  }
+
+  private async requestEventRegistrations(eventId: string): Promise<ParticipantEvent[] | null> {
+    this.loadingRegistrationsState.set(true);
+
+    try {
+      const response = await this.apiClient.listEventRegistrations(eventId);
+
+      if (!response.success) {
+        this.setRegistrationError(eventId, response.error.message);
+        return null;
+      }
+
+      this.registrationsState.update(current => [
+        ...current.filter(item => item.eventId !== eventId),
+        ...response.data.participantEvents,
+      ]);
+      this.loadedEventRegistrations.add(eventId);
+      this.clearRegistrationError(eventId);
+      return response.data.participantEvents;
+    } finally {
+      this.loadingRegistrationsState.set(false);
+    }
   }
 
   async loadParticipantEvents(
@@ -183,22 +237,39 @@ export class ShelterDataService {
       return this.registrationsForParticipant(participantId);
     }
 
-    this.loadingRegistrationsState.set(true);
-    const response = await this.apiClient.listParticipantEvents(participantId);
-    this.loadingRegistrationsState.set(false);
+    const pending = this.pendingParticipantRegistrations.get(participantId);
 
-    if (!response.success) {
-      this.setRegistrationError(participantId, response.error.message);
-      return null;
+    if (pending) {
+      return pending;
     }
 
-    this.registrationsState.update(current => [
-      ...current.filter(item => item.participantId !== participantId),
-      ...response.data.participantEvents,
-    ]);
-    this.loadedParticipantRegistrations.add(participantId);
-    this.clearRegistrationError(participantId);
-    return response.data.participantEvents;
+    const request = this.requestParticipantEvents(participantId)
+      .finally(() => this.pendingParticipantRegistrations.delete(participantId));
+    this.pendingParticipantRegistrations.set(participantId, request);
+    return request;
+  }
+
+  private async requestParticipantEvents(participantId: string): Promise<ParticipantEvent[] | null> {
+    this.loadingRegistrationsState.set(true);
+
+    try {
+      const response = await this.apiClient.listParticipantEvents(participantId);
+
+      if (!response.success) {
+        this.setRegistrationError(participantId, response.error.message);
+        return null;
+      }
+
+      this.registrationsState.update(current => [
+        ...current.filter(item => item.participantId !== participantId),
+        ...response.data.participantEvents,
+      ]);
+      this.loadedParticipantRegistrations.add(participantId);
+      this.clearRegistrationError(participantId);
+      return response.data.participantEvents;
+    } finally {
+      this.loadingRegistrationsState.set(false);
+    }
   }
 
   registrationsForEvent(eventId: string): ParticipantEvent[] {
@@ -243,6 +314,18 @@ export class ShelterDataService {
   }
 
   async loadConnectedHomes(): Promise<boolean> {
+    if (this.pendingHomes) {
+      return this.pendingHomes;
+    }
+
+    this.pendingHomes = this.requestConnectedHomes().finally(() => {
+      this.pendingHomes = null;
+    });
+
+    return this.pendingHomes;
+  }
+
+  private async requestConnectedHomes(): Promise<boolean> {
     const response = await this.apiClient.listShelterHomes();
 
     if (!response.success) {
@@ -268,6 +351,19 @@ export class ShelterDataService {
 
   /** Replaces the cached participants of one home with a fresh backend read. */
   async loadParticipants(shelterHomeId: string): Promise<Participant[] | null> {
+    const pending = this.pendingParticipants.get(shelterHomeId);
+
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.requestParticipants(shelterHomeId)
+      .finally(() => this.pendingParticipants.delete(shelterHomeId));
+    this.pendingParticipants.set(shelterHomeId, request);
+    return request;
+  }
+
+  private async requestParticipants(shelterHomeId: string): Promise<Participant[] | null> {
     const response = await this.apiClient.listParticipants(shelterHomeId);
 
     if (!response.success) {
@@ -289,6 +385,23 @@ export class ShelterDataService {
 
   /** Reads import status from the backend `data.imports` collection. */
   async loadImportStatus(
+    shelterHomeId: string,
+    importVersionId?: string
+  ): Promise<ImportStatusEntry[] | null> {
+    const key = `${shelterHomeId}|${importVersionId ?? ''}`;
+    const pending = this.pendingImports.get(key);
+
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.requestImportStatus(shelterHomeId, importVersionId)
+      .finally(() => this.pendingImports.delete(key));
+    this.pendingImports.set(key, request);
+    return request;
+  }
+
+  private async requestImportStatus(
     shelterHomeId: string,
     importVersionId?: string
   ): Promise<ImportStatusEntry[] | null> {
@@ -321,6 +434,23 @@ export class ShelterDataService {
   }
 
   async loadValidationResults(
+    shelterHomeId: string,
+    importVersionId?: string
+  ): Promise<ValidationResult[] | null> {
+    const key = `${shelterHomeId}|${importVersionId ?? ''}`;
+    const pending = this.pendingValidations.get(key);
+
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.requestValidationResults(shelterHomeId, importVersionId)
+      .finally(() => this.pendingValidations.delete(key));
+    this.pendingValidations.set(key, request);
+    return request;
+  }
+
+  private async requestValidationResults(
     shelterHomeId: string,
     importVersionId?: string
   ): Promise<ValidationResult[] | null> {
@@ -414,7 +544,8 @@ export class ShelterDataService {
         return { success: false, errors: this.errorsState() };
       }
 
-      await this.loadEvents();
+      // A refresh is always a forced re-read; the events catalogue included.
+      await this.loadEvents(true);
 
       const homes = this.homesState();
 

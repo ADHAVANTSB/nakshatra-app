@@ -75,6 +75,8 @@ describe('App', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
   });
 
   it('creates the shell root component unauthenticated', () => {
@@ -257,6 +259,96 @@ describe('App', () => {
     expect(last?.detail).toContain('Logout action failed.');
 
     vi.unstubAllGlobals();
+  });
+
+  it('restores a persisted session on boot and re-establishes the identity from the backend', async () => {
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'persisted-session-1', expiresAt: future }),
+    );
+
+    // Override the suite's network-disabled stub: boot now legitimately
+    // validates the persisted session against the backend.
+    vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+      fetchCallCount += 1;
+      expect(String(JSON.parse(init.body).action)).toBe('validateSession');
+      return Promise.resolve(new Response(
+        JSON.stringify({
+          success: true,
+          access: 'APPROVED',
+          user: ADMIN_USER,
+          data: { session: { expiresAt: future } },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const auth = TestBed.inject(AuthService);
+    expect(auth.isAuthenticated()).toBe(true);
+    expect(auth.currentUser()?.displayName).toBe('Asha Rao');
+    expect(auth.applicationSession()?.id).toBe('persisted-session-1');
+    expect(fetchCallCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('clears a stale persisted session when the backend rejects it', async () => {
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'stale-session', expiresAt: new Date(Date.now() + 3_600_000).toISOString() }),
+    );
+
+    // SESSION_INVALID makes the api client redirect to /login; this spec's
+    // empty route table has no /login route, so stub the navigation.
+    const router = TestBed.inject(Router);
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl =
+      vi.fn(() => Promise.resolve(true));
+
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code: 'SESSION_INVALID', message: 'Session is invalid or expired' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const auth = TestBed.inject(AuthService);
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.applicationSession()).toBeNull();
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).toBeNull();
+  });
+
+  it('logout also removes the persisted session', async () => {
+    signIn(ADMIN_USER);
+    const auth = TestBed.inject(AuthService);
+    auth.setApplicationSession({
+      id: 'persisted-logout-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).not.toBeNull();
+
+    auth.logout();
+
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).toBeNull();
+  });
+
+  it('discards a malformed persisted session entry on boot', async () => {
+    sessionStorage.setItem('nakshatra.applicationSession', 'not-json');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(TestBed.inject(AuthService).applicationSession()).toBeNull();
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).toBeNull();
+    // No validation request can be issued without a session id.
+    expect(fetchCallCount).toBe(0);
   });
 });
 

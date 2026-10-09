@@ -49,7 +49,7 @@ export class Results implements OnInit {
 
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
 
     // Deep link from the Events page: /results?eventId=...
     const deepLinked = this.route.snapshot.queryParamMap.get('eventId');

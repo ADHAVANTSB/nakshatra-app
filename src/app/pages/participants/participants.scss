@@ -210,6 +210,50 @@
   margin: 18px 0;
 }
 
+/* Detail section headings (Personal details / Operational status). */
+.detail-section-title {
+  margin: 20px 0 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5f6b7c;
+}
+
+/* Row-level and detail-level registration summary counts. */
+.cell-events {
+  strong {
+    display: block;
+    font-variant-numeric: tabular-nums;
+  }
+
+  small {
+    display: block;
+    white-space: normal;
+    line-height: 1.5;
+  }
+}
+
+.event-count-line {
+  display: block;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  color: #5f6b7c;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #2b5fb8;
+  cursor: pointer;
+  text-decoration: underline;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
 .detail-item {
   padding: 10px 12px;
   border: 1px solid #dce5ef;

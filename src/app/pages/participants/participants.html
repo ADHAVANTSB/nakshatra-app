@@ -240,8 +240,9 @@
           </div>
         }
 
-        <!-- IDENTITY: everything a coordinator validates, in one grid -->
+        <!-- DETAIL SECTIONS: personal data vs operational status -->
 
+        <h3 class="detail-section-title">Personal details</h3>
         <div class="detail-grid">
           <div class="detail-item detail-item--wide">
             <span>Participant name</span>
@@ -272,6 +273,10 @@
             <span>Level · server derived</span>
             <strong>{{ levelLabel(participant) }}</strong>
           </div>
+        </div>
+
+        <h3 class="detail-section-title">Operational status</h3>
+        <div class="detail-grid">
           <div class="detail-item">
             <span>Eligibility · server derived</span>
             <strong>
@@ -324,10 +329,6 @@
           <div class="detail-item">
             <span>Source version</span>
             <strong>{{ sourceVersionLabel(participant) }}</strong>
-          </div>
-          <div class="detail-item">
-            <span>Registered events</span>
-            <strong>{{ activeRegistrationCount() }}</strong>
           </div>
         </div>
 
@@ -426,6 +427,15 @@
             <div>
               <span class="eyebrow">REGISTERED EVENTS</span>
               <h4>Event participation</h4>
+              @if (detailEventSummary(); as summary) {
+                <small class="event-count-line">
+                  Total {{ summary.total }} / {{ summary.maxTotal }}
+                  · Arts {{ summary.arts }} / {{ summary.maxCategory }}
+                  · Literary {{ summary.literary }} / {{ summary.maxCategory }}
+                  · Cultural {{ summary.cultural }} / {{ summary.maxCategory }}
+                  · Solo {{ summary.solo }} / {{ summary.maxSolo }}
+                </small>
+              }
             </div>
             <button
               class="secondary-button"
@@ -646,6 +656,7 @@
               <th>Validation</th>
               <th>Approval</th>
               <th>Lock</th>
+              <th>Events</th>
               <th>Source</th>
             </tr>
           </thead>
@@ -702,6 +713,25 @@
                     [class.badge--warning]="participant.lockStatus === 'LOCKED'">
                     {{ participant.lockStatus }}
                   </span>
+                </td>
+                <td class="cell-events">
+                  @if (eventSummary(participant.id); as summary) {
+                    <strong>{{ summary.total }} / {{ summary.maxTotal }}</strong>
+                    <small>
+                      Arts {{ summary.arts }}/{{ summary.maxCategory }}
+                      · Literary {{ summary.literary }}/{{ summary.maxCategory }}
+                      · Cultural {{ summary.cultural }}/{{ summary.maxCategory }}
+                      · Solo {{ summary.solo }}/{{ summary.maxSolo }}
+                    </small>
+                  } @else if (registrationSummaryState() === 'LOADING') {
+                    <small>Reading registrations…</small>
+                  } @else if (registrationSummaryState() === 'FAILED') {
+                    <button type="button" class="link-button" (click)="retryRegistrationSummary()">
+                      Retry
+                    </button>
+                  } @else {
+                    <small>—</small>
+                  }
                 </td>
                 <td>
                   <small>{{ sourceLabel(participant) }}</small>

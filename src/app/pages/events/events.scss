@@ -1706,3 +1706,21 @@ tbody tr:hover {
 }
 
 }
+
+/* Category section headings for the grouped card list. */
+.event-category-heading {
+  margin: 22px 0 4px;
+  font-size: 13px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #5f6b7c;
+
+  small {
+    margin-left: 8px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #8a93a3;
+  }
+}

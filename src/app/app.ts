@@ -150,8 +150,17 @@ export class App implements OnInit {
   }
 
   private async validateStartupSession(): Promise<void> {
-    const session = this.auth.applicationSession();
-    if (!session) return;
+    let session = this.auth.applicationSession();
+
+    // A page refresh clears the in-memory session. The backend session may
+    // still be alive, so rehydrate the persisted id and let the backend
+    // decide; an expired or malformed entry is discarded by the service.
+    if (!session) {
+      const restored = this.auth.restorePersistedSession();
+      if (!restored) return;
+      this.auth.setApplicationSession(restored);
+      session = restored;
+    }
 
     const result = await this.apiClient.validateApplicationSession();
     // Do not let a delayed validation clear a newer session created by sign-in.

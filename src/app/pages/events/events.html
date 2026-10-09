@@ -237,9 +237,19 @@
       <div class="events-card-list">
 
         @for (
-          event of filteredEvents();
-          track event.id
+          group of groupedEvents();
+          track group.category
         ) {
+
+          <h3 class="event-category-heading">
+            {{ group.category }}
+            <small>{{ group.events.length }} event{{ group.events.length === 1 ? '' : 's' }}</small>
+          </h3>
+
+          @for (
+            event of group.events;
+            track event.id
+          ) {
 
           <article
             class="event-card"
@@ -262,7 +272,10 @@
                 </strong>
 
                 <small>
-                  {{ event.category }} • {{ modeLabel(event.mode) }}
+                  {{ modeLabel(event.mode) }}
+                  @if (event.eligibleLevels.length) {
+                    • Levels: {{ eligibleLevelsLabel(event) }}
+                  }
                 </small>
 
               </span>
@@ -411,6 +424,7 @@
                           <th>Standard</th>
                           <th>Level</th>
                           <th>Shelter Home</th>
+                          <th>Status</th>
                         </tr>
 
                       </thead>
@@ -435,6 +449,16 @@
 
                             <td>{{ row.homeName }}</td>
 
+                            <td>
+                              <span
+                                class="badge"
+                                [class.badge--success]="row.status === 'REGISTERED'"
+                                [class.badge--warning]="row.status === 'WAITLISTED'"
+                                [class.badge--muted]="row.status === 'CANCELLED'">
+                                {{ registrationStatusLabel(row.status) }}
+                              </span>
+                            </td>
+
                           </tr>
 
                         }
@@ -458,6 +482,8 @@
             }
 
           </article>
+
+          }
 
         }
 

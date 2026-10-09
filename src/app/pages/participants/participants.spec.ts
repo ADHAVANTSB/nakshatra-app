@@ -1,7 +1,9 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { vi, afterEach, describe, expect, it } from 'vitest';
 
-import { Participant, ParticipantEvent } from '../../core/models';
+import { Participant, ParticipantEvent, Event } from '../../core/models';
+import { AuthService } from '../../core/services/auth/auth.service';
 import { Participants, RegistrationEntry } from './participants';
 
 /**
@@ -149,6 +151,156 @@ describe('Participants — detail panel presentation', () => {
     it('shows the sheet row when present', () => {
       expect(component.sourceRowLabel({ ...participant, sourceRowNumber: 12 }))
         .toBe('Sheet row 12');
+    });
+  });
+});
+
+function event(overrides: Partial<{
+  id: string; eventCode: string; name: string; category: string; mode: string; status: string; eligibleLevels: string[];
+}>): Event {
+  return {
+    id: 'event-1',
+    eventCode: 'E-01',
+    name: 'Group Song',
+    category: 'ARTS',
+    mode: 'SOLO',
+    status: 'ACTIVE',
+    eligibleLevels: ['JUNIOR'],
+    ...overrides,
+  } as unknown as Event;
+}
+
+describe('Participants � event summary counts', () => {
+  let fixture: ComponentFixture<Participants>;
+  let component: Participants;
+
+  const EVENTS = [
+    event({ id: 'event-1', eventCode: 'E-01', name: 'Vocal', category: 'ARTS', mode: 'SOLO' }),
+    event({ id: 'event-2', eventCode: 'E-02', name: 'Group Song', category: 'ARTS', mode: 'GROUP' }),
+    event({ id: 'event-3', eventCode: 'E-03', name: 'Story', category: 'LITERARY', mode: 'SOLO' }),
+    event({ id: 'event-4', eventCode: 'E-04', name: 'Dance', category: 'CULTURAL', mode: 'GROUP' }),
+  ];
+
+  function rowsFor(eventId: string): ParticipantEvent[] {
+    // participant-1: registered for both ARTS events and CULTURAL; LITERARY row is cancelled.
+    const all: ParticipantEvent[] = [
+      registration({ id: 'reg-1', participantId: 'participant-1', eventId: 'event-1', registrationStatus: 'REGISTERED' }),
+      registration({ id: 'reg-2', participantId: 'participant-1', eventId: 'event-2', registrationStatus: 'REGISTERED' }),
+      registration({ id: 'reg-3', participantId: 'participant-1', eventId: 'event-3', registrationStatus: 'CANCELLED' }),
+      registration({ id: 'reg-4', participantId: 'participant-1', eventId: 'event-4', registrationStatus: 'REGISTERED' }),
+      registration({ id: 'reg-5', participantId: 'participant-2', eventId: 'event-1', registrationStatus: 'REGISTERED' }),
+    ];
+    return all.filter(row => row.eventId === eventId);
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Participants);
+    component = fixture.componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('returns null while the summary has not been loaded', () => {
+    expect(component.eventSummary('participant-1')).toBeNull();
+    expect(component.registrationSummaryState()).toBe('IDLE');
+  });
+
+  it('computes total, per-category and solo counts from backend registrations', async () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string; payload?: { eventId?: string } };
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (request.action === 'listEventRegistrations') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { participantEvents: rowsFor(request.payload?.eventId ?? '') } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    });
+
+    await component.loadRegistrationSummary();
+
+    expect(component.registrationSummaryState()).toBe('LOADED');
+    expect(component.eventSummary('participant-1')).toEqual({
+      total: 3, maxTotal: 6,
+      arts: 2, literary: 0, cultural: 1, maxCategory: 2,
+      solo: 1, maxSolo: 3,
+    });
+    // Only the requested participant's rows count.
+    expect(component.eventSummary('participant-2')).toEqual({
+      total: 1, maxTotal: 6,
+      arts: 1, literary: 0, cultural: 0, maxCategory: 2,
+      solo: 1, maxSolo: 3,
+    });
+  });
+
+  it('reaches a FAILED terminal state when the summary read fails and recovers on retry', async () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'BACKEND_ERROR', message: 'Registrations unavailable' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    });
+
+    await component.loadRegistrationSummary();
+
+    expect(component.registrationSummaryState()).toBe('FAILED');
+    expect(component.eventSummary('participant-1')).toBeNull();
+
+    // Retry through a working backend: the terminal state recovers.
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string; payload?: { eventId?: string } };
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (request.action === 'listEventRegistrations') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { participantEvents: rowsFor(request.payload?.eventId ?? '') } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    });
+
+    await component.loadRegistrationSummary(true);
+
+    expect(component.registrationSummaryState()).toBe('LOADED');
+    expect(component.eventSummary('participant-1')?.total).toBe(3);
+  });
+
+  it('computes detail-panel counts from the open participant registrations', () => {
+    component.registrations.set([
+      registration({ id: 'reg-1', eventId: 'event-1', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' }),
+      registration({ id: 'reg-2', eventId: 'event-2', category: 'ARTS', mode: 'GROUP', registrationStatus: 'REGISTERED' }),
+      registration({ id: 'reg-3', eventId: 'event-3', category: 'LITERARY', mode: 'SOLO', registrationStatus: 'CANCELLED' }),
+      registration({ id: 'reg-4', eventId: 'event-4', category: 'CULTURAL', mode: 'GROUP', registrationStatus: 'REGISTERED' }),
+    ]);
+
+    expect(component.detailEventSummary()).toEqual({
+      total: 3, maxTotal: 6,
+      arts: 2, literary: 0, cultural: 1, maxCategory: 2,
+      solo: 1, maxSolo: 3,
     });
   });
 });

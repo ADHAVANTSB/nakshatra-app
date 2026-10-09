@@ -59,7 +59,7 @@ export class Certificates implements OnInit {
 
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    void this.shelterData.ensureLoaded();
 
     const preselected = this.selectedEventId();
     if (preselected) {
@@ -204,3 +204,4 @@ export class Certificates implements OnInit {
     return values.some(value => value.toLowerCase().includes(query));
   }
 }
+

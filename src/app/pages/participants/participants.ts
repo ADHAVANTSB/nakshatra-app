@@ -23,6 +23,23 @@ import {
 } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
+import { NAKSHATRA_EVENT_RULES } from '../../core/constants/nakshatra-rules';
+
+/**
+ * Compact registration summary for one participant, computed from the
+ * registrations the backend returned. Denominators are the canonical
+ * Nakshatra event rules, never invented per screen.
+ */
+export interface ParticipantEventSummary {
+  total: number;
+  maxTotal: number;
+  arts: number;
+  literary: number;
+  cultural: number;
+  maxCategory: number;
+  solo: number;
+  maxSolo: number;
+}
 
 /** Category order used when grouping a participant's backend registrations. */
 const REGISTRATION_CATEGORY_ORDER: readonly EventCategory[] = [
@@ -325,6 +342,111 @@ export class Participants implements OnInit {
   });
 
   // ---------------------------------------------------------
+  // EVENT SUMMARY (rows + detail panel)
+  // ---------------------------------------------------------
+
+  /**
+   * Read state of the row-level event summary.
+   *
+   * Rows show per-participant registration counts, which the backend only
+   * exposes per event (`listEventRegistrations`). The summary therefore reads
+   * every ACTIVE event's registrations once — bounded by the event catalogue,
+   * deduped and cached by the shared store — and never reports a fabricated
+   * zero while that read is outstanding or failed.
+   */
+  readonly registrationSummaryState = signal<'IDLE' | 'LOADING' | 'LOADED' | 'FAILED'>('IDLE');
+
+  /** Reads all ACTIVE events' registrations for the row-level summary. */
+  async loadRegistrationSummary(force = false): Promise<void> {
+    if (this.registrationSummaryState() === 'LOADING') {
+      return;
+    }
+
+    this.registrationSummaryState.set('LOADING');
+
+    try {
+      if (!this.eventService.loaded()) {
+        await this.eventService.load();
+      }
+
+      // A failed event-master read leaves no events to iterate; the retry
+      // affordance stays available instead of showing a fake empty summary.
+      if (!this.eventService.loaded()) {
+        this.registrationSummaryState.set('FAILED');
+        return;
+      }
+
+      const results = await Promise.all(
+        this.eventService.activeEvents().map(event =>
+          this.shelterData.loadEventRegistrations(event.id, force)
+        )
+      );
+
+      this.registrationSummaryState.set(
+        results.some(result => result === null) ? 'FAILED' : 'LOADED'
+      );
+    } catch {
+      // The api client resolves every failure into the envelope, so this is a
+      // belt-and-braces terminal guarantee: LOADING never outlives this call.
+      this.registrationSummaryState.set('FAILED');
+    }
+  }
+
+  retryRegistrationSummary(): void {
+    void this.loadRegistrationSummary(true);
+  }
+
+  /**
+   * Row-level summary for one participant, or null while the summary is not
+   * loaded. Only REGISTERED rows count, through the shared service helpers.
+   */
+  eventSummary(participantId: string): ParticipantEventSummary | null {
+    if (this.registrationSummaryState() !== 'LOADED') {
+      return null;
+    }
+
+    return {
+      total: this.participantEventService.getParticipantEventCount(participantId),
+      maxTotal: NAKSHATRA_EVENT_RULES.maxTotalEventsPerParticipant,
+      arts: this.participantEventService.getParticipantCategoryCount(participantId, 'ARTS'),
+      literary: this.participantEventService.getParticipantCategoryCount(participantId, 'LITERARY'),
+      cultural: this.participantEventService.getParticipantCategoryCount(participantId, 'CULTURAL'),
+      maxCategory: NAKSHATRA_EVENT_RULES.maxEventsPerCategory,
+      solo: this.participantEventService.getParticipantIndividualCount(participantId),
+      maxSolo: NAKSHATRA_EVENT_RULES.maxIndividualEvents,
+    };
+  }
+
+  /**
+   * Detail-panel summary, computed from the open participant's own
+   * registrations (backend-returned rows, including their denormalized
+   * category/mode). Null while the detail registrations have not loaded.
+   */
+  detailEventSummary(): ParticipantEventSummary | null {
+    const rows = this.registrations();
+
+    if (!rows) {
+      return null;
+    }
+
+    const registered = rows.filter(row => row.registrationStatus === 'REGISTERED');
+    const categoryCount = (category: EventCategory) =>
+      registered.filter(row => row.category === category).length;
+    const soloCount = registered.filter(row => row.mode === 'SOLO').length;
+
+    return {
+      total: registered.length,
+      maxTotal: NAKSHATRA_EVENT_RULES.maxTotalEventsPerParticipant,
+      arts: categoryCount('ARTS'),
+      literary: categoryCount('LITERARY'),
+      cultural: categoryCount('CULTURAL'),
+      maxCategory: NAKSHATRA_EVENT_RULES.maxEventsPerCategory,
+      solo: soloCount,
+      maxSolo: NAKSHATRA_EVENT_RULES.maxIndividualEvents,
+    };
+  }
+
+  // ---------------------------------------------------------
   // DEEP LINK
   // ---------------------------------------------------------
 
@@ -359,7 +481,11 @@ export class Participants implements OnInit {
   // ---------------------------------------------------------
 
   ngOnInit(): void {
-    void this.shelterData.refresh();
+    // Boot the shared store, then read the row-level event summary. The
+    // summary is one cached read per ACTIVE event on top of the boot fan-out,
+    // reusing the store's dedupe so a summary read and the Events page never
+    // fetch the same event twice.
+    void this.shelterData.ensureLoaded().then(() => this.loadRegistrationSummary());
 
     // The Homes module navigates here with shelterHomeId; keep that filter.
     // A participantId query param deep-links straight into the detail panel.
