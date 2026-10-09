@@ -4,6 +4,7 @@ import { vi, afterEach, describe, expect, it } from 'vitest';
 
 import { Participant, ParticipantEvent, Event } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import { Participants, RegistrationEntry } from './participants';
 
 /**
@@ -302,5 +303,67 @@ describe('Participants � event summary counts', () => {
       arts: 2, literary: 0, cultural: 1, maxCategory: 2,
       solo: 1, maxSolo: 3,
     });
+  });
+});
+
+describe('Participants � source write-back messaging', () => {
+  let component: Participants;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    // Created without change detection: ngOnInit never runs, no backend calls.
+    component = TestBed.createComponent(Participants).componentInstance;
+  });
+
+  it('labels every backend source write-back outcome it reports', () => {
+    const describeSourceWriteBack = (
+      component as unknown as {
+        describeSourceWriteBack: (
+          writeBack: { status: string; message?: string } | undefined
+        ) => { label: string; detail: string };
+      }
+    ).describeSourceWriteBack;
+
+    expect(describeSourceWriteBack.call(component, undefined)).toEqual({ label: '', detail: '' });
+    expect(describeSourceWriteBack.call(component, { status: 'UPDATED' }).label)
+      .toBe('Google Sheet updated');
+    expect(describeSourceWriteBack.call(component, { status: 'SKIPPED', message: 'row locked' }).label)
+      .toBe('Google Sheet not updated');
+    expect(describeSourceWriteBack.call(component, { status: 'FAILED', message: 'sheet offline' }).label)
+      .toBe('Google Sheet not updated');
+    expect(describeSourceWriteBack.call(component, { status: 'UNVERIFIED', message: 'ambiguous' }).label)
+      .toBe('Source identity could not be verified');
+  });
+
+  it('pins the registration write-back toast strings', () => {
+    const notifications = TestBed.inject(NotificationService);
+    const successSpy = vi.spyOn(notifications, 'success');
+    const warningSpy = vi.spyOn(notifications, 'warning');
+
+    const notifyRegistrationSuccess = (
+      component as unknown as {
+        notifyRegistrationSuccess: (
+          message: string,
+          writeBack: { status: string; message?: string } | undefined
+        ) => void;
+      }
+    ).notifyRegistrationSuccess;
+
+    notifyRegistrationSuccess.call(component, 'Event participation updated.', { status: 'UPDATED' });
+    expect(successSpy).toHaveBeenCalledWith('Event participation updated.', 'Google Sheet updated.');
+
+    notifyRegistrationSuccess.call(component, 'Event participation updated.', { status: 'SKIPPED' });
+    expect(successSpy).toHaveBeenCalledWith(
+      'Event participation updated.',
+      'Registration updated in Nakshatra, but the Google Sheet was not changed.'
+    );
+
+    notifyRegistrationSuccess.call(component, 'Event participation updated.', undefined);
+    // No report from the backend: no sheet claim either way.
+    expect(successSpy).toHaveBeenLastCalledWith('Event participation updated.');
   });
 });

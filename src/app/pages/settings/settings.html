@@ -456,4 +456,92 @@
       </div>
     </div>
   }
+
+  <!-- PREVIEW DATASET REFRESH (backend report; preview only, no reset exists) -->
+
+  @if (canManage()) {
+    <section class="preview-panel" aria-live="polite">
+      <div class="preview-head">
+        <div>
+          <span class="eyebrow">DATA OPERATIONS</span>
+          <h2>Preview Dataset Refresh</h2>
+          <p>
+            Read-only preview of what a dataset refresh would touch. The backend currently
+            provides this preview only — there is no reset action, so nothing can be deleted
+            from this page.
+          </p>
+        </div>
+        <button
+          class="secondary-button"
+          type="button"
+          (click)="loadPreview()"
+          [disabled]="previewState() === 'LOADING'">
+          {{ previewState() === 'LOADING' ? 'Reading…' : (previewState() === 'LOADED' ? 'Reload preview' : 'Load preview') }}
+        </button>
+      </div>
+
+      @if (previewError()) {
+        <div class="alert error" role="alert">
+          <strong>The preview could not be loaded.</strong>
+          <span>{{ previewError() }}</span>
+        </div>
+      }
+
+      @if (preview(); as report) {
+        <p class="preview-meta">Scope: {{ report.scope }} · Generated {{ report.generatedAt }}</p>
+
+        <h3>Tables the refresh would clear</h3>
+        <ul class="preview-counts">
+          <li>Participants: <strong>{{ report.tableCounts.participants }}</strong></li>
+          <li>Registrations: <strong>{{ report.tableCounts.participantEvents }}</strong></li>
+          <li>Attendance: <strong>{{ report.tableCounts.attendance }}</strong></li>
+          <li>Scores: <strong>{{ report.tableCounts.scores }}</strong></li>
+          <li>Certificates: <strong>{{ report.tableCounts.certificates }}</strong></li>
+        </ul>
+
+        <h3>Tables preserved</h3>
+        <ul class="preview-preserved">
+          @for (preserved of report.preservedTables; track preserved.table) {
+            <li><strong>{{ preserved.table }} ({{ preserved.count }})</strong> — {{ preserved.reason }}</li>
+          }
+        </ul>
+
+        <h3>Connected source workbooks affected</h3>
+        @if (report.connectedHomes.length) {
+          <table class="preview-homes">
+            <thead>
+              <tr>
+                <th>Workbook</th>
+                <th>Participants</th>
+                <th>Registrations</th>
+                <th>Rows proposed for archive</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of report.connectedHomes; track entry.shelterHomeId) {
+                <tr>
+                  <td>{{ entry.spreadsheetName }}</td>
+                  <td>{{ entry.participantCount }}</td>
+                  <td>{{ entry.registrationCount }}</td>
+                  <td>{{ entry.rowsProposedForArchive }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="preview-empty">The backend reported no connected source workbooks.</p>
+        }
+
+        <h3>Cleanup order</h3>
+        <p class="preview-order">{{ report.cleanupOrder.join(' → ') }}</p>
+
+        <h3>Orphan risks</h3>
+        <ul class="preview-risks">
+          @for (risk of report.orphanRisks; track risk.ifCleared) {
+            <li><strong>{{ risk.ifCleared }}</strong> would orphan: {{ risk.orphanedTables.join(', ') }} — {{ risk.note }}</li>
+          }
+        </ul>
+      }
+    </section>
+  }
 </div>

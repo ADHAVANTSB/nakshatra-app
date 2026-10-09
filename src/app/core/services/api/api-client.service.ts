@@ -22,6 +22,7 @@ import {
   ConnectShelterSheetPayload,
   CurrentUserData,
   DashboardSummaryData,
+  DatasetRefreshPreviewData,
   Event,
   EventRegistrationData,
   EventRegistrationPayload,
@@ -53,6 +54,11 @@ import {
   SessionValidationData,
   SessionValidationResponse,
   SourceWriteBackResult,
+  StartSyncAllHomesPayload,
+  SyncAllHomesData,
+  SyncAllHomesJob,
+  SyncAllHomesJobPayload,
+  SyncAllHomesStatusData,
   SyncShelterSheetData,
   SyncShelterSheetPayload,
   UpdateParticipantData,
@@ -183,6 +189,63 @@ export class ApiClientService {
 
   syncShelterSheet(payload: SyncShelterSheetPayload): Promise<ApiResponse<SyncShelterSheetData>> {
     return this.post<SyncShelterSheetData, SyncShelterSheetPayload>('syncShelterSheet', payload);
+  }
+
+  /**
+   * Starts the backend-managed bulk sync job (ADMIN). If a job is already
+   * running, the backend reports it with `alreadyRunning: true` and the caller
+   * adopts the returned job instead of starting a second one.
+   */
+  async startSyncAllHomes(payload?: StartSyncAllHomesPayload): Promise<ApiResponse<SyncAllHomesData>> {
+    const response = await this.post<SyncAllHomesData, StartSyncAllHomesPayload | undefined>(
+      'startSyncAllHomes', payload
+    );
+    if (!response.success) return response;
+    return this.isSyncAllHomesData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_SYNC_JOB_RESPONSE', message: 'The server returned an invalid sync job response.' } };
+  }
+
+  /** Processes the next chunk of a running bulk sync job (ADMIN). */
+  async continueSyncAllHomes(jobId: string): Promise<ApiResponse<SyncAllHomesData>> {
+    const response = await this.post<SyncAllHomesData, SyncAllHomesJobPayload>(
+      'continueSyncAllHomes', { jobId }
+    );
+    if (!response.success) return response;
+    return this.isSyncAllHomesData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_SYNC_JOB_RESPONSE', message: 'The server returned an invalid sync job response.' } };
+  }
+
+  /** Reads bulk sync progress; without a jobId the active job is returned. */
+  async getSyncAllHomesStatus(jobId?: string): Promise<ApiResponse<SyncAllHomesStatusData>> {
+    const response = await this.post<SyncAllHomesStatusData, SyncAllHomesJobPayload | undefined>(
+      'getSyncAllHomesStatus', jobId ? { jobId } : undefined
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && typeof (data as SyncAllHomesStatusData).active === 'boolean'
+      && ((data as SyncAllHomesStatusData).job === null
+        || this.isSyncAllHomesJob((data as SyncAllHomesStatusData).job as SyncAllHomesJob))
+      ? response
+      : { success: false, error: { code: 'INVALID_SYNC_JOB_RESPONSE', message: 'The server returned an invalid sync job status response.' } };
+  }
+
+  /**
+   * Reads the PREVIEW ONLY dataset-refresh report (ADMIN). The backend
+   * exposes no destructive reset action, so this endpoint only informs.
+   */
+  async previewDatasetRefresh(): Promise<ApiResponse<DatasetRefreshPreviewData>> {
+    const response = await this.post<DatasetRefreshPreviewData>('previewDatasetRefresh');
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && typeof (data as DatasetRefreshPreviewData).scope === 'string'
+      && typeof (data as DatasetRefreshPreviewData).tableCounts === 'object'
+      && Array.isArray((data as DatasetRefreshPreviewData).connectedHomes)
+      ? response
+      : { success: false, error: { code: 'INVALID_DATASET_PREVIEW_RESPONSE', message: 'The server returned an invalid dataset refresh preview.' } };
   }
 
   getImportStatus(payload: ImportStatusPayload): Promise<ApiResponse<ImportStatusData>> {
@@ -801,7 +864,27 @@ export class ApiClientService {
       && 'participant' in value && this.isParticipant(value.participant);
   }
 
+  /** Minimal structural check of the backend's public sync job shape. */
+  private isSyncAllHomesJob(value: unknown): value is SyncAllHomesJob {
+    if (typeof value !== 'object' || value === null) return false;
+    const job = value as SyncAllHomesJob;
+    return typeof job.jobId === 'string' && job.jobId.length > 0
+      && typeof job.status === 'string' && job.status.length > 0
+      && typeof job.chunkSize === 'number'
+      && typeof job.totalHomes === 'number'
+      && typeof job.processedHomes === 'number'
+      && Array.isArray(job.results);
+  }
+
+  private isSyncAllHomesData(value: unknown): value is SyncAllHomesData {
+    if (typeof value !== 'object' || value === null) return false;
+    const data = value as SyncAllHomesData;
+    return typeof data.alreadyRunning === 'boolean'
+      && this.isSyncAllHomesJob(data.job);
+  }
+
   private isListEventsData(value: unknown): value is ListEventsData {
+
     return typeof value === 'object' && value !== null
       && 'events' in value && Array.isArray(value.events)
       && value.events.every(event => this.isEvent(event));

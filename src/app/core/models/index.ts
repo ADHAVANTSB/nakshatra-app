@@ -14,3 +14,5 @@ export * from './team-validation.model';
 export * from './sheet-source.model';
 export * from './import-version.model';
 export * from './validation-result.model';
+export * from './sync-job.model';
+export * from './dataset-refresh.model';

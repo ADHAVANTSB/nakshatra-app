@@ -316,6 +316,12 @@ export class Scoring implements OnInit {
       return;
     }
 
+    // A cold deep link can arrive before the event catalogue has loaded; the
+    // group check below must not silently miss the event and skip its teams.
+    if (!this.eventService.loaded()) {
+      await this.eventService.load();
+    }
+
     const isGroup = this.eventService.getById(eventId)?.mode === 'GROUP';
 
     await Promise.allSettled([
@@ -525,6 +531,14 @@ export class Scoring implements OnInit {
       if (result.errorCode === 'VERSION_CONFLICT') {
         // Another judge saved this score first: nothing was overwritten, but
         // the conflict must be explicit so the judge re-reads before retyping.
+        // The persisted scores are re-read immediately so the retry uses the
+        // version the backend actually has.
+        const eventId = this.selectedEventId();
+
+        if (eventId) {
+          void this.loadScores(eventId, true);
+        }
+
         this.notify.warning(
           'Score could not be saved.',
           `This score was updated elsewhere. Refresh and try again. ${name} is unchanged.`

@@ -430,3 +430,89 @@
     }
   }
 }
+
+/* =========================================================
+   PREVIEW DATASET REFRESH (read-only backend report)
+   ========================================================= */
+
+.preview-panel {
+  margin: 28px 0 0;
+  padding: 18px 20px;
+  border: 1px solid #dce5ef;
+  border-radius: 12px;
+  background: #f6f9ff;
+
+  h2 {
+    margin: 2px 0 6px;
+    font-size: 18px;
+  }
+
+  h3 {
+    margin: 18px 0 6px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #5f6b7c;
+  }
+
+  p {
+    margin: 4px 0;
+  }
+}
+
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  p {
+    max-width: 640px;
+    color: #5f6b7c;
+    font-size: 13px;
+  }
+}
+
+.preview-meta {
+  font-variant-numeric: tabular-nums;
+  color: #5f6b7c;
+}
+
+.preview-counts,
+.preview-preserved,
+.preview-risks {
+  margin: 4px 0;
+  padding-left: 18px;
+
+  li {
+    margin: 2px 0;
+  }
+}
+
+.preview-homes {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+
+  th,
+  td {
+    padding: 6px 10px;
+    border: 1px solid #e3eaf3;
+    text-align: left;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th {
+    background: #eef4fd;
+  }
+}
+
+.preview-empty {
+  color: #8a93a3;
+}
+
+.preview-order {
+  font-variant-numeric: tabular-nums;
+}

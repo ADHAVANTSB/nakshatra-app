@@ -181,4 +181,76 @@ describe('ShelterDataService', () => {
     expect(calls['listEvents']).toBe(2);
     expect(service.eventsLoaded()).toBe(true);
   });
+
+  it('ensureLoaded re-fires the full load after a failed load so navigation can recover', async () => {
+    // Nothing is stubbed: every action returns the failure envelope.
+    stubBackend({});
+
+    const failed = await service.ensureLoaded();
+    expect(failed.success).toBe(false);
+
+    stubBackend({
+      listShelterHomes: { shelterHomes: [HOME] },
+      listEvents: { events: [EVENT] },
+      getImportStatus: { imports: [] },
+      getValidationResults: { validationResults: [] },
+      listParticipants: { participants: [PARTICIPANT] },
+    });
+    clearCalls();
+
+    const recovered = await service.ensureLoaded();
+
+    expect(recovered.success).toBe(true);
+    expect(calls['listShelterHomes']).toBe(1);
+  });
+
+  it('a forced read queued behind an in-flight read resolves with the fresh rows', async () => {
+    let registrationCalls = 0;
+    let releaseFirst!: (value: Response) => void;
+    const firstGate = new Promise<Response>(resolve => {
+      releaseFirst = resolve;
+    });
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'listEventRegistrations') {
+        registrationCalls += 1;
+
+        if (registrationCalls === 1) {
+          return firstGate;
+        }
+
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: { participantEvents: [{ ...REGISTRATION, participantId: 'participant-new' }] },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const first = service.loadEventRegistrations('event-1');
+    const forced = service.loadEventRegistrations('event-1', true);
+
+    releaseFirst(new Response(
+      JSON.stringify({
+        success: true,
+        data: { participantEvents: [{ ...REGISTRATION, participantId: 'participant-old' }] },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await forced;
+
+    const cached = await service.loadEventRegistrations('event-1');
+
+    expect(cached?.[0]?.participantId).toBe('participant-new');
+  });
 });

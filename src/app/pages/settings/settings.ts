@@ -7,8 +7,10 @@ import {
   ApiResponse,
   ApplicationRole,
   ApplicationUser,
+  DatasetRefreshPreviewData,
   UserMutationData,
 } from '../../core/models';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AuthService } from '../../core/services/auth/auth.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { UserAdminService } from '../../core/services/users/user-admin.service';
@@ -115,6 +117,7 @@ export class Settings implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly admin = inject(UserAdminService);
   private readonly notifications = inject(NotificationService);
+  private readonly apiClient = inject(ApiClientService);
 
   // ---------------------------------------------------------
   // CONSTANTS
@@ -160,6 +163,39 @@ export class Settings implements OnInit {
    * UX only: the backend re-authorizes every call it receives.
    */
   readonly canManage = computed(() => this.auth.canAccess('ACCESS_MANAGEMENT'));
+
+  // ---------------------------------------------------------
+  // PREVIEW DATASET REFRESH (backend preview report; no reset exists)
+  // ---------------------------------------------------------
+
+  readonly previewState = signal<'IDLE' | 'LOADING' | 'LOADED' | 'FAILED'>('IDLE');
+  readonly previewError = signal('');
+  readonly preview = signal<DatasetRefreshPreviewData | null>(null);
+
+  /**
+   * Reads the backend's PREVIEW ONLY dataset-refresh report. The backend
+   * exposes no destructive reset action, so this panel renders the numbers it
+   * returned and renders no reset control — there is nothing to call.
+   */
+  async loadPreview(): Promise<void> {
+    if (this.previewState() === 'LOADING') {
+      return;
+    }
+
+    this.previewState.set('LOADING');
+    this.previewError.set('');
+
+    const response = await this.apiClient.previewDatasetRefresh();
+
+    if (!response.success) {
+      this.previewError.set(response.error.message);
+      this.previewState.set('FAILED');
+      return;
+    }
+
+    this.preview.set(response.data);
+    this.previewState.set('LOADED');
+  }
 
   // ---------------------------------------------------------
   // FILTERS

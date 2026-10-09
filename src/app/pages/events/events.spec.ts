@@ -198,4 +198,49 @@ describe('Events — category grouping and card details', () => {
     expect(registrationCalls).toBe(1);
     expect(component.expandedEventId()).toBe('event-1');
   });
+
+  it('resolves the shelter home from the registration row when the participant is not cached', async () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'listShelterHomes') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: { shelterHomes: [{ id: 'home-1', homeCode: 'H-01', homeName: 'Sunrise Home' }] },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      if (request.action === 'listEventRegistrations') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              participantEvents: [registration({
+                id: 'reg-1',
+                eventId: 'event-1',
+                participantId: 'ghost-participant',
+                participantName: 'Ghost Row',
+                shelterHomeId: 'home-1',
+              })],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadConnectedHomes();
+    await store.loadEventRegistrations('event-1');
+
+    const rows = component.cardParticipants('event-1');
+
+    expect(rows[0].homeName).toBe('Sunrise Home');
+  });
 });

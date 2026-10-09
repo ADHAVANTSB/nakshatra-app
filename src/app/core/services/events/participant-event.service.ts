@@ -108,7 +108,10 @@ export class ParticipantEventService {
     return this.getParticipantRegistrations(participantId)
       .filter(item => item.registrationStatus === 'REGISTERED')
       .filter(registration =>
-        this.eventService.getById(registration.eventId)?.category === category
+        // The row's own denormalized category is the fallback when the event
+        // is missing from the cached master; the backend sent both.
+        (this.eventService.getById(registration.eventId)?.category
+          ?? registration.category) === category
       ).length;
   }
 
@@ -116,7 +119,8 @@ export class ParticipantEventService {
     return this.getParticipantRegistrations(participantId)
       .filter(item => item.registrationStatus === 'REGISTERED')
       .filter(registration =>
-        this.eventService.getById(registration.eventId)?.mode === 'SOLO'
+        (this.eventService.getById(registration.eventId)?.mode
+          ?? registration.mode) === 'SOLO'
       ).length;
   }
 

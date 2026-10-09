@@ -29,6 +29,98 @@
   </div>
 
 
+  <!-- SYNC ALL HOMES (backend-managed bulk job) -->
+
+  <section class="sync-all-panel" aria-live="polite">
+
+    <div class="sync-all-head">
+      <div>
+        <span class="eyebrow">BULK SYNC</span>
+        <h2>Sync All Homes</h2>
+        <p>One backend-managed job syncs every connected home from its Google Sheet in chunks. Progress and per-home outcomes come from the job itself — never from this page refreshing.</p>
+      </div>
+      <div class="sync-all-action">
+        @if (isAdmin()) {
+          <button
+            class="primary-button"
+            type="button"
+            (click)="startSyncAll()"
+            [disabled]="syncAll.running() || loading()">
+            @if (syncAll.running()) {
+              Syncing…
+            } @else {
+              Sync All Homes
+            }
+          </button>
+        } @else {
+          <small>Only administrators can start the bulk sync.</small>
+        }
+      </div>
+    </div>
+
+    @if (syncAll.progress(); as progress) {
+      <p class="sync-all-progress" role="status">
+        Homes processed: <strong>{{ progress.processed }} / {{ progress.total }}</strong>
+        @if (syncAll.running()) {
+          <span class="sync-all-live"> — running…</span>
+        }
+      </p>
+    }
+
+    @if (syncAll.errorMessage()) {
+      <div class="alert error" role="alert">
+        <strong>The bulk sync could not run.</strong>
+        <span>{{ syncAll.errorMessage() }}</span>
+      </div>
+    }
+
+    @if (syncAll.state() === 'COMPLETED') {
+      <div class="alert success" role="status">
+        <strong>Sync completed.</strong>
+        <span>Every home reported synced by the backend. Connected data below has been re-read.</span>
+      </div>
+    }
+
+    @if (syncAll.state() === 'COMPLETED_WITH_ERRORS') {
+      <div class="alert error" role="alert">
+        <strong>Sync finished with errors.</strong>
+        <span>Some homes failed their sync. Running the job again will start a fresh backend job.</span>
+      </div>
+    }
+
+    @if (syncAll.results().length) {
+      <ul class="sync-all-results">
+        @for (result of syncAll.results(); track result.shelterHomeId + '-' + $index) {
+          <li>
+            <strong>{{ homeNameById(result.shelterHomeId) }}</strong>
+            @if (result.status === 'SYNCED') {
+              <span class="badge badge--success">Synced</span>
+              @if (result.changes; as changes) {
+                <small>
+                  {{ changes.createdParticipantCount }} participants created ·
+                  {{ changes.updatedParticipantCount }} updated ·
+                  {{ changes.unchangedParticipantCount }} unchanged ·
+                  {{ changes.createdRegistrationCount }} registrations created ·
+                  {{ changes.updatedRegistrationCount }} registrations updated
+                  @if (changes.reorderingDetected) {
+                    · reordering detected in the source sheet
+                  }
+                </small>
+              }
+            } @else {
+              <span class="badge badge--danger">Failed</span>
+              @if (result.error; as error) {
+                <small>{{ error.message }}</small>
+              }
+            }
+          </li>
+        }
+      </ul>
+    }
+
+  </section>
+
+
   <!-- ADD HOME -->
 
   @if (showAddHome()) {

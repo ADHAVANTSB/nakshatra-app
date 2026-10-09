@@ -3,6 +3,8 @@ import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService } from '../../core/services/auth/auth.service';
+import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
+import { SyncAllHomesService } from '../../core/services/imports/sync-all-homes.service';
 import { Homes } from './homes';
 
 /**
@@ -139,6 +141,45 @@ describe('Homes — sync from Google Sheet', () => {
     expect(calls['listParticipants']).toBeUndefined();
     expect(calls['getImportStatus']).toBeUndefined();
     expect(component.syncingHomeId()).toBeNull();
+  });
+
+  it('exposes the shared bulk-sync driver with admin gating', () => {
+    expect(component.syncAll).toBeTruthy();
+    expect(component.isAdmin()).toBe(true);
+  });
+
+  it('delegates the Sync All Homes start to the shared driver', async () => {
+    const syncAll = TestBed.inject(SyncAllHomesService);
+    const startSpy = vi.spyOn(syncAll, 'start').mockResolvedValue();
+
+    await component.startSyncAll();
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves a home display name by id for bulk-sync results', () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      if (request.action === 'listShelterHomes') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: { shelterHomes: [HOME] },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    return TestBed.inject(ShelterDataService).loadConnectedHomes().then(() => {
+      expect(component.homeNameById('home-1')).toBe('Sunrise Home');
+      // An unknown id renders as the raw id, never an invented name.
+      expect(component.homeNameById('home-ghost')).toBe('home-ghost');
+    });
   });
 });
 

@@ -76,6 +76,8 @@ export class ShelterDataService {
   private readonly loadedParticipantRegistrations = new Set<string>();
 
   private pending: Promise<ShelterDataResult> | null = null;
+  /** Whether the last full load recorded any error; a retry must re-fire then. */
+  private lastLoadHadErrors = false;
   private pendingEvents: Promise<Event[] | null> | null = null;
   private pendingHomes: Promise<boolean> | null = null;
   private readonly pendingEventRegistrations = new Map<string, Promise<ParticipantEvent[] | null>>();
@@ -124,7 +126,9 @@ export class ShelterDataService {
    * Refresh buttons call `refresh()` for a forced re-read.
    */
   ensureLoaded(): Promise<ShelterDataResult> {
-    if (this.loadedState()) {
+    // A failed load still marks the store as touched; navigation must retry
+    // it instead of treating the failed state as usable data.
+    if (this.loadedState() && !this.lastLoadHadErrors) {
       return Promise.resolve({ success: true, errors: [] });
     }
 
@@ -140,9 +144,20 @@ export class ShelterDataService {
       return this.eventsState();
     }
 
-    // Concurrent callers share one in-flight read instead of racing.
+    // Concurrent callers share one in-flight read instead of racing; a forced
+    // call queues behind it so it can never resolve with the older payload.
     if (this.pendingEvents) {
-      return this.pendingEvents;
+      if (!force) {
+        return this.pendingEvents;
+      }
+
+      const chained = this.pendingEvents
+        .then(() => this.requestEvents())
+        .finally(() => {
+          this.pendingEvents = null;
+        });
+      this.pendingEvents = chained;
+      return chained;
     }
 
     this.pendingEvents = this.requestEvents().finally(() => {
@@ -197,7 +212,17 @@ export class ShelterDataService {
     const pending = this.pendingEventRegistrations.get(eventId);
 
     if (pending) {
-      return pending;
+      if (!force) {
+        return pending;
+      }
+
+      // A forced read must never resolve with the pre-write rows an earlier
+      // in-flight read captured; queue it behind that read instead.
+      const chained = pending
+        .then(() => this.requestEventRegistrations(eventId))
+        .finally(() => this.pendingEventRegistrations.delete(eventId));
+      this.pendingEventRegistrations.set(eventId, chained);
+      return chained;
     }
 
     const request = this.requestEventRegistrations(eventId)
@@ -240,7 +265,15 @@ export class ShelterDataService {
     const pending = this.pendingParticipantRegistrations.get(participantId);
 
     if (pending) {
-      return pending;
+      if (!force) {
+        return pending;
+      }
+
+      const chained = pending
+        .then(() => this.requestParticipantEvents(participantId))
+        .finally(() => this.pendingParticipantRegistrations.delete(participantId));
+      this.pendingParticipantRegistrations.set(participantId, chained);
+      return chained;
     }
 
     const request = this.requestParticipantEvents(participantId)
@@ -541,6 +574,7 @@ export class ShelterDataService {
 
     try {
       if (!await this.loadConnectedHomes()) {
+        this.lastLoadHadErrors = true;
         return { success: false, errors: this.errorsState() };
       }
 
@@ -564,11 +598,40 @@ export class ShelterDataService {
 
       const errors = this.errorsState();
 
+      this.lastLoadHadErrors = errors.length > 0;
+
       return { success: errors.length === 0, errors };
     } finally {
       this.loadingState.set(false);
       this.loadedState.set(true);
     }
+  }
+
+  /**
+   * Targeted post-bulk-sync refresh: re-reads the homes list, the participants
+   * and import status of every synced home, and force re-reads any event
+   * registrations already in the cache. Unloaded event registrations are
+   * deliberately NOT fetched — no speculative fan-out.
+   */
+  async refreshAfterBulkSync(syncedHomeIds: string[]): Promise<void> {
+    if (!syncedHomeIds.length) {
+      return;
+    }
+
+    await this.loadConnectedHomes();
+
+    const synced = new Set(syncedHomeIds);
+    const homes = this.homesState().filter(home => synced.has(home.id));
+
+    await Promise.all([
+      ...syncedHomeIds.map(id => this.loadParticipants(id)),
+      ...homes.map(home =>
+        this.loadImportStatus(home.id, home.currentImportVersionId)
+      ),
+      ...[...this.loadedEventRegistrations].map(eventId =>
+        this.loadEventRegistrations(eventId, true)
+      ),
+    ]);
   }
 
   private toImportRecord(entry: ImportStatusEntry): ShelterImportRecord | null {

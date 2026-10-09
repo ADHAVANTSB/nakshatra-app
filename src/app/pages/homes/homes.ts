@@ -11,6 +11,7 @@ import {
 } from '../../core/models';
 import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { SyncAllHomesService } from '../../core/services/imports/sync-all-homes.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 
@@ -66,6 +67,22 @@ export class Homes implements OnInit {
   readonly loading = this.shelterData.loading;
   readonly connectedHomes = this.shelterData.homes;
   readonly homesError = this.shelterData.homesError;
+
+  /** Backend-managed bulk sync driver (Sync All Homes). */
+  readonly syncAll = inject(SyncAllHomesService);
+
+  /** The backend allows only administrators to start the bulk sync job. */
+  readonly isAdmin = computed(() => this.auth.currentUser()?.role === 'ADMIN');
+
+  /** Starts (or adopts) the backend bulk sync job; the driver owns the loop. */
+  startSyncAll(): void {
+    void this.syncAll.start();
+  }
+
+  /** Display name for a bulk-sync result row; unknown ids stay raw ids. */
+  homeNameById(homeId: string): string {
+    return this.connectedHomes().find(home => home.id === homeId)?.homeName ?? homeId;
+  }
   /** True once a first backend read has settled; refreshes keep it true. */
   readonly loaded = this.shelterData.loaded;
 
@@ -197,31 +214,34 @@ export class Homes implements OnInit {
 
     this.syncingHomeId.set(home.id);
 
-    const sync = await this.apiClient.syncShelterSheet({
-      shelterHomeId: home.id,
-    });
+    try {
+      const sync = await this.apiClient.syncShelterSheet({
+        shelterHomeId: home.id,
+      });
 
-    if (!sync.success) {
+      if (!sync.success) {
+        this.notifications.error('Google Sheet sync failed', sync.error.message);
+        return;
+      }
+
+      const importVersionId =
+        sync.data.importVersionId ?? sync.data.importVersion?.id;
+
+      await this.shelterData.loadImportStatus(home.id, importVersionId);
+      // The sync may have changed the home's participant rows; re-read them so
+      // the card's participant count reflects the backend, not the last page load.
+      await this.shelterData.loadParticipants(home.id);
+      await this.shelterData.loadConnectedHomes();
+
+      this.notifications.success(
+        `${home.homeName} synced`,
+        this.syncResultDetail(sync.data)
+      );
+    } finally {
+      // The busy state always releases; the api client resolves every
+      // failure, so this only guards truly unexpected throws.
       this.syncingHomeId.set(null);
-      this.notifications.error('Google Sheet sync failed', sync.error.message);
-      return;
     }
-
-    const importVersionId =
-      sync.data.importVersionId ?? sync.data.importVersion?.id;
-
-    await this.shelterData.loadImportStatus(home.id, importVersionId);
-    // The sync may have changed the home's participant rows; re-read them so
-    // the card's participant count reflects the backend, not the last page load.
-    await this.shelterData.loadParticipants(home.id);
-    await this.shelterData.loadConnectedHomes();
-
-    this.syncingHomeId.set(null);
-
-    this.notifications.success(
-      `${home.homeName} synced`,
-      this.syncResultDetail(sync.data)
-    );
   }
 
   /** Summarises only the fields the backend actually returned for a sync. */

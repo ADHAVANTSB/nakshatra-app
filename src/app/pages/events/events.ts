@@ -522,11 +522,12 @@ export class Events implements OnInit {
         const level =
           registration.level ?? participant?.level;
 
-        const homeName =
-          participant?.shelterHomeId
-            ? this.shelterData
-                .getHomeById(participant.shelterHomeId)?.homeName ?? '—'
-            : '—';
+        const homeId =
+          registration.shelterHomeId ?? participant?.shelterHomeId;
+
+        const homeName = homeId
+          ? this.shelterData.getHomeById(homeId)?.homeName ?? '—'
+          : '—';
 
         return {
           registration,

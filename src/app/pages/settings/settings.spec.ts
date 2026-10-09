@@ -163,3 +163,135 @@ describe('Settings — access management loading', () => {
     expect(host(fixture).textContent).not.toContain('Loading users');
   });
 });
+
+const PREVIEW_ENVELOPE = {
+  scope: 'PREVIEW_ONLY',
+  destructive: false,
+  generatedAt: '2026-10-10T00:00:00.000Z',
+  backupRequired: true,
+  separateTestDeploymentRecommended: true,
+  tableCounts: {
+    participants: 12,
+    participantEvents: 34,
+    attendance: 8,
+    scores: 6,
+    certificates: 0,
+  },
+  preservedTables: [
+    { table: 'Users', count: 4, reason: 'Identity bindings and roles are never cleared by a dataset refresh' },
+  ],
+  cleanupOrder: ['Attendance', 'Scores', 'Certificates', 'ParticipantEvents', 'Participants'],
+  orphanRisks: [
+    { ifCleared: 'Participants', orphanedTables: ['Attendance', 'Scores'], note: 'Attendance and scores reference registrations' },
+  ],
+  connectedHomes: [
+    {
+      shelterHomeId: 'home-1',
+      spreadsheetName: 'Sunrise Participants',
+      participantCount: 12,
+      registrationCount: 34,
+      rowsProposedForArchive: 46,
+    },
+  ],
+  triggerInventory: [],
+  proposed: { archive: 'archive text', addOrUpdate: 'computed at reset time' },
+  requiredResetSteps: ['Full backup of the database spreadsheet'],
+};
+
+describe('Settings � Preview Dataset Refresh panel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function createPreviewFixture(
+    previewResponse: () => ApiResponse<typeof PREVIEW_ENVELOPE>
+  ): Promise<ComponentFixture<Settings>> {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'previewDatasetRefresh') {
+        return Promise.resolve(new Response(
+          JSON.stringify(previewResponse()),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      // listUsers and everything else: empty success, irrelevant here.
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: true, data: { users: [] } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [Settings],
+      providers: [
+        provideRouter([]),
+        { provide: UserAdminService, useValue: stubUserAdminService(() => Promise.resolve({ success: true, data: { users: [] } })) },
+      ],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser(ADMIN_SESSION_USER);
+    auth.setApplicationSession({
+      id: 'spec-preview-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    const fixture = TestBed.createComponent(Settings);
+    return fixture;
+  }
+
+  it('loads the preview and renders the backend numbers verbatim', async () => {
+    const fixture = await createPreviewFixture(() => ({ success: true, data: PREVIEW_ENVELOPE }));
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.loadPreview();
+    fixture.detectChanges();
+
+    const text = host(fixture).textContent ?? '';
+    expect(text).toContain('Preview Dataset Refresh');
+    expect(text).toContain('PREVIEW_ONLY');
+    expect(text).toContain('Sunrise Participants');
+    expect(text).toContain('46'); // rowsProposedForArchive rendered as the backend sent it
+    expect(text).toContain('Identity bindings and roles are never cleared by a dataset refresh');
+  });
+
+  it('reaches a FAILED terminal state and recovers on retry', async () => {
+    let failing = true;
+    const fixture = await createPreviewFixture(() =>
+      failing
+        ? { success: false, error: { code: 'BACKEND_ERROR', message: 'The preview could not be generated.' } }
+        : { success: true, data: PREVIEW_ENVELOPE }
+    );
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.loadPreview();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.previewState()).toBe('FAILED');
+    expect(host(fixture).textContent ?? '').toContain('The preview could not be generated.');
+
+    failing = false;
+    await fixture.componentInstance.loadPreview();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.previewState()).toBe('LOADED');
+    expect(host(fixture).textContent ?? '').toContain('Sunrise Participants');
+  });
+
+  it('renders no destructive reset control even when the preview is loaded', async () => {
+    const fixture = await createPreviewFixture(() => ({ success: true, data: PREVIEW_ENVELOPE }));
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.loadPreview();
+    fixture.detectChanges();
+
+    const labels = Array.from(host(fixture).querySelectorAll('button'))
+      .map(button => (button.textContent ?? '').trim().toLowerCase());
+    expect(labels.some(label => /reset|delete|wipe|clear data/.test(label))).toBe(false);
+  });
+});

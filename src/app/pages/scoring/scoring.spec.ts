@@ -4,7 +4,19 @@ import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService } from '../../core/services/auth/auth.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
+import { ScoringService } from '../../core/services/scoring/scoring.service';
 import { Scoring } from './scoring';
+
+/** A minimal backend-validated event used by the group deep-link test. */
+const EVENT_FIXTURE = {
+  id: 'event-1',
+  eventCode: 'E-01',
+  name: 'Group Song',
+  category: 'ARTS',
+  mode: 'SOLO',
+  status: 'ACTIVE',
+  eligibleLevels: ['JUNIOR'],
+};
 
 /**
  * Scoring page state tests: a failed registrations read must offer a working
@@ -98,5 +110,67 @@ describe('Scoring — registrations retry and conflict reporting', () => {
     const messages = [...warningSpy.mock.calls, ...errorSpy.mock.calls].flat().join(' ');
     expect(messages).toContain('updated elsewhere');
     expect(messages).toContain('Refresh');
+  });
+
+  it('re-reads the persisted scores after a version conflict so the next save can succeed', () => {
+    component.selectedEventId.set('event-1');
+
+    const scoringService = TestBed.inject(ScoringService);
+    const loadSpy = vi.spyOn(scoringService, 'loadScores').mockResolvedValue(true);
+
+    const report = (component as unknown as {
+      report: (result: unknown, action: string, target: unknown) => void;
+    }).report;
+
+    report.call(component,
+      { success: false, errorCode: 'VERSION_CONFLICT', errors: ['Version conflict detected'] },
+      'SAVE',
+      { key: 'participant-1', participant: { id: 'participant-1', fullName: 'Ana' } },
+    );
+
+    expect(loadSpy).toHaveBeenCalledWith('event-1', true);
+  });
+
+  it('loads the event master before resolving group teams on a cold deep link', async () => {
+    const calls: Record<string, number> = {};
+    const groupEvent = { ...EVENT_FIXTURE, mode: 'GROUP' };
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      calls[request.action] = (calls[request.action] ?? 0) + 1;
+
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { events: [groupEvent] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      if (request.action === 'listEventRegistrations') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { participantEvents: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      if (request.action === 'listTeams') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { teams: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      if (request.action === 'listScores') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { scores: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    await component.loadEvent('event-1');
+
+    expect(calls['listTeams']).toBe(1);
   });
 });

@@ -78,6 +78,14 @@ export class AttendanceService {
     });
 
     if (!response.success) {
+      if (response.error.code === 'VERSION_CONFLICT') {
+        // The stored version no longer matches the backend; keeping it would
+        // make every retry send the same stale expectedVersion.
+        this.records.update(current => current.filter(record =>
+          !(record.participantId === participantId && record.eventId === eventId)
+        ));
+      }
+
       return { success: false, errors: [response.error.message], errorCode: response.error.code };
     }
 

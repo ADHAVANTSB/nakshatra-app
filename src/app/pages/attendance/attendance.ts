@@ -202,6 +202,12 @@ export class Attendance implements OnInit {
    * and, for group events, its persisted teams so the Team column is real.
    */
   private async loadEventData(eventId: string, forceTeams = false): Promise<void> {
+    // A cold deep link can arrive before the catalogue has loaded; the group
+    // check must not silently miss the event and skip its team read.
+    if (!this.eventService.loaded()) {
+      await this.eventService.load();
+    }
+
     const event = eventId ? this.eventService.getById(eventId) : undefined;
 
     await Promise.all([
