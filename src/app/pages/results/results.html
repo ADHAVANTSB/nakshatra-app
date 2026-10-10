@@ -16,6 +16,7 @@
     <div class="alert error" role="alert">
       <strong>Events could not be loaded.</strong>
       <span>{{ eventsError() }}</span>
+      <button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button>
     </div>
   }
 
@@ -23,6 +24,7 @@
     <div class="alert error" role="alert">
       <strong>Participant records could not be loaded.</strong>
       <span>{{ loadError() }}</span>
+      <button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button>
     </div>
   }
 

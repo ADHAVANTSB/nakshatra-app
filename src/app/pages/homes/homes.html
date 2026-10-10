@@ -438,6 +438,15 @@
                     [disabled]="isSyncing(home.id)">
                     {{ isSyncing(home.id) ? 'Syncing…' : 'Sync from Google Sheet' }}
                   </button>
+                  @if (canArchive(home)) {
+                    <button
+                      type="button"
+                      class="secondary-action"
+                      (click)="openArchivePreview(home)"
+                      [disabled]="archiving()">
+                      Archive…
+                    </button>
+                  }
                 </div>
               }
             </section>
@@ -483,6 +492,120 @@
         }
 
       </div>
+
+      <!-- ARCHIVE LIFECYCLE: notice, preview confirmation, archived section -->
+
+      @if (archiveNotice()) {
+        <div class="alert success" role="status">
+          <span>{{ archiveNotice() }}</span>
+        </div>
+      }
+
+      @if (archivePreviewError()) {
+        <div class="alert error" role="alert">
+          <strong>The archive preview failed.</strong>
+          <span>{{ archivePreviewError() }}</span>
+          <button type="button" class="secondary-action" (click)="retryArchivePreview()">
+            Retry preview
+          </button>
+        </div>
+      }
+
+      @if (archivePreview(); as preview) {
+        <div class="archive-preview-panel" role="dialog" aria-labelledby="archive-preview-title">
+          <h3 id="archive-preview-title">Archive {{ preview.shelterHome.homeName }}</h3>
+
+          <p class="archive-note">{{ ARCHIVE_CONFIRMATION_NOTE }}</p>
+
+          <dl class="archive-impact">
+            <div><dt>Participants</dt><dd>{{ preview.impact.participantCount }}</dd></div>
+            <div><dt>Active registrations</dt><dd>{{ preview.impact.activeRegistrationCount }}</dd></div>
+            <div><dt>Attendance records</dt><dd>{{ preview.impact.attendanceCount }}</dd></div>
+            <div><dt>Scores</dt><dd>{{ preview.impact.scoreCount }}</dd></div>
+            <div><dt>Certificates</dt><dd>{{ preview.impact.certificateCount }}</dd></div>
+            <div><dt>Audit history</dt><dd>{{ preview.impact.auditHistoryCount }}</dd></div>
+          </dl>
+
+          @if (preview.source.spreadsheetName || preview.source.sourceStatus) {
+            <p>
+              <strong>Connected source:</strong>
+              {{ preview.source.spreadsheetName || '—' }} · {{ preview.source.sourceStatus || '—' }}
+            </p>
+          }
+
+          @if (preview.triggerCleanupRequired) {
+            <p role="note">The backend reports a source change trigger that will need cleanup.</p>
+          }
+
+          @if (archiveError(); as error) {
+            <p class="form-message error" role="alert">{{ error }}</p>
+          }
+
+          <div class="home-card-actions">
+            <button
+              type="button"
+              class="secondary-action"
+              (click)="confirmArchive()"
+              [disabled]="archiving()">
+              {{ archiving() ? 'Archiving…' : 'Archive home' }}
+            </button>
+            <button
+              type="button"
+              class="secondary-action"
+              (click)="cancelArchive()"
+              [disabled]="archiving()">
+              Cancel
+            </button>
+          </div>
+        </div>
+      }
+
+      @if (canRestore()) {
+        <section class="archived-homes" aria-label="Archived shelter homes">
+          <h3>Archived homes</h3>
+
+          @if (restoreError(); as error) {
+            <div class="alert error" role="alert">
+              <span>{{ error }}</span>
+              <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
+                Retry
+              </button>
+            </div>
+          }
+
+          @if (archivedError(); as error) {
+            <div class="alert error" role="alert">
+              <span>{{ error }}</span>
+              <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
+                Retry
+              </button>
+            </div>
+          }
+
+          @if (archivedLoading()) {
+            <p role="status">Loading archived homes…</p>
+          }
+
+          @if (archivedHomes().length) {
+            <ul class="archived-homes-list">
+              @for (home of archivedHomes(); track home.id) {
+                <li>
+                  <span>{{ home.homeName }} ({{ home.homeCode }})</span>
+                  <button
+                    type="button"
+                    class="secondary-action"
+                    (click)="restoreArchivedHome(home)"
+                    [disabled]="restoringHomeId() !== null">
+                    {{ restoringHomeId() === home.id ? 'Restoring…' : 'Restore' }}
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else if (!archivedLoading() && archivedLoaded() && !archivedError()) {
+            <p>No archived homes.</p>
+          }
+        </section>
+      }
 
     }
 

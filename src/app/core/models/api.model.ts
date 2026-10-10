@@ -164,6 +164,11 @@ export interface ListShelterHomesData {
   shelterHomes: ConnectedShelterHome[];
 }
 
+/** Archived homes are excluded by the backend unless this is set. */
+export interface ListShelterHomesPayload {
+  includeArchived?: boolean;
+}
+
 /* ================================================================
    PARTICIPANTS
    ================================================================ */
@@ -199,6 +204,14 @@ export interface SourceWriteBackResult {
 export interface UpdateParticipantData {
   participant: Participant;
   sourceWriteBack?: SourceWriteBackResult;
+  /**
+   * The backend's combined honest verdict for the rename's sheet writes:
+   * true only when every required Sheet write positively succeeded.
+   * `syncReasons` states why a false verdict happened. The frontend must
+   * never report "Google Sheet updated" while this is false.
+   */
+  sheetsSynchronized?: boolean;
+  syncReasons?: string[];
 }
 
 /* ================================================================

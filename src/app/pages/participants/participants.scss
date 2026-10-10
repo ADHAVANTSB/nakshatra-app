@@ -475,3 +475,66 @@ tr:focus-visible {
     align-items: flex-start;
   }
 }
+
+/* =========================================================
+   PARTICIPANT TABLE — redesigned primary list
+   Names and event names must never overlap adjacent columns.
+   ========================================================= */
+
+.participant-table {
+  td {
+    word-break: break-word;
+    vertical-align: top;
+  }
+
+  .cell-identity .participant-name {
+    display: block;
+    font-weight: 600;
+  }
+
+  .cell-events {
+    max-width: 360px;
+    min-width: 220px;
+
+    strong {
+      display: block;
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-names {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 4px;
+    }
+
+    .event-group {
+      display: block;
+      overflow-wrap: anywhere;
+
+      .event-group-label {
+        font-weight: 600;
+      }
+    }
+
+    .event-issue-chip {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #fff4e5;
+      color: #8a5a00;
+      font-size: 12px;
+    }
+  }
+
+  .cell-actions {
+    white-space: nowrap;
+
+    .link-button {
+      display: block;
+      text-align: left;
+    }
+  }
+}

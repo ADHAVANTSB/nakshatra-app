@@ -4,6 +4,9 @@ import { vi, afterEach, describe, expect, it } from 'vitest';
 
 import { Participant, ParticipantEvent, Event } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
+import { ParticipantEventService } from '../../core/services/events/participant-event.service';
+import { ParticipantService } from '../../core/services/participants/participant.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { Participants, RegistrationEntry } from './participants';
 
@@ -230,28 +233,79 @@ describe('Participants � event summary counts', () => {
     expect(component.registrationSummaryState()).toBe('IDLE');
   });
 
-  it('computes total, per-category and solo counts from backend registrations', async () => {
+  it('passes through the backend batch summary figures with authoritative maxima', async () => {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
-      const request = JSON.parse(init.body) as { action: string; payload?: { eventId?: string } };
-      if (request.action === 'listEvents') {
-        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-      }
-      if (request.action === 'listEventRegistrations') {
-        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { participantEvents: rowsFor(request.payload?.eventId ?? '') } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      const request = JSON.parse(init.body) as { action: string };
+      if (request.action === 'getParticipantEventSummaries') {        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          data: {
+            summaries: [
+              {
+                participantId: 'participant-1',
+                participantCode: 'P-0001',
+                fullName: 'Test Participant',
+                events: [
+                  { eventId: 'event-1', eventName: 'Clay Modelling', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+                  { eventId: 'event-2', eventName: 'String Art', category: 'ARTS', mode: 'GROUP', registrationStatus: 'REGISTERED' },
+                  { eventId: 'event-3', eventName: 'Group Dance', category: 'CULTURAL', mode: 'GROUP', registrationStatus: 'REGISTERED' },
+                ],
+                activeEventCount: 3,
+                artsCount: 2,
+                literaryCount: 0,
+                culturalCount: 1,
+                soloCount: 1,
+              },
+              {
+                participantId: 'participant-2',
+                participantCode: 'P-0002',
+                fullName: 'Other Participant',
+                events: [
+                  { eventId: 'event-1', eventName: 'Clay Modelling', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+                ],
+                activeEventCount: 1,
+                artsCount: 1,
+                literaryCount: 0,
+                culturalCount: 0,
+                soloCount: 1,
+              },
+            ],
+            issues: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
       return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     });
 
+    // A seeded participant gives the loader a home to request summaries for.
+    TestBed.inject(ParticipantService).replaceParticipant({
+      id: 'participant-1',
+      participantCode: 'P-0001',
+      shelterHomeId: 'home-1',
+      fullName: 'Test Participant',
+      gender: 'MALE',
+      age: 10,
+      standard: 5,
+      level: 'JUNIOR',
+      eligibilityStatus: 'ELIGIBLE',
+      validationStatus: 'PASSED',
+      approvalStatus: 'APPROVED',
+      lockStatus: 'UNLOCKED',
+      version: 1,
+      createdAt: '',
+      createdBy: '',
+      updatedAt: '',
+      updatedBy: '',
+    } as Participant);
+
     await component.loadRegistrationSummary();
 
     expect(component.registrationSummaryState()).toBe('LOADED');
-    expect(component.eventSummary('participant-1')).toEqual({
-      total: 3, maxTotal: 6,
+    // Figures are the backend's own, never recomputed client-side.
+    expect(component.eventSummary('participant-1')).toMatchObject({      total: 3, maxTotal: 6,
       arts: 2, literary: 0, cultural: 1, maxCategory: 2,
       solo: 1, maxSolo: 3,
     });
-    // Only the requested participant's rows count.
-    expect(component.eventSummary('participant-2')).toEqual({
+    expect(component.eventSummary('participant-2')).toMatchObject({
       total: 1, maxTotal: 6,
       arts: 1, literary: 0, cultural: 0, maxCategory: 2,
       solo: 1, maxSolo: 3,
@@ -261,11 +315,32 @@ describe('Participants � event summary counts', () => {
   it('reaches a FAILED terminal state when the summary read fails and recovers on retry', async () => {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string };
-      if (request.action === 'listEvents') {
-        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      if (request.action === 'getParticipantEventSummaries') {
+        return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'BACKEND_ERROR', message: 'Registrations unavailable' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
-      return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'BACKEND_ERROR', message: 'Registrations unavailable' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     });
+
+    // At least one home must be requested for a failure to be possible.
+    TestBed.inject(ParticipantService).replaceParticipant({
+      id: 'participant-1',
+      participantCode: 'P-0001',
+      shelterHomeId: 'home-1',
+      fullName: 'Test Participant',
+      gender: 'MALE',
+      age: 10,
+      standard: 5,
+      level: 'JUNIOR',
+      eligibilityStatus: 'ELIGIBLE',
+      validationStatus: 'PASSED',
+      approvalStatus: 'APPROVED',
+      lockStatus: 'UNLOCKED',
+      version: 1,
+      createdAt: '',
+      createdBy: '',
+      updatedAt: '',
+      updatedBy: '',
+    } as Participant);
 
     await component.loadRegistrationSummary();
 
@@ -274,12 +349,25 @@ describe('Participants � event summary counts', () => {
 
     // Retry through a working backend: the terminal state recovers.
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
-      const request = JSON.parse(init.body) as { action: string; payload?: { eventId?: string } };
-      if (request.action === 'listEvents') {
-        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { events: EVENTS } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-      }
-      if (request.action === 'listEventRegistrations') {
-        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { participantEvents: rowsFor(request.payload?.eventId ?? '') } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      const request = JSON.parse(init.body) as { action: string };
+      if (request.action === 'getParticipantEventSummaries') {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          data: {
+            summaries: [{
+              participantId: 'participant-1',
+              participantCode: 'P-0001',
+              fullName: 'Test Participant',
+              events: [],
+              activeEventCount: 3,
+              artsCount: 2,
+              literaryCount: 0,
+              culturalCount: 1,
+              soloCount: 1,
+            }],
+            issues: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
       return Promise.resolve(new Response(JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     });
@@ -365,5 +453,512 @@ describe('Participants � source write-back messaging', () => {
     notifyRegistrationSuccess.call(component, 'Event participation updated.', undefined);
     // No report from the backend: no sheet claim either way.
     expect(successSpy).toHaveBeenLastCalledWith('Event participation updated.');
+  });
+});
+
+const TABLE_SUMMARY_ENTRY = {
+  participantId: 'participant-1',
+  participantCode: 'P-0001',
+  fullName: 'Test Participant',
+  events: [
+    { eventId: 'event-1', eventName: 'Clay Modelling', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+    { eventId: 'event-2', eventName: 'Group Dance', category: 'CULTURAL', mode: 'GROUP', registrationStatus: 'REGISTERED' },
+  ],
+  activeEventCount: 2,
+  artsCount: 1,
+  literaryCount: 0,
+  culturalCount: 1,
+  soloCount: 1,
+};
+
+const MANY_EVENT_SUMMARY_ENTRY = {
+  participantId: 'participant-1',
+  participantCode: 'P-0001',
+  fullName: 'Test Participant',
+  events: [
+    { eventId: 'e1', eventName: 'Clay Modelling', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+    { eventId: 'e2', eventName: 'String Art', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+    { eventId: 'e3', eventName: 'Origami', category: 'ARTS', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+    { eventId: 'e4', eventName: 'Quiz', category: 'LITERARY', mode: 'SOLO', registrationStatus: 'REGISTERED' },
+    { eventId: 'e5', eventName: 'Group Dance', category: 'CULTURAL', mode: 'GROUP', registrationStatus: 'REGISTERED' },
+  ],
+  activeEventCount: 5,
+  artsCount: 3,
+  literaryCount: 1,
+  culturalCount: 1,
+  soloCount: 4,
+};
+
+describe('Participants � participant table presentation', () => {
+  let fixture: ComponentFixture<Participants>;
+  let component: Participants;
+
+  function stubBackend(summaries: unknown[], issues: unknown[] = []): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'getParticipantEventSummaries') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { summaries, issues } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'listShelterHomes') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              shelterHomes: [{
+                id: 'home-1',
+                homeCode: 'H-01',
+                homeName: 'Sunrise Home',
+                contactPhone: '',
+                status: 'ACTIVE',
+                version: 1,
+              }],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'listParticipants') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              participants: [{
+                id: 'participant-1',
+                participantCode: 'P-0001',
+                shelterHomeId: 'home-1',
+                fullName: 'Test Participant',
+                gender: 'MALE',
+                age: 10,
+                standard: 5,
+                level: 'JUNIOR',
+                eligibilityStatus: 'ELIGIBLE',
+                validationStatus: 'PASSED',
+                approvalStatus: 'APPROVED',
+                lockStatus: 'UNLOCKED',
+                version: 1,
+                createdAt: '',
+                createdBy: '',
+                updatedAt: '',
+                updatedBy: '',
+              }],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { events: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'getImportStatus') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { imports: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'getValidationResults') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { validationResults: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: true, data: {} }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  async function renderWith(summaries: unknown[], issues: unknown[] = []): Promise<void> {
+    stubBackend(summaries, issues);
+
+    // The participant arrives through the (stubbed) backend store, exactly as
+    // in production; ngOnInit's ensureLoaded populates the list.
+    fixture = TestBed.createComponent(Participants);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // ngOnInit already kicked off the batch summary load; wait for its
+    // terminal state instead of racing it with a second call.
+    await vi.waitFor(() => {
+      expect(component.registrationSummaryState()).toBe('LOADED');
+    });
+    fixture.detectChanges();
+  }
+
+  it('hides internal codes and the removed status columns from the primary table', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const tbody = host.querySelector('tbody');
+    expect(tbody).toBeTruthy();
+    expect(tbody!.textContent).not.toContain('P-0001');
+    expect(tbody!.textContent).not.toContain('H-01');
+
+    const headers = Array.from(host.querySelectorAll('th'))
+      .map(th => (th.textContent ?? '').trim());
+    expect(headers).not.toContain('Eligibility');
+    expect(headers).not.toContain('Validation');
+    expect(headers).not.toContain('Approval');
+    // The name is emphasized; the code line is gone from the identity cell.
+    const identityCell = tbody!.querySelector('td');
+    expect(identityCell?.textContent).toContain('Test Participant');
+  });
+
+  it('renders real event names grouped by category with authoritative counts', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const text = host.querySelector('tbody')!.textContent ?? '';
+
+    expect(text).toContain('Arts: Clay Modelling');
+    expect(text).toContain('Literary: None');
+    expect(text).toContain('Cultural: Group Dance');
+    expect(text).toContain('2 / 6');
+    expect(text).toContain('Arts 1/2');
+    expect(text).toContain('Literary 0/2');
+    expect(text).toContain('Cultural 1/2');
+    expect(text).toContain('Solo 1/3');
+  });
+
+  it('keeps long event lists compact until View all is used', async () => {
+    await renderWith([MANY_EVENT_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const cell = host.querySelector('tbody .cell-events') as HTMLElement;
+    expect(cell).toBeTruthy();
+
+    // Compact: not every name is dumped into the row.
+    expect(cell.textContent).toContain('View all');
+    expect(cell.textContent).not.toContain('Origami');
+
+    (cell.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect((host.querySelector('tbody .cell-events') as HTMLElement).textContent).toContain('Origami');
+  });
+
+  it('surfaces backend duplicate/missing-reference issues on the row', async () => {
+    await renderWith(
+      [TABLE_SUMMARY_ENTRY],
+      [{ code: 'DUPLICATE_REGISTRATION_ROWS', participantId: 'participant-1', eventId: 'event-1', count: 2 }],
+    );
+
+    const host = fixture.nativeElement as HTMLElement;
+    const cell = host.querySelector('tbody .cell-events') as HTMLElement;
+    expect(cell.textContent).toContain('Duplicate registration');
+  });
+
+  it('offers View/Edit and Manage events actions that open the detail', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const row = host.querySelector('tbody tr') as HTMLElement;
+    const buttons = Array.from(row.querySelectorAll('button'))
+      .map(button => (button.textContent ?? '').trim());
+
+    expect(buttons.some(label => label.includes('View'))).toBe(true);
+    expect(buttons.some(label => label.includes('Manage events'))).toBe(true);
+
+    (Array.from(row.querySelectorAll('button'))
+      .find(button => (button.textContent ?? '').includes('Manage events')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+
+    expect(component.openParticipantId()).toBe('participant-1');
+  });
+});
+
+
+describe('Participants � rename sheet-sync outcome', () => {
+  let component: Participants;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    // Created without change detection: ngOnInit never runs.
+    component = TestBed.createComponent(Participants).componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  function applyVerdict(
+    sheetsSynchronized: boolean | undefined,
+    syncReasons: string[] | undefined,
+  ): void {
+    const apply = (component as unknown as {
+      applySheetSyncVerdict: (
+        participantId: string,
+        sheetsSynchronized: boolean | undefined,
+        syncReasons: string[] | undefined,
+        toastDetail: string,
+      ) => void;
+    }).applySheetSyncVerdict;
+
+    apply.call(component, 'participant-1', sheetsSynchronized, syncReasons, 'Google Sheet updated');
+  }
+
+  it('shows a truthful recovery state when the backend reports sheets not synchronized', () => {
+    const notifications = TestBed.inject(NotificationService);
+    const warningSpy = vi.spyOn(notifications, 'warning');
+
+    applyVerdict(false, ['Event-wise sheet write skipped: AMBIGUOUS_SOURCE_ROW']);
+
+    expect(component.sheetSyncRecovery()).toEqual({
+      participantId: 'participant-1',
+      reasons: ['Event-wise sheet write skipped: AMBIGUOUS_SOURCE_ROW'],
+    });
+    // No success claim is made when the backend says a write did not land.
+    expect(warningSpy).toHaveBeenCalled();
+    const warned = warningSpy.mock.calls.map(call => call.join(' ')).join(' ');
+    expect(warned).toContain('AMBIGUOUS_SOURCE_ROW');
+    expect(warned).not.toContain('Google Sheet updated.');
+  });
+
+  it('clears any recovery state when the backend reports full synchronization', () => {
+    const notifications = TestBed.inject(NotificationService);
+    const successSpy = vi.spyOn(notifications, 'success');
+
+    applyVerdict(true, []);
+
+    expect(component.sheetSyncRecovery()).toBeNull();
+    expect(successSpy).toHaveBeenCalled();
+  });
+
+  it('recovers through the real reconcile route and refreshes backend data', async () => {
+    let reconcileCalls = 0;
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'reconcileParticipantSheetWrites') {
+        reconcileCalls += 1;
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              participantId: 'participant-1',
+              reconciled: true,
+              sheetsSynchronized: true,
+              reasons: [],
+              source: { status: 'UPDATED' },
+              eventWise: {},
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'getParticipant') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              participant: {
+                id: 'participant-1',
+                participantCode: 'P-0001',
+                shelterHomeId: 'home-1',
+                fullName: 'Renamed Participant',
+                gender: 'MALE',
+                age: 10,
+                standard: 5,
+                level: 'JUNIOR',
+                eligibilityStatus: 'ELIGIBLE',
+                validationStatus: 'PASSED',
+                approvalStatus: 'APPROVED',
+                lockStatus: 'UNLOCKED',
+                version: 2,
+                createdAt: '',
+                createdBy: '',
+                updatedAt: '',
+                updatedBy: '',
+              },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'getParticipantEventSummaries') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ success: true, data: { summaries: [], issues: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    applyVerdict(false, ['not synchronized yet']);
+    expect(component.sheetSyncRecovery()).not.toBeNull();
+
+    await component.retrySheetSync();
+
+    expect(reconcileCalls).toBe(1);
+    expect(component.sheetSyncRecovery()).toBeNull();
+    expect(component.reconciling()).toBe(false);
+  });
+
+  it('keeps the recovery state and the retry available when reconciliation still fails', async () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'reconcileParticipantSheetWrites') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              participantId: 'participant-1',
+              reconciled: false,
+              sheetsSynchronized: false,
+              reasons: ['Source row identity could not be verified'],
+              source: { status: 'UNVERIFIED' },
+              eventWise: {},
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    applyVerdict(false, ['not synchronized yet']);
+
+    await component.retrySheetSync();
+
+    expect(component.sheetSyncRecovery()).not.toBeNull();
+    expect(component.sheetSyncRecovery()?.reasons).toEqual(['Source row identity could not be verified']);
+    expect(component.reconciling()).toBe(false);
+  });
+});
+
+describe('Participants � load error recovery', () => {
+  let component: Participants;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    // Created without change detection: ngOnInit never runs.
+    component = TestBed.createComponent(Participants).componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('retryStoreLoad forces a fresh full store read', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code: 'BACKEND_ERROR', message: 'offline' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    const store = TestBed.inject(ShelterDataService);
+    const spy = vi.spyOn(store, 'refresh');
+
+    await component.retryStoreLoad();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('retryEventsLoad re-reads the event master', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code: 'BACKEND_ERROR', message: 'offline' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    const store = TestBed.inject(ShelterDataService);
+    const spy = vi.spyOn(store, 'loadEvents');
+
+    await component.retryEventsLoad();
+
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

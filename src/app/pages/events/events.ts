@@ -62,6 +62,16 @@ export class Events implements OnInit {
   private readonly shelterData =
     inject(ShelterDataService);
 
+  /** Re-runs the full store load after a failed page load (Retry button). */
+  async retryStoreLoad(): Promise<void> {
+    await this.shelterData.refresh();
+  }
+
+  /** Re-reads the event master after a failed load (Retry button). */
+  async retryEventsLoad(): Promise<void> {
+    await this.eventService.load();
+  }
+
   private readonly notifications =
     inject(NotificationService);
 

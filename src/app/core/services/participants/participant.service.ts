@@ -224,6 +224,8 @@ export class ParticipantService {
       success: true,
       participant: response.data.participant,
       sourceWriteBack: response.data.sourceWriteBack,
+      sheetsSynchronized: response.data.sheetsSynchronized,
+      syncReasons: response.data.syncReasons,
       errors: [],
     };
   }
@@ -274,6 +276,13 @@ export interface UpdateParticipantResult {
   participant?: Participant;
   /** Present when the backend reported whether the source sheet was written. */
   sourceWriteBack?: SourceWriteBackResult;
+  /**
+   * Backend round 2: the combined honest verdict for ALL sheet writes
+   * (participant row + Event-wise). False means at least one required
+   * Sheet write did not positively succeed; `syncReasons` say why.
+   */
+  sheetsSynchronized?: boolean;
+  syncReasons?: string[];
   errors: string[];
   errorCode?: string;
 }

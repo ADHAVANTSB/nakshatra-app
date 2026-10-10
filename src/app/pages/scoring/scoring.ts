@@ -82,6 +82,15 @@ export class Scoring implements OnInit {
   private readonly scoringService = inject(ScoringService);
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly shelterData = inject(ShelterDataService);
+  /** Re-runs the full store load after a failed page load (Retry button). */
+  async retryStoreLoad(): Promise<void> {
+    await this.shelterData.refresh();
+  }
+
+  /** Re-reads the event master after a failed load (Retry button). */
+  async retryEventsLoad(): Promise<void> {
+    await this.eventService.load();
+  }
   private readonly route = inject(ActivatedRoute);
   private readonly notify = inject(NotificationService);
 

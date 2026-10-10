@@ -11,9 +11,9 @@
   </div>
 
   @if (eventsLoading()) { <div class="alert" role="status"><strong>Loading events…</strong><span>The event catalogue is being read from the backend.</span></div> }
-  @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span></div> }
+  @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span><button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button></div> }
   @if (loading()) { <div class="alert" role="status"><strong>Loading participant records…</strong><span>Shelter homes and participants are being read from the backend.</span></div> }
-  @if (loadError()) { <div class="alert error" role="alert"><strong>Participants could not be loaded.</strong><span>{{ loadError() }}</span></div> }
+  @if (loadError()) { <div class="alert error" role="alert"><strong>Participants could not be loaded.</strong><span>{{ loadError() }}</span><button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button></div> }
   @if (errors().length) { <div class="alert error" role="alert"><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> }
   @if (message()) { <div class="alert success">✓ {{ message() }}</div> }
 

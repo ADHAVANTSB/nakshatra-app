@@ -35,6 +35,7 @@
     <div class="alert error" role="alert">
       <strong>Participants could not be loaded.</strong>
       <span>{{ homesError() }}</span>
+      <button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button>
     </div>
 
   } @else if (totalCount() === 0) {
@@ -213,6 +214,31 @@
             @if (saveReadBackNote()) {
               <small>{{ saveReadBackNote() }}</small>
             }
+          </div>
+        }
+
+        @if (sheetSyncRecovery(); as recovery) {
+          <div class="alert warning" role="alert">
+            <strong>Google Sheet synchronization incomplete.</strong>
+            <span>
+              The Nakshatra record was saved, but the backend reported that not every
+              required Sheet write succeeded:
+            </span>
+            <ul>
+              @for (reason of recovery.reasons; track reason) {
+                <li>{{ reason }}</li>
+              }
+            </ul>
+            @if (sheetSyncError()) {
+              <span role="alert">Retry failed: {{ sheetSyncError() }}</span>
+            }
+            <button
+              class="secondary-button"
+              type="button"
+              (click)="retrySheetSync()"
+              [disabled]="reconciling()">
+              {{ reconciling() ? 'Reconciling…' : 'Retry sheet write' }}
+            </button>
           </div>
         }
 
@@ -477,6 +503,7 @@
             <div class="alert error" role="alert">
               <strong>The event list could not be loaded.</strong>
               <span>{{ eventsLoadError() }}</span>
+              <button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button>
             </div>
 
           } @else {
@@ -645,19 +672,15 @@
     @if (participants().length) {
 
       <div class="table-wrapper">
-        <table>
+        <table class="participant-table">
           <thead>
             <tr>
               <th>Participant</th>
               <th>Shelter home</th>
               <th>Gender / age</th>
               <th>Level</th>
-              <th>Eligibility</th>
-              <th>Validation</th>
-              <th>Approval</th>
-              <th>Lock</th>
-              <th>Events</th>
-              <th>Source</th>
+              <th>Participating events</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -668,54 +691,47 @@
                 [attr.aria-label]="'Open details for ' + participant.fullName"
                 (click)="openParticipant(participant)"
                 (keydown.enter)="openParticipant(participant)">
-                <td>
-                  <strong>{{ participant.fullName }}</strong>
-                  <small>{{ participant.participantCode }}</small>
+                <td class="cell-identity">
+                  <strong class="participant-name">{{ participant.fullName }}</strong>
                 </td>
-                <td>
+                <td class="cell-home">
                   <strong>{{ homeName(participant.shelterHomeId) }}</strong>
-                  <small>{{ homeCode(participant.shelterHomeId) }}</small>
                 </td>
                 <td>
                   {{ genderLabel(participant.gender) }}
                   <small>Age {{ participant.age }} · Std {{ participant.standard }}</small>
                 </td>
                 <td>{{ levelLabel(participant) }}</td>
-                <td>
-                  <span
-                    class="badge"
-                    [class.badge--success]="participant.eligibilityStatus === 'ELIGIBLE'"
-                    [class.badge--danger]="participant.eligibilityStatus === 'INELIGIBLE'">
-                    {{ participant.eligibilityStatus }}
-                  </span>
-                </td>
-                <td>
-                  <span
-                    class="badge"
-                    [class.badge--success]="participant.validationStatus === 'PASSED'"
-                    [class.badge--warning]="participant.validationStatus === 'WARNING'"
-                    [class.badge--danger]="participant.validationStatus === 'FAILED'">
-                    {{ participant.validationStatus.replace('_', ' ') }}
-                  </span>
-                </td>
-                <td>
-                  <span
-                    class="badge"
-                    [class.badge--success]="participant.approvalStatus === 'APPROVED'"
-                    [class.badge--warning]="participant.approvalStatus === 'PENDING'"
-                    [class.badge--danger]="participant.approvalStatus === 'REJECTED'">
-                    {{ participant.approvalStatus }}
-                  </span>
-                </td>
-                <td>
-                  <span
-                    class="badge"
-                    [class.badge--warning]="participant.lockStatus === 'LOCKED'">
-                    {{ participant.lockStatus }}
-                  </span>
-                </td>
                 <td class="cell-events">
                   @if (eventSummary(participant.id); as summary) {
+                    @if (summaryIsCompact(summary) && !summaryExpanded(participant.id)) {
+                      <small>
+                        {{ summary.entry!.events.length }} events registered.
+                      </small>
+                      <button
+                        type="button"
+                        class="link-button"
+                        (click)="toggleSummaryExpansion(participant.id); $event.stopPropagation()">
+                        View all
+                      </button>
+                    } @else {
+                      <div class="event-names">
+                        @for (group of summaryGroups(summary); track group.label) {
+                          <small class="event-group">
+                            <span class="event-group-label">{{ group.label }}:</span>
+                            {{ group.names }}
+                          </small>
+                        }
+                      </div>
+                      @if (summaryIsCompact(summary)) {
+                        <button
+                          type="button"
+                          class="link-button"
+                          (click)="toggleSummaryExpansion(participant.id); $event.stopPropagation()">
+                          Show less
+                        </button>
+                      }
+                    }
                     <strong>{{ summary.total }} / {{ summary.maxTotal }}</strong>
                     <small>
                       Arts {{ summary.arts }}/{{ summary.maxCategory }}
@@ -723,6 +739,11 @@
                       · Cultural {{ summary.cultural }}/{{ summary.maxCategory }}
                       · Solo {{ summary.solo }}/{{ summary.maxSolo }}
                     </small>
+                    @if (hasSummaryIssues(participant.id)) {
+                      <span class="event-issue-chip" role="note">
+                        {{ firstSummaryIssueLabel(participant.id) }}
+                      </span>
+                    }
                   } @else if (registrationSummaryState() === 'LOADING') {
                     <small>Reading registrations…</small>
                   } @else if (registrationSummaryState() === 'FAILED') {
@@ -733,8 +754,19 @@
                     <small>—</small>
                   }
                 </td>
-                <td>
-                  <small>{{ sourceLabel(participant) }}</small>
+                <td class="cell-actions">
+                  <button
+                    type="button"
+                    class="link-button"
+                    (click)="openParticipant(participant); $event.stopPropagation()">
+                    View / Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="link-button"
+                    (click)="openManageEvents(participant); $event.stopPropagation()">
+                    Manage events
+                  </button>
                 </td>
               </tr>
             }

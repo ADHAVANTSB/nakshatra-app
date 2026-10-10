@@ -1,4 +1,4 @@
-﻿import { Injectable, computed, inject } from '@angular/core';
+﻿import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
   EVENT_CATEGORY_LABELS,
@@ -10,6 +10,8 @@ import {
   Participant,
   Event,
   ParticipantEvent,
+  ParticipantEventSummaryEntry,
+  ParticipantEventSummaryIssue,
   SourceWriteBackResult,
 } from '../../models';
 
@@ -69,6 +71,115 @@ export class ParticipantEventService {
   /** Reads persisted registrations for one participant from the backend. */
   loadParticipantEvents(participantId: string, force = false): Promise<ParticipantEvent[] | null> {
     return this.shelterData.loadParticipantEvents(participantId, force);
+  }
+
+  // ==========================================
+  // BATCH EVENT SUMMARIES (backend round 2)
+  // ==========================================
+
+  /** Backend-returned summaries, keyed by stable participantId. */
+  private readonly summaryEntriesState = signal<Record<string, ParticipantEventSummaryEntry>>({});
+
+  /** Backend-reported duplicate/missing-reference issues. */
+  private readonly summaryIssuesState = signal<ParticipantEventSummaryIssue[]>([]);
+
+  /** Per-home load state; a home stays FAILED until a retry succeeds. */
+  private readonly summaryHomeStates = signal<Record<string, 'LOADING' | 'LOADED' | 'FAILED'>>({});
+
+  /** In-flight summary read per home: concurrent callers share one request. */
+  private pendingSummaries = new Map<string, Promise<boolean>>();
+
+  readonly summaryIssues = this.summaryIssuesState.asReadonly();
+
+  /**
+   * Batch read of participant event summaries — exactly one backend request
+   * per home. Loaded homes are never re-requested unless `force`; concurrent
+   * and repeated navigation share the same request. A failed home read never
+   * marks that home loaded, and the already-loaded homes stay usable.
+   *
+   * Returns true only when every requested home read succeeded.
+   */
+  loadSummariesForHomes(homeIds: string[], force = false): Promise<boolean> {
+    const requested = [...new Set(homeIds.filter(id => id))];
+
+    const reads = requested
+      .filter(homeId => force || this.summaryHomeStates()[homeId] !== 'LOADED')
+      .map(homeId => this.requestSummariesForHome(homeId, force));
+
+    if (!reads.length) {
+      return Promise.resolve(true);
+    }
+
+    return Promise.all(reads).then(results => results.every(Boolean));
+  }
+
+  private requestSummariesForHome(homeId: string, force: boolean): Promise<boolean> {
+    const pending = this.pendingSummaries.get(homeId);
+
+    if (pending && !force) {
+      return pending;
+    }
+
+    const request = this.readSummariesForHome(homeId)
+      .finally(() => this.pendingSummaries.delete(homeId));
+    this.pendingSummaries.set(homeId, request);
+    return request;
+  }
+
+  private async readSummariesForHome(homeId: string): Promise<boolean> {
+    this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'LOADING' }));
+
+    try {
+      const response = await this.apiClient.getParticipantEventSummaries({ shelterHomeId: homeId });
+
+      if (!response.success) {
+        this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'FAILED' }));
+        return false;
+      }
+
+      this.summaryEntriesState.update(entries => {
+        const next = { ...entries };
+
+        for (const summary of response.data.summaries) {
+          next[summary.participantId] = summary;
+        }
+
+        return next;
+      });
+
+      // Issues are read-only facts reported by the backend; they are shown,
+      // never repaired silently and never fabricated.
+      this.summaryIssuesState.update(current => [
+        ...current.filter(issue => !response.data.issues.some(
+          fresh => fresh.participantId === issue.participantId &&
+            fresh.eventId === issue.eventId && fresh.code === issue.code
+        )),
+        ...response.data.issues,
+      ]);
+
+      this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'LOADED' }));
+      return true;
+    } catch {
+      // Terminal-state guarantee: the api client resolves every failure, so
+      // this only guards truly unexpected throws.
+      this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'FAILED' }));
+      return false;
+    }
+  }
+
+  /** The backend summary for a participant, or null before it has loaded. */
+  summaryFor(participantId: string): ParticipantEventSummaryEntry | null {
+    return this.summaryEntriesState()[participantId] ?? null;
+  }
+
+  /** Whether a home's summary read is currently outstanding. */
+  summariesLoadingForHome(homeId: string): boolean {
+    return this.summaryHomeStates()[homeId] === 'LOADING';
+  }
+
+  /** Backend-reported issues for one participant (empty when none). */
+  issuesFor(participantId: string): ParticipantEventSummaryIssue[] {
+    return this.summaryIssuesState().filter(issue => issue.participantId === participantId);
   }
 
   getAll(): ParticipantEvent[] {

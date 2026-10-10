@@ -31,19 +31,30 @@ import {
   GetParticipantData,
   GetReportsData,
   GetValidationResultsData,
+  ArchiveShelterHomeData,
+  ArchiveShelterHomePayload,
   ImportStatusData,
   ImportStatusPayload,
   ListEventRegistrationsData,
   ListEventsData,
   ListParticipantEventsData,
   ListParticipantsData,
-  ListShelterSheetsData,
   ListShelterHomesData,
+  ListShelterHomesPayload,
+  ListShelterSheetsData,
   ListUsersData,
   LogoutData,
   OperationalCounts,
   Participant,
   ParticipantEvent,
+  ParticipantEventSummariesData,
+  ParticipantEventSummariesPayload,
+  ReconcileParticipantSheetWritesData,
+  ReconcileParticipantSheetWritesPayload,
+  RestoreShelterHomeData,
+  RestoreShelterHomePayload,
+  ShelterHomeArchivePreviewData,
+  ShelterHomeIdPayload,
   RegistrationRequestData,
   RegistrationStatus,
   ReportScopePayload,
@@ -187,6 +198,102 @@ export class ApiClientService {
     return this.post<ListShelterSheetsData>('listShelterSheets');
   }
 
+  /**
+   * Reads the connected shelter homes. Archived homes are excluded by the
+   * backend unless `includeArchived` is set; archived rows keep their data
+   * and history either way.
+   */
+  listShelterHomes(payload?: ListShelterHomesPayload): Promise<ApiResponse<ListShelterHomesData>> {
+    return this.post<ListShelterHomesData, ListShelterHomesPayload | undefined>(
+      'listShelterHomes', payload
+    );
+  }
+
+  /**
+   * Read-only impact preview for archiving a shelter home (ADMIN). Never
+   * writes and never audits on the backend.
+   */
+  async previewShelterHomeArchive(shelterHomeId: string): Promise<ApiResponse<ShelterHomeArchivePreviewData>> {
+    const response = await this.post<ShelterHomeArchivePreviewData, ShelterHomeIdPayload>(
+      'previewShelterHomeArchive', { shelterHomeId }
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && typeof (data as ShelterHomeArchivePreviewData).shelterHome === 'object'
+      && typeof (data as ShelterHomeArchivePreviewData).impact === 'object'
+      && typeof (data as ShelterHomeArchivePreviewData).triggerCleanupRequired === 'boolean'
+      ? response
+      : { success: false, error: { code: 'INVALID_ARCHIVE_PREVIEW_RESPONSE', message: 'The server returned an invalid archive preview.' } };
+  }
+
+  /**
+   * Safe archive lifecycle operation (ADMIN): the home becomes ARCHIVED;
+   * nothing is deleted. `expectedVersion` enables optimistic concurrency.
+   */
+  async archiveShelterHome(payload: ArchiveShelterHomePayload): Promise<ApiResponse<ArchiveShelterHomeData>> {
+    const response = await this.post<ArchiveShelterHomeData, ArchiveShelterHomePayload>(
+      'archiveShelterHome', payload
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && (data as ArchiveShelterHomeData).status === 'ARCHIVED'
+      && typeof (data as ArchiveShelterHomeData).triggerRemoved === 'boolean'
+      ? response
+      : { success: false, error: { code: 'INVALID_ARCHIVE_RESPONSE', message: 'The server returned an invalid archive response.' } };
+  }
+
+  /**
+   * Restores an archived home to ACTIVE (ADMIN). A `triggerReinstallRequired`
+   * outcome must be displayed, never interpreted as a reinstalled trigger.
+   */
+  async restoreShelterHome(payload: RestoreShelterHomePayload): Promise<ApiResponse<RestoreShelterHomeData>> {
+    const response = await this.post<RestoreShelterHomeData, RestoreShelterHomePayload>(
+      'restoreShelterHome', payload
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && typeof (data as RestoreShelterHomeData).status === 'string'
+      && typeof (data as RestoreShelterHomeData).triggerReinstallRequired === 'boolean'
+      ? response
+      : { success: false, error: { code: 'INVALID_RESTORE_RESPONSE', message: 'The server returned an invalid restore response.' } };
+  }
+
+  /**
+   * Batch participant event summaries: one request covers one home (or
+   * explicit participant ids), so the UI never fires one request per
+   * participant. Only REGISTERED rows are counted by the backend.
+   */
+  async getParticipantEventSummaries(payload?: ParticipantEventSummariesPayload): Promise<ApiResponse<ParticipantEventSummariesData>> {
+    const response = await this.post<ParticipantEventSummariesData, ParticipantEventSummariesPayload | undefined>(
+      'getParticipantEventSummaries', payload
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && Array.isArray((data as ParticipantEventSummariesData).summaries)
+      && Array.isArray((data as ParticipantEventSummariesData).issues)
+      ? response
+      : { success: false, error: { code: 'INVALID_SUMMARIES_RESPONSE', message: 'The server returned an invalid participant event summaries response.' } };
+  }
+
+  /** Re-runs the participant's Sheet write-backs after a partial sync. */
+  async reconcileParticipantSheetWrites(payload: ReconcileParticipantSheetWritesPayload): Promise<ApiResponse<ReconcileParticipantSheetWritesData>> {
+    const response = await this.post<ReconcileParticipantSheetWritesData, ReconcileParticipantSheetWritesPayload>(
+      'reconcileParticipantSheetWrites', payload
+    );
+    if (!response.success) return response;
+    const data = response.data;
+    return typeof data === 'object' && data !== null
+      && typeof (data as ReconcileParticipantSheetWritesData).participantId === 'string'
+      && typeof (data as ReconcileParticipantSheetWritesData).sheetsSynchronized === 'boolean'
+      && Array.isArray((data as ReconcileParticipantSheetWritesData).reasons)
+      ? response
+      : { success: false, error: { code: 'INVALID_RECONCILE_RESPONSE', message: 'The server returned an invalid reconcile response.' } };
+  }
+
   syncShelterSheet(payload: SyncShelterSheetPayload): Promise<ApiResponse<SyncShelterSheetData>> {
     return this.post<SyncShelterSheetData, SyncShelterSheetPayload>('syncShelterSheet', payload);
   }
@@ -284,10 +391,6 @@ export class ApiClientService {
     return data
       ? { success: true, data }
       : { success: false, error: { code: 'INVALID_PARTICIPANT_RESPONSE', message: 'The server returned an invalid participant response.' } };
-  }
-
-  listShelterHomes(): Promise<ApiResponse<ListShelterHomesData>> {
-    return this.post<ListShelterHomesData>('listShelterHomes');
   }
 
   /** Event master data. The backend is the source of truth when it supplies it. */

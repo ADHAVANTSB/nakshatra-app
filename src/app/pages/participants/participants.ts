@@ -9,6 +9,7 @@ import {
   Gender,
   Participant,
   ParticipantEvent,
+  ParticipantEventSummaryEntry,
   SourceWriteBackResult,
 } from '../../core/models';
 import { EventService } from '../../core/services/events/event.service';
@@ -16,6 +17,7 @@ import {
   ParticipantEventService,
   RegistrationResult,
 } from '../../core/services/events/participant-event.service';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import {
   EditableParticipantFields,
@@ -39,6 +41,8 @@ export interface ParticipantEventSummary {
   maxCategory: number;
   solo: number;
   maxSolo: number;
+  /** The backend summary entry the figures came from (real event names). */
+  entry?: ParticipantEventSummaryEntry;
 }
 
 /** Category order used when grouping a participant's backend registrations. */
@@ -95,9 +99,20 @@ export class Participants implements OnInit {
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly eventService = inject(EventService);
   private readonly participantEventService = inject(ParticipantEventService);
+  private readonly apiClient = inject(ApiClientService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
+
+  /** Re-runs the full store load after a failed page load (Retry button). */
+  async retryStoreLoad(): Promise<void> {
+    await this.shelterData.refresh();
+  }
+
+  /** Re-reads the event master after a failed load (Retry button). */
+  async retryEventsLoad(): Promise<void> {
+    await this.eventService.load();
+  }
 
   // ---------------------------------------------------------
   // STATE
@@ -356,7 +371,114 @@ export class Participants implements OnInit {
    */
   readonly registrationSummaryState = signal<'IDLE' | 'LOADING' | 'LOADED' | 'FAILED'>('IDLE');
 
-  /** Reads all ACTIVE events' registrations for the row-level summary. */
+  /**
+   * Rename sheet-sync recovery: set when the backend reports
+   * `sheetsSynchronized: false` after a save. Holds the truthful reasons the
+   * backend supplied and stays until a successful reconciliation clears it.
+   */
+  readonly sheetSyncRecovery = signal<{ participantId: string; reasons: string[] } | null>(null);
+  readonly reconciling = signal(false);
+  readonly sheetSyncError = signal('');
+
+  /**
+   * Applies the backend's combined sheet-sync verdict for a rename.
+   *
+   * `sheetsSynchronized === false` must never be reported as "Google Sheet
+   * updated": the recovery state carries the backend's own reasons and the
+   * toast states the writes are incomplete. An absent verdict (older backend)
+   * keeps the legacy sourceWriteBack-based reporting.
+   */
+  applySheetSyncVerdict(
+    participantId: string,
+    sheetsSynchronized: boolean | undefined,
+    syncReasons: string[] | undefined,
+    legacyToastDetail: string,
+  ): void {
+    if (sheetsSynchronized === true) {
+      this.sheetSyncRecovery.set(null);
+      this.sheetSyncError.set('');
+      this.notifications.success('Updated in Nakshatra', legacyToastDetail || undefined);
+      return;
+    }
+
+    if (sheetsSynchronized === false) {
+      const reasons = syncReasons?.length ? syncReasons : ['The backend did not confirm the Sheet writes.'];
+
+      this.saveWriteBackNote.set('Google Sheet not synchronized');
+      this.saveWriteBackDetail.set(reasons.join(' '));
+      this.sheetSyncRecovery.set({ participantId, reasons });
+      this.notifications.warning(
+        'Updated in Nakshatra — Sheet writes incomplete',
+        reasons.join(' ')
+      );
+      return;
+    }
+
+    // Legacy backend: report only what the sourceWriteBack report stated.
+    if (legacyToastDetail) {
+      this.notifications.warning('Updated in Nakshatra', legacyToastDetail);
+    } else {
+      this.notifications.success('Updated in Nakshatra');
+    }
+  }
+
+  /**
+   * Re-runs the participant's Sheet write-backs through the backend's
+   * reconcile route. Success refreshes the participant and its event summary
+   * from confirmed backend data; failure keeps the recovery state and the
+   * retry available.
+   */
+  async retrySheetSync(): Promise<void> {
+    const recovery = this.sheetSyncRecovery();
+
+    if (!recovery || this.reconciling()) {
+      return;
+    }
+
+    this.reconciling.set(true);
+    this.sheetSyncError.set('');
+
+    try {
+      const response = await this.apiClient.reconcileParticipantSheetWrites({
+        participantId: recovery.participantId,
+      });
+
+      if (!response.success) {
+        this.sheetSyncError.set(response.error.message);
+        return;
+      }
+
+      if (response.data.sheetsSynchronized) {
+        const readBack = await this.participantService.loadParticipant(recovery.participantId);
+
+        if (readBack.participant) {
+          this.participantService.replaceParticipant(readBack.participant);
+        }
+
+        await this.loadRegistrationSummary(true);
+
+        this.sheetSyncRecovery.set(null);
+        this.notifications.success(
+          'Sheet writes reconciled',
+          'The Google Sheet now matches the saved record.'
+        );
+        return;
+      }
+
+      // Still not synchronized: show the fresh backend reasons; retry stays.
+      this.sheetSyncRecovery.set({
+        participantId: recovery.participantId,
+        reasons: response.data.reasons.length
+          ? response.data.reasons
+          : ['The backend could not confirm the Sheet writes.'],
+      });
+    } finally {
+      this.reconciling.set(false);
+    }
+  }
+
+  /** Reads event summaries through the backend's batch API: exactly one
+   *  request per home, deduplicated across navigation. */
   async loadRegistrationSummary(force = false): Promise<void> {
     if (this.registrationSummaryState() === 'LOADING') {
       return;
@@ -365,29 +487,19 @@ export class Participants implements OnInit {
     this.registrationSummaryState.set('LOADING');
 
     try {
-      if (!this.eventService.loaded()) {
-        await this.eventService.load();
-      }
+      const homeIds = [
+        ...new Set(
+          this.participantService
+            .getParticipants()
+            .map(participant => participant.shelterHomeId)
+        ),
+      ];
 
-      // A failed event-master read leaves no events to iterate; the retry
-      // affordance stays available instead of showing a fake empty summary.
-      if (!this.eventService.loaded()) {
-        this.registrationSummaryState.set('FAILED');
-        return;
-      }
+      const ok = await this.participantEventService.loadSummariesForHomes(homeIds, force);
 
-      const results = await Promise.all(
-        this.eventService.activeEvents().map(event =>
-          this.shelterData.loadEventRegistrations(event.id, force)
-        )
-      );
-
-      this.registrationSummaryState.set(
-        results.some(result => result === null) ? 'FAILED' : 'LOADED'
-      );
+      this.registrationSummaryState.set(ok ? 'LOADED' : 'FAILED');
     } catch {
-      // The api client resolves every failure into the envelope, so this is a
-      // belt-and-braces terminal guarantee: LOADING never outlives this call.
+      // Terminal-state guarantee: LOADING never outlives this call.
       this.registrationSummaryState.set('FAILED');
     }
   }
@@ -405,16 +517,115 @@ export class Participants implements OnInit {
       return null;
     }
 
+    // Figures come from the backend's batch summary, never recomputed here;
+    // maxima come from the authoritative event-rules configuration.
+    const entry = this.participantEventService.summaryFor(participantId);
+
+    if (!entry) {
+      return null;
+    }
+
     return {
-      total: this.participantEventService.getParticipantEventCount(participantId),
+      total: entry.activeEventCount,
       maxTotal: NAKSHATRA_EVENT_RULES.maxTotalEventsPerParticipant,
-      arts: this.participantEventService.getParticipantCategoryCount(participantId, 'ARTS'),
-      literary: this.participantEventService.getParticipantCategoryCount(participantId, 'LITERARY'),
-      cultural: this.participantEventService.getParticipantCategoryCount(participantId, 'CULTURAL'),
+      arts: entry.artsCount,
+      literary: entry.literaryCount,
+      cultural: entry.culturalCount,
       maxCategory: NAKSHATRA_EVENT_RULES.maxEventsPerCategory,
-      solo: this.participantEventService.getParticipantIndividualCount(participantId),
+      solo: entry.soloCount,
       maxSolo: NAKSHATRA_EVENT_RULES.maxIndividualEvents,
+      entry,
     };
+  }
+
+  /**
+   * Grouped real event names for the row, in category order. Categories
+   * without registrations show "None"; a backend event with an unexpected
+   * category is shown under "Uncategorised" rather than being dropped.
+   */
+  summaryGroups(summary: ParticipantEventSummary): Array<{ label: string; names: string }> {
+    const events = summary.entry?.events ?? [];
+    const labels: Record<string, string> = {
+      ARTS: 'Arts',
+      LITERARY: 'Literary',
+      CULTURAL: 'Cultural',
+    };
+
+    return [...REGISTRATION_CATEGORY_ORDER, 'UNCATEGORISED'].map(category => {
+      if (category === 'UNCATEGORISED') {
+        const unknown = events.filter(
+          event => !REGISTRATION_CATEGORY_ORDER.includes(event.category as EventCategory)
+        );
+
+        return {
+          label: 'Uncategorised',
+          names: unknown.map(event => event.eventName).join(', '),
+        };
+      }
+
+      const names = events
+        .filter(event => event.category === category)
+        .map(event => event.eventName);
+
+      return {
+        label: labels[category] ?? category,
+        names: names.length ? names.join(', ') : 'None',
+      };
+    });
+  }
+
+  /** Rows with more than this many events stay compact until expanded. */
+  private static readonly COMPACT_EVENT_LIMIT = 4;
+
+  readonly expandedSummaries = signal<ReadonlySet<string>>(new Set<string>());
+
+  summaryExpanded(participantId: string): boolean {
+    return this.expandedSummaries().has(participantId);
+  }
+
+  summaryIsCompact(summary: ParticipantEventSummary): boolean {
+    return (summary.entry?.events.length ?? 0) > Participants.COMPACT_EVENT_LIMIT;
+  }
+
+  toggleSummaryExpansion(participantId: string): void {
+    this.expandedSummaries.update(current => {
+      const next = new Set(current);
+
+      if (next.has(participantId)) {
+        next.delete(participantId);
+      } else {
+        next.add(participantId);
+      }
+
+      return next;
+    });
+  }
+
+  /** Truthful labels for backend-reported registration issues. */
+  summaryIssueLabels(participantId: string): string[] {
+    return this.participantEventService.issuesFor(participantId).map(issue => {
+      switch (issue.code) {
+        case 'DUPLICATE_REGISTRATION_ROWS':
+          return `Duplicate registration rows reported by the backend${issue.count ? ` (${issue.count})` : ''}.`;
+        case 'EVENT_REFERENCE_NOT_FOUND':
+          return 'A registration references an event that no longer exists.';
+        default:
+          return issue.code;
+      }
+    });
+  }
+
+  hasSummaryIssues(participantId: string): boolean {
+    return this.summaryIssueLabels(participantId).length > 0;
+  }
+
+  firstSummaryIssueLabel(participantId: string): string {
+    return this.summaryIssueLabels(participantId)[0] ?? '';
+  }
+
+  /** Opens the detail panel on the events section (Manage events action). */
+  openManageEvents(participant: Participant): void {
+    this.openParticipant(participant);
   }
 
   /**
@@ -733,11 +944,17 @@ export class Participants implements OnInit {
 
     const toastDetail = [writeBack.label, writeBack.detail].filter(Boolean).join(' — ');
 
-    if (writeBack.label && result.sourceWriteBack?.status !== 'UPDATED') {
-      this.notifications.warning('Updated in Nakshatra', toastDetail);
-    } else {
-      this.notifications.success('Updated in Nakshatra', toastDetail || undefined);
+    if (result.sheetsSynchronized === undefined) {
+      // Older backend: report only what the sourceWriteBack report stated.
+      if (writeBack.label && result.sourceWriteBack?.status !== 'UPDATED') {
+        this.notifications.warning('Updated in Nakshatra', toastDetail);
+      } else {
+        this.notifications.success('Updated in Nakshatra', toastDetail || undefined);
+      }
+      return;
     }
+
+    this.applySheetSyncVerdict(participant.id, result.sheetsSynchronized, result.syncReasons, toastDetail);
   }
 
   /**

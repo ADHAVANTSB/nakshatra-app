@@ -522,3 +522,68 @@
     }
   }
 }
+
+/* =========================================================
+   ARCHIVE LIFECYCLE
+   ========================================================= */
+
+.archive-preview-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #d0d4dc;
+  border-radius: 8px;
+  background: #fafbfc;
+
+  .archive-note {
+    font-weight: 500;
+    margin: 8px 0 12px;
+  }
+
+  .archive-impact {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 24px;
+    margin: 12px 0;
+
+    > div {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    dt {
+      color: #556;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+.archived-homes {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #e3e6ec;
+
+  .archived-homes-list {
+    list-style: none;
+    margin: 8px 0;
+    padding: 0;
+
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px dashed #eceef2;
+
+      span {
+        overflow-wrap: anywhere;
+      }
+    }
+  }
+}

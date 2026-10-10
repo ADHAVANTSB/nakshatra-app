@@ -3,8 +3,8 @@
   <div class="attendance-card"><label for="attendance-event">Select event</label><select id="attendance-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)" [disabled]="loading() || eventsLoading()"><option value="">Choose an active event</option>@for (event of events(); track event.id) { @if (event.status === 'ACTIVE') { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option> } }</select></div>
   @if (errors().length > 0) { <div class="alert error"><strong>Attendance could not be updated.</strong><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> }
   @if (eventsLoading()) { <div class="alert" role="status"><strong>Loading events…</strong><span>The event catalogue is being read from the backend.</span></div> }
-  @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span></div> }
-  @if (loadError()) { <div class="alert error" role="alert"><strong>Participant records could not be loaded.</strong><span>{{ loadError() }}</span></div> }
+  @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span><button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button></div> }
+  @if (loadError()) { <div class="alert error" role="alert"><strong>Participant records could not be loaded.</strong><span>{{ loadError() }}</span><button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button></div> }
   @if (selectedEvent(); as event) {
     <div class="event-summary"><div><span>Event</span><strong>{{ event.name }}</strong></div><div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div><div><span>Registered</span><strong>{{ registeredFigure() }}</strong></div><div><span>Present</span><strong>{{ presentFigure() }}</strong></div><div><span>Absent</span><strong>{{ absentFigure() }}</strong></div></div>
     @if (teamsState()?.status === 'ERROR') { <div class="alert error" role="alert"><strong>Teams could not be loaded.</strong><span>{{ teamsState()?.error }}</span></div> }

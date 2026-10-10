@@ -230,6 +230,10 @@
           {{ eventsError() }}
         </p>
 
+        <button type="button" class="secondary-button" (click)="retryEventsLoad()">
+          Retry
+        </button>
+
       </div>
 
     } @else if (filteredEvents().length > 0) {

@@ -16,3 +16,5 @@ export * from './import-version.model';
 export * from './validation-result.model';
 export * from './sync-job.model';
 export * from './dataset-refresh.model';
+export * from './archive.model';
+export * from './participant-summary.model';
