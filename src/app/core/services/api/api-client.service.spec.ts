@@ -249,4 +249,191 @@ describe('ApiClientService — response contract alignment', () => {
       expect(result.error.message).toBe('Unable to reach the server. Please try again.');
     }
   });
+
+  describe('previewShelterSheet', () => {
+    /** Reproduces the exact data shape of handlePreviewShelterSheet (Code.gs 3898-3922). */
+    const BACKEND_PREVIEW = {
+      spreadsheetName: 'Anbu Illam 2026',
+      metadata: {
+        homeName: 'Anbu Illam',
+        address: '12 Lake View Road',
+        contactPhone: '+91 98400 12345',
+      },
+      metadataContactSource: 'EXPLICIT_CONTACT_LABEL',
+      metadataEvidence: { homeName: { sheet: 'Overall - Final', row: 6 } },
+      metadataMissing: ['contactName'],
+      caretakers: [{
+        fullName: 'Meena R',
+        contactNumber: '+91 90000 11111',
+        alternateNumber: '',
+        sourceRowNumber: 12,
+        participantName: 'Arjun',
+      }],
+      caretakerCount: 1,
+      participantCount: 18,
+      participantSheetDetected: true,
+      eventWiseSheetDetected: true,
+      workbookStructure: { sheetsInspected: 3, sheetsTotal: 3, sheets: [] },
+      warnings: [],
+      errors: [],
+    };
+
+    it('sends the pasted URL and accepts the backend metadata result', async () => {
+      let sentAction = '';
+      let sentPayload: unknown;
+      stubFetchOnce(jsonResponse({ success: true, data: BACKEND_PREVIEW }));
+      const originalFetch = globalThis.fetch;
+      vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+        const parsed = JSON.parse(init.body);
+        sentAction = parsed.action;
+        sentPayload = parsed.payload;
+        return Promise.resolve(jsonResponse({ success: true, data: BACKEND_PREVIEW }));
+      });
+      void originalFetch;
+
+      const result = await client.previewShelterSheet({
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/spec-id/edit',
+      });
+
+      expect(sentAction).toBe('previewShelterSheet');
+      expect((sentPayload as { spreadsheetUrl: string }).spreadsheetUrl)
+        .toBe('https://docs.google.com/spreadsheets/d/spec-id/edit');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.spreadsheetName).toBe('Anbu Illam 2026');
+        expect(result.data.metadata.homeName).toBe('Anbu Illam');
+        expect(result.data.metadataMissing).toEqual(['contactName']);
+        expect(result.data.caretakerCount).toBe(1);
+        expect(result.data.participantCount).toBe(18);
+        expect(result.data.metadataContactSource).toBe('EXPLICIT_CONTACT_LABEL');
+      }
+    });
+
+    it('accepts a caretaker-inferred contact source so the UI can present it honestly', async () => {
+      stubFetchOnce(jsonResponse({
+        success: true,
+        data: {
+          ...BACKEND_PREVIEW,
+          metadata: { ...BACKEND_PREVIEW.metadata, contactName: 'Meena R' },
+          metadataContactSource: 'CARETAKER_LABEL',
+          warnings: ['METADATA_CONTACT_INFERRED_FROM_CARETAKER'],
+        },
+      }));
+
+      const result = await client.previewShelterSheet({
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/spec-id/edit',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.metadataContactSource).toBe('CARETAKER_LABEL');
+        expect(result.data.warnings).toContain('METADATA_CONTACT_INFERRED_FROM_CARETAKER');
+      }
+    });
+
+    it('rejects a malformed preview response instead of trusting it', async () => {
+      stubFetchOnce(jsonResponse({
+        success: true,
+        data: { spreadsheetName: 'Broken', /* everything else missing */ },
+      }));
+
+      const result = await client.previewShelterSheet({
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/spec-id/edit',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_SHELTER_SHEET_PREVIEW_RESPONSE');
+      }
+    });
+
+    it('preserves the real backend error when the sheet cannot be previewed', async () => {
+      stubFetchOnce(jsonResponse({
+        success: false,
+        error: { code: 'SPREADSHEET_ACCESS_FAILED', message: 'The spreadsheet could not be opened with the connected account.' },
+      }));
+
+      const result = await client.previewShelterSheet({
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/other-id/edit',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SPREADSHEET_ACCESS_FAILED');
+      }
+    });
+  });
+
+  describe('listAttendance', () => {
+    /** A row exactly as buildAttendanceObject returns it (Code.gs 15895+). */
+    const BACKEND_ATTENDANCE_ROW = {
+      id: 'ATT-1',
+      eventId: 'event-1',
+      participantId: 'participant-1',
+      teamId: '',
+      status: 'PRESENT',
+      markedAt: '2026-01-01T00:00:00.000Z',
+      markedBy: 'user-1',
+      version: 2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      createdBy: 'user-1',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      updatedBy: 'user-1',
+      // enrichment added by handleListAttendance
+      eventName: 'Vocal',
+      eventCode: 'E-01',
+      fullName: 'Test Participant',
+      shelterHomeId: 'home-1',
+      shelterHomeName: 'Sunrise Home',
+      teamName: '',
+    };
+
+    it('reads persisted attendance for an event and never requests archived rows', async () => {
+      let sentAction = '';
+      let sentPayload: Record<string, unknown> | undefined;
+      vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+        const parsed = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
+        sentAction = parsed.action;
+        sentPayload = parsed.payload;
+        return Promise.resolve(jsonResponse({ success: true, data: { attendance: [BACKEND_ATTENDANCE_ROW] } }));
+      });
+
+      const result = await client.listAttendance({ eventId: 'event-1' });
+
+      expect(sentAction).toBe('listAttendance');
+      expect(sentPayload).toEqual({ eventId: 'event-1' });
+      expect(sentPayload && 'includeArchived' in sentPayload).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.attendance).toHaveLength(1);
+        expect(result.data.attendance[0].status).toBe('PRESENT');
+        expect(result.data.attendance[0].version).toBe(2);
+      }
+    });
+
+    it('rejects a malformed attendance read response instead of trusting it', async () => {
+      stubFetchOnce(jsonResponse({ success: true, data: { attendance: 'nope' } }));
+
+      const result = await client.listAttendance({ eventId: 'event-1' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_ATTENDANCE_READ_RESPONSE');
+      }
+    });
+
+    it('preserves the real backend error when the read is not permitted', async () => {
+      stubFetchOnce(jsonResponse({
+        success: false,
+        error: { code: 'PERMISSION_DENIED', message: 'You do not have permission to read attendance.' },
+      }));
+
+      const result = await client.listAttendance({ eventId: 'event-1' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('PERMISSION_DENIED');
+      }
+    });
+  });
 });

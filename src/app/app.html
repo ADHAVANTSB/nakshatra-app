@@ -29,7 +29,7 @@
 
 </div>
 
-@if (!isAuthenticated()) {
+@if (!isAuthenticated() || isLoginRoute()) {
   <router-outlet></router-outlet>
 } @else {
 <!-- =========================================================

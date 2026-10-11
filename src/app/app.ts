@@ -1,9 +1,10 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import {
+  NavigationEnd,
+  Router,
   RouterLink,
   RouterLinkActive,
-  RouterOutlet,
-  Router
+  RouterOutlet
 } from '@angular/router';
 import { ApplicationSection } from './core/models';
 import { AuthService } from './core/services/auth/auth.service';
@@ -15,6 +16,20 @@ interface NavItem {
   route: string;
   icon: string;
   section: ApplicationSection;
+}
+
+/**
+ * Only these backend codes are a definitive verdict that the session (or the
+ * user behind it) is invalid. Transport-level failures never erase a session.
+ */
+const DEFINITIVE_SESSION_ERROR_CODES: ReadonlySet<string> = new Set([
+  'SESSION_INVALID',
+  'SESSION_REQUIRED',
+  'USER_NOT_APPROVED',
+]);
+
+function isLoginUrl(url: string): boolean {
+  return url === '/login' || url.startsWith('/login?') || url.startsWith('/login#');
 }
 
 @Component({
@@ -37,6 +52,24 @@ export class App implements OnInit {
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly currentUser = this.auth.currentUser;
   readonly notifications = this.notificationService.notifications;
+
+  /**
+   * Whether the router currently shows the sign-in page.
+   *
+   * The authenticated shell must never wrap the login card. When a persisted
+   * session is restored on boot the identity flips to authenticated while the
+   * router may still sit on `/login`; without this flag that refresh renders
+   * the shell behind the login form.
+   */
+  readonly isLoginRoute = signal(isLoginUrl(this.router.url));
+
+  constructor() {
+    this.router.events.subscribe(event => {
+      if (event instanceof NavigationEnd) {
+        this.isLoginRoute.set(isLoginUrl(event.urlAfterRedirects));
+      }
+    });
+  }
 
   ngOnInit(): void {
     void this.validateStartupSession();
@@ -167,12 +200,31 @@ export class App implements OnInit {
     if (this.auth.applicationSession()?.id !== session.id) return;
 
     if (!result.success) {
-      this.auth.logout();
+      if (DEFINITIVE_SESSION_ERROR_CODES.has(result.error.code)) {
+        // The backend definitively rejected the session (expired, revoked or
+        // the user is not approved): clear it and return to sign-in.
+        this.auth.logout();
+      } else {
+        // Ambiguous transport failure (network error, timeout, non-JSON
+        // response). The backend never said the session is invalid, so the
+        // saved session is kept for a later re-check instead of being erased
+        // as if it were definitively invalid.
+        this.notificationService.warning(
+          'Sign-in status could not be verified',
+          'Your saved session was kept and will be checked again. If problems continue, sign in once more.'
+        );
+      }
       return;
     }
 
     this.auth.setGoogleAuthenticatedUser(result.user);
     this.auth.setApplicationSession({ id: session.id, expiresAt: result.data.session.expiresAt });
+
+    // A visitor whose session was just restored while sitting on the sign-in
+    // page belongs inside the application, not back on the login card.
+    if (this.isLoginRoute()) {
+      void this.router.navigateByUrl('/dashboard');
+    }
   }
 
 

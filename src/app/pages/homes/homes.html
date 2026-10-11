@@ -216,8 +216,92 @@
             signed-in Google account. It does not need to appear in a Drive
             search list.
           </p>
+
+          <button
+            type="button"
+            class="secondary-action"
+            (click)="previewSheetMetadata()"
+            [disabled]="!canPreviewSheet()">
+            {{ previewing() ? 'Checking the sheet…' : 'Preview source metadata' }}
+          </button>
         </section>
 
+        @if (previewError()) {
+          <p class="form-message error" role="alert">{{ previewError() }}</p>
+        }
+
+        @if (sheetPreview(); as preview) {
+
+          <section class="sheet-preview-panel" aria-label="Detected source metadata">
+            <h3>Detected from “{{ preview.spreadsheetName }}”</h3>
+
+            <dl class="sheet-preview-values">
+              <div>
+                <dt>Home name</dt>
+                <dd>{{ preview.metadata.homeName || 'Not found in the sheet' }}</dd>
+              </div>
+              <div>
+                <dt>Address</dt>
+                <dd>{{ preview.metadata.address || 'Not found in the sheet' }}</dd>
+              </div>
+              <div>
+                <dt>Contact phone</dt>
+                <dd>{{ preview.metadata.contactPhone || 'Not found in the sheet' }}</dd>
+              </div>
+              <div>
+                <dt>Participants detected</dt>
+                <dd>{{ preview.participantCount === null ? 'Not detected' : preview.participantCount }}</dd>
+              </div>
+            </dl>
+
+            @if (previewMissingLabels().length) {
+              <p class="sheet-preview-missing">
+                Not found in the sheet — please enter: {{ previewMissingLabels().join(', ') }}.
+              </p>
+            }
+
+            @if (preview.caretakerCount > 0) {
+              <div class="sheet-preview-caretakers">
+                <h4>Caretakers ({{ preview.caretakerCount }})</h4>
+                <ul>
+                  @for (caretaker of preview.caretakers; track caretaker.sourceRowNumber + '-' + caretaker.fullName) {
+                    <li>
+                      <strong>{{ caretaker.fullName }}</strong>
+                      @if (caretaker.contactNumber) {
+                        <span> · {{ caretaker.contactNumber }}</span>
+                      }
+                      @if (caretaker.participantName) {
+                        <span> · linked to {{ caretaker.participantName }}</span>
+                      }
+                    </li>
+                  }
+                </ul>
+                @if (contactInferredFromCaretaker()) {
+                  <p class="sheet-preview-warning">
+                    {{ friendlyPreviewWarning('METADATA_CONTACT_INFERRED_FROM_CARETAKER') }}
+                  </p>
+                }
+              </div>
+            }
+
+            @if (preview.warnings.length) {
+              <ul class="sheet-preview-warnings">
+                @for (warning of preview.warnings; track $index) {
+                  <li>{{ friendlyPreviewWarning(warning) }}</li>
+                }
+              </ul>
+            }
+
+            @if (preview.errors.length) {
+              <ul class="sheet-preview-errors">
+                @for (error of preview.errors; track $index) {
+                  <li>{{ error }}</li>
+                }
+              </ul>
+            }
+          </section>
+
+        }
       }
 
       @if (formError()) {
@@ -226,6 +310,38 @@
 
       @if (progressMessage()) {
         <p class="form-message progress" role="status">{{ progressMessage() }}</p>
+      }
+
+      @if (connectionOutcome(); as outcome) {
+
+        <section class="connection-outcome" [attr.data-state]="outcome.state" aria-live="polite">
+          <h3>Connection result</h3>
+
+          <p class="connection-outcome-message">{{ outcome.message }}</p>
+
+          @if (outcome.technicalDetail) {
+            <p class="connection-outcome-detail">{{ outcome.technicalDetail }}</p>
+          }
+
+          @if (retryImportAvailable()) {
+            <button
+              type="button"
+              class="secondary-action"
+              (click)="retryConnectionImport()"
+              [disabled]="retryingImport()">
+              {{ retryingImport() ? 'Retrying…' : 'Retry sync' }}
+            </button>
+          }
+
+          @if (outcome.state === 'CONNECTED' || outcome.state === 'ALREADY_CONNECTED') {
+            <p>Use the View and Sync actions on the connected home below.</p>
+          }
+
+          @if (outcome.state === 'ARCHIVED_SOURCE') {
+            <p>Open the Archived homes section below to restore it.</p>
+          }
+        </section>
+
       }
 
       @if (successMessage()) {
@@ -369,8 +485,8 @@
                 <dd>{{ home.contactPhone || '—' }}</dd>
               </div>
               <div>
-                <dt>Import status</dt>
-                <dd>{{ importStatusLabel(home) }}</dd>
+                <dt>Status</dt>
+                <dd>{{ connectionStatusLabel(home) }}</dd>
               </div>
               <div>
                 <dt>Participants</dt>

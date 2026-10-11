@@ -25,9 +25,10 @@ export interface AttendanceResult {
  * below holds only records the backend has returned. A mark is never reported
  * as successful unless the backend accepted it.
  *
- * The backend contract exposes no attendance read action, so records persisted
- * in an earlier session cannot be loaded here; those rows display "Not marked"
- * until they are marked again in this session.
+ * Persisted marks are read through the backend's `listAttendance` action, so
+ * values saved in an earlier session display on load instead of showing as
+ * "Not marked". A failed read is reported honestly and never erases records
+ * that are already visible.
  */
 @Injectable({ providedIn: 'root' })
 export class AttendanceService {
@@ -38,6 +39,10 @@ export class AttendanceService {
   private readonly teamService = inject(TeamService);
 
   private readonly records = signal<Attendance[]>([]);
+  /** Events whose persisted attendance has been read at least once. */
+  private readonly loadedEvents = new Set<string>();
+  /** In-flight reads, keyed by event id, so concurrent callers share one request. */
+  private readonly pendingLoads = new Map<string, Promise<boolean>>();
 
   readonly records$ = this.records.asReadonly();
 
@@ -53,6 +58,42 @@ export class AttendanceService {
       record.participantId === participantId &&
       record.eventId === eventId
     );
+  }
+
+  /**
+   * Reads the persisted attendance for one event. Concurrent calls for the
+   * same event share a single request; a settled load is not re-requested
+   * unless `force` is set (used after VERSION_CONFLICT).
+   */
+  async loadEventAttendance(eventId: string, force = false): Promise<boolean> {
+    if (!eventId) return false;
+
+    if (!force) {
+      const pending = this.pendingLoads.get(eventId);
+      if (pending) return pending;
+      if (this.loadedEvents.has(eventId)) return true;
+    }
+
+    const request = this.requestEventAttendance(eventId)
+      .finally(() => this.pendingLoads.delete(eventId));
+    this.pendingLoads.set(eventId, request);
+    return request;
+  }
+
+  private async requestEventAttendance(eventId: string): Promise<boolean> {
+    const response = await this.apiClient.listAttendance({ eventId });
+
+    if (!response.success) {
+      // A failed read must not clear records that are already displayed.
+      return false;
+    }
+
+    this.records.update(current => [
+      ...current.filter(record => record.eventId !== eventId),
+      ...response.data.attendance,
+    ]);
+    this.loadedEvents.add(eventId);
+    return true;
   }
 
   async markAttendance(
@@ -80,10 +121,13 @@ export class AttendanceService {
     if (!response.success) {
       if (response.error.code === 'VERSION_CONFLICT') {
         // The stored version no longer matches the backend; keeping it would
-        // make every retry send the same stale expectedVersion.
+        // make every retry send the same stale expectedVersion. The forced
+        // re-read brings the persisted values back so what is displayed is
+        // current — the user no longer has to refresh manually.
         this.records.update(current => current.filter(record =>
           !(record.participantId === participantId && record.eventId === eventId)
         ));
+        await this.loadEventAttendance(eventId, true);
       }
 
       return { success: false, errors: [response.error.message], errorCode: response.error.code };

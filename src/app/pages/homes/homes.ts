@@ -7,6 +7,8 @@ import {
   ConnectedShelterHome,
   ImportStatusEntry,
   ShelterHomeArchivePreviewData,
+  ShelterSheetMetadataField,
+  ShelterSheetPreviewData,
   SyncShelterSheetData,
   ValidationResult,
 } from '../../core/models';
@@ -51,6 +53,23 @@ export class Homes implements OnInit {
   readonly importedParticipantCount = signal<number | null>(null);
   readonly connectedHome = signal<ConnectedHome | null>(null);
   readonly selectedHomeId = signal<string | null>(null);
+
+  /**
+   * Read-only source-workbook metadata preview (backend `previewShelterSheet`).
+   * `previewing` covers the request in flight; `previewError` holds the real
+   * backend failure message when the preview could not be produced.
+   */
+  readonly previewing = signal(false);
+  readonly sheetPreview = signal<ShelterSheetPreviewData | null>(null);
+  readonly previewError = signal('');
+
+  /** Terminal result of the last connect/import attempt (see ConnectionOutcome). */
+  readonly connectionOutcome = signal<ConnectionOutcome | null>(null);
+  readonly retryingImport = signal(false);
+  readonly retryImportAvailable = computed(() => {
+    const outcome = this.connectionOutcome();
+    return outcome?.state === 'SYNC_FAILED' && !!outcome.shelterHomeId;
+  });
 
   /** Id of the home whose Google Sheet sync is currently in flight, if any. */
   readonly syncingHomeId = signal<string | null>(null);
@@ -328,6 +347,37 @@ export class Homes implements OnInit {
   }
 
   /**
+   * Friendly primary status for the home card. Backend status fields are kept
+   * in the data model untouched; only the presentation label is translated,
+   * and no raw backend code ever reaches the primary UI.
+   */
+  connectionStatusLabel(home: ConnectedShelterHome): string {
+    if (home.status === 'ARCHIVED') {
+      return 'Archived';
+    }
+
+    switch ((this.importStatus(home.id) || '').toUpperCase()) {
+      case 'RUNNING':
+      case 'IN_PROGRESS':
+        return 'Syncing';
+      case 'COMPLETED':
+        return 'Synced';
+      case 'COMPLETED_WITH_ERRORS':
+      case 'COMPLETED_WITH_WARNINGS':
+        return 'Synced with warnings';
+      case 'FAILED':
+      case 'ERROR':
+        return 'Sync failed';
+      default:
+        break;
+    }
+
+    // A home with a prior import but no loaded status is being checked;
+    // a connected source that was never imported needs its first sync.
+    return home.currentImportVersionId ? 'Checking status' : 'Sync needed';
+  }
+
+  /**
    * Opens the backend-supplied spreadsheet link in a new tab.
    *
    * The URL always comes from `listShelterHomes`; it is never constructed from a
@@ -503,11 +553,113 @@ export class Homes implements OnInit {
     this.validationResults.set([]);
     this.importedParticipantCount.set(null);
     this.connectedHome.set(null);
+    this.sheetPreview.set(null);
+    this.previewError.set('');
+    this.previewing.set(false);
+    this.connectionOutcome.set(null);
+    this.retryingImport.set(false);
   }
 
   closeAddHome(): void {
     this.showAddHome.set(false);
     this.formError.set('');
+    this.sheetPreview.set(null);
+    this.previewError.set('');
+    this.previewing.set(false);
+    this.connectionOutcome.set(null);
+    this.retryingImport.set(false);
+  }
+
+  /** Whether the source metadata preview can be requested right now. */
+  canPreviewSheet(): boolean {
+    return !this.previewing() && !this.saving()
+      && this.isValidSheetUrl(this.sheetUrl().trim());
+  }
+
+  /**
+   * Read-only metadata preview for the pasted URL (backend `previewShelterSheet`).
+   *
+   * Detected values prefill only EMPTY form fields — the backend's
+   * `metadataMissing` list, not a guess, decides what the user is asked to
+   * enter. A contact value found under a caretaker/warden label is never
+   * treated as the home's official contact.
+   */
+  async previewSheetMetadata(): Promise<void> {
+    if (this.previewing() || this.saving()) {
+      return;
+    }
+
+    const spreadsheetUrl = this.sheetUrl().trim();
+
+    if (!this.isValidSheetUrl(spreadsheetUrl)) {
+      this.previewError.set('Enter a valid Google Sheets URL to preview its metadata.');
+      return;
+    }
+
+    this.previewing.set(true);
+    this.previewError.set('');
+
+    const response = await this.apiClient.previewShelterSheet({ spreadsheetUrl });
+    this.previewing.set(false);
+
+    if (!response.success) {
+      this.sheetPreview.set(null);
+      this.previewError.set(response.error.message);
+      return;
+    }
+
+    this.sheetPreview.set(response.data);
+    this.applyPreviewMetadata(response.data);
+  }
+
+  /** True when the detected contact value came from a caretaker/warden column. */
+  contactInferredFromCaretaker(): boolean {
+    return this.sheetPreview()?.metadataContactSource === 'CARETAKER_LABEL';
+  }
+
+  /** Human-readable labels for the metadata fields missing from the sheet. */
+  previewMissingLabels(): string[] {
+    const labels: Record<ShelterSheetMetadataField, string> = {
+      homeName: 'Home name',
+      address: 'Address',
+      contactName: 'Contact name',
+      contactPhone: 'Contact phone',
+    };
+    return (this.sheetPreview()?.metadataMissing ?? [])
+      .filter(field => Object.prototype.hasOwnProperty.call(labels, field))
+      .map(field => labels[field]);
+  }
+
+  /** Known backend warning codes get plain-language text; unknown ones pass through. */
+  friendlyPreviewWarning(code: string): string {
+    switch (code) {
+      case 'METADATA_CONTACT_INFERRED_FROM_CARETAKER':
+        return 'A contact value was inferred from caretaker details. It is listed under Caretakers and was not filled in as the official contact.';
+      default:
+        return code;
+    }
+  }
+
+  private applyPreviewMetadata(preview: ShelterSheetPreviewData): void {
+    const metadata = preview.metadata;
+
+    if (!this.homeName().trim() && metadata.homeName) {
+      this.homeName.set(metadata.homeName);
+    }
+    if (!this.address().trim() && metadata.address) {
+      this.address.set(metadata.address);
+    }
+    if (!this.contactPhone().trim() && metadata.contactPhone) {
+      this.contactPhone.set(metadata.contactPhone);
+    }
+    // Only an explicitly identified contact populates the official field;
+    // caretaker-derived names stay in the caretaker section.
+    if (
+      !this.contactName().trim() && metadata.contactName
+      && preview.metadataContactSource === 'EXPLICIT_CONTACT_LABEL'
+    ) {
+      this.contactName.set(metadata.contactName);
+    }
   }
 
   async connectSheet(): Promise<void> {
@@ -528,127 +680,262 @@ export class Homes implements OnInit {
       return;
     }
 
-    // The same value the user pasted is what the backend receives.
+    // The same value the user pasted is what the backend receives. The initial
+    // import runs as part of the connect call and its real outcome comes back
+    // in the response, so no duplicate sync request is ever issued.
     const payload: ConnectShelterSheetPayload = {
       homeName,
       address: this.address().trim(),
       contactName: this.contactName().trim(),
       contactPhone: this.contactPhone().trim(),
       spreadsheetUrl,
+      runInitialSync: true,
     };
 
     this.saving.set(true);
     this.formError.set('');
+    this.successMessage.set('');
+    this.connectionOutcome.set(null);
     this.progressMessage.set('Connecting Google Sheet...');
 
     const response = await this.apiClient.connectShelterSheet(payload);
 
     if (!response.success) {
-      this.finishWithError(
-        response.error.code === 'SPREADSHEET_ALREADY_CONNECTED'
-          ? `This Google Sheet is already connected. ${response.error.message}`
-          : response.error.message
-      );
+      await this.handleConnectFailure(response.error);
       return;
     }
 
-    const shelterHomeId = response.data.shelterHome.id;
+    const data = response.data;
+    const shelterHomeId = data.shelterHome.id;
+    const alreadyConnected = data.alreadyConnected === true
+      || data.connection?.status === 'ALREADY_CONNECTED';
 
     this.connectedHome.set({
       id: shelterHomeId,
-      name: response.data.shelterHome.homeName,
-      spreadsheetName: response.data.sheetSource.spreadsheetName,
+      name: data.shelterHome.homeName,
+      spreadsheetName: data.sheetSource.spreadsheetName,
     });
 
-    // ---------------------------------------------------------
-    // SYNC
-    // ---------------------------------------------------------
+    const initialImport = data.initialImport;
 
-    this.progressMessage.set('Syncing participant data...');
+    // A connected sheet with a failed import is a distinct outcome: the
+    // connection is persisted, only the import needs a Retry.
+    if (initialImport?.attempted && initialImport.status === 'FAILED') {
+      this.saving.set(false);
+      this.progressMessage.set('');
+      this.connectionOutcome.set({
+        state: 'SYNC_FAILED',
+        shelterHomeId,
+        homeName: data.shelterHome.homeName,
+        message: `Google Sheet connected, but the participant import failed: ${
+          initialImport.errorMessage || 'the backend reported an unspecified import failure'
+        }`,
+      });
+      return;
+    }
 
-    const sync = await this.apiClient.syncShelterSheet({ shelterHomeId });
+    if (initialImport?.attempted) {
+      // The backend already ran the import; verify and display its outcome.
+      this.progressMessage.set('Checking import status...');
+      const ok = await this.runPostSyncPipeline(shelterHomeId, undefined, initialImport.importVersionId);
+      if (!ok) return;
+    } else {
+      // Older backend response without an in-call import: run the explicit sync.
+      this.progressMessage.set('Syncing participant data...');
+      const sync = await this.apiClient.syncShelterSheet({ shelterHomeId });
+      if (!sync.success) {
+        this.saving.set(false);
+        this.progressMessage.set('');
+        this.connectionOutcome.set({
+          state: 'SYNC_FAILED',
+          shelterHomeId,
+          homeName: data.shelterHome.homeName,
+          message: `Google Sheet connected, but participant sync failed: ${sync.error.message}`,
+        });
+        return;
+      }
+      this.progressMessage.set('Checking import status...');
+      const ok = await this.runPostSyncPipeline(shelterHomeId, sync.data);
+      if (!ok) return;
+    }
+
+    this.successMessage.set(this.connectionMessage(response, this.importedParticipantCount() ?? 0));
+    this.connectionOutcome.set({
+      state: alreadyConnected ? 'ALREADY_CONNECTED' : 'CONNECTED',
+      shelterHomeId,
+      homeName: data.shelterHome.homeName,
+      message: alreadyConnected
+        ? `${data.shelterHome.homeName} was already connected — showing the existing home below.`
+        : `${data.shelterHome.homeName} is connected${data.sheetSource.spreadsheetName ? ` to ${data.sheetSource.spreadsheetName}` : ''}.`,
+    });
+    this.progressMessage.set('');
+    this.saving.set(false);
+  }
+
+  /**
+   * Re-runs ONLY the participant import for an existing connection after a
+   * SYNC_FAILED outcome. The home/source identity is reused exactly; the
+   * connect action is never issued again, so no duplicate home can appear.
+   */
+  async retryConnectionImport(): Promise<void> {
+    const outcome = this.connectionOutcome();
+    if (!outcome?.shelterHomeId || this.retryingImport() || this.saving()) {
+      return;
+    }
+
+    this.retryingImport.set(true);
+    this.progressMessage.set('Retrying participant sync...');
+
+    const sync = await this.apiClient.syncShelterSheet({ shelterHomeId: outcome.shelterHomeId });
 
     if (!sync.success) {
-      this.finishWithError(
-        `Google Sheet connected, but participant sync failed: ${sync.error.message}`
-      );
+      this.retryingImport.set(false);
+      this.progressMessage.set('');
+      this.connectionOutcome.set({
+        ...outcome,
+        message: `Participant sync failed again: ${sync.error.message}`,
+        technicalDetail: sync.error.code,
+      });
       return;
     }
 
-    const importVersionId = this.importVersionId(sync.data);
+    const ok = await this.runPostSyncPipeline(outcome.shelterHomeId, sync.data);
+    this.retryingImport.set(false);
 
-    // ---------------------------------------------------------
-    // IMPORT STATUS
-    // ---------------------------------------------------------
+    if (!ok) return;
 
-    this.progressMessage.set('Checking import status...');
+    const message = outcome.homeName
+      ? `${outcome.homeName} is synced.`
+      : 'Participant sync completed.';
+    this.successMessage.set(message);
+    this.connectionOutcome.set({
+      state: 'CONNECTED',
+      shelterHomeId: outcome.shelterHomeId,
+      homeName: outcome.homeName,
+      message,
+    });
+    this.progressMessage.set('');
+  }
 
-    const imports = await this.shelterData.loadImportStatus(
-      shelterHomeId,
-      importVersionId
-    );
+  /**
+   * Maps a failed connect call to a truthful outcome. Transport-level
+   * ambiguity (HTTP 404 page, timeout, network error) is checked against the
+   * homes list before being reported as a failure, because the backend may
+   * have persisted the connection even though the response was lost.
+   */
+  private async handleConnectFailure(error: { code: string; message: string }): Promise<void> {
+    this.progressMessage.set('');
 
+    if (error.code === 'SHELTER_HOME_ARCHIVED') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'ARCHIVED_SOURCE',
+        message: `${error.message} Open the Archived homes section to restore it.`,
+      });
+      // Make sure the restore path (with its ADMIN gate) is visible.
+      void this.loadArchivedHomes();
+      return;
+    }
+
+    if (error.code === 'SPREADSHEET_ACCESS_FAILED' || error.code === 'SOURCE_SHEET_ACCESS_FAILED') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'SOURCE_ACCESS_FAILED',
+        message: error.message,
+        technicalDetail: error.code,
+      });
+      return;
+    }
+
+    if (error.code === 'SPREADSHEET_ALREADY_CONNECTED') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'ALREADY_CONNECTED',
+        message: `This Google Sheet is already connected. ${error.message}`,
+      });
+      return;
+    }
+
+    if (AMBIGUOUS_CONNECT_CODES.has(error.code)) {
+      this.saving.set(false);
+
+      // Verification re-read: an active home whose workbook name matches the
+      // previewed sheet means the connection DID persist.
+      const previewName = this.sheetPreview()?.spreadsheetName?.trim();
+      if (previewName && await this.shelterData.loadConnectedHomes()) {
+        const match = this.connectedHomes().find(
+          home => home.status !== 'ARCHIVED'
+            && (home.spreadsheetName ?? '').trim() === previewName
+        );
+        if (match) {
+          this.connectedHome.set({
+            id: match.id,
+            name: match.homeName,
+            spreadsheetName: match.spreadsheetName,
+          });
+          this.connectionOutcome.set({
+            state: 'ALREADY_CONNECTED',
+            shelterHomeId: match.id,
+            homeName: match.homeName,
+            message: `This Google Sheet is already connected to ${match.homeName}. Use the View and Sync actions below.`,
+          });
+          return;
+        }
+      }
+
+      this.connectionOutcome.set({
+        state: 'REQUEST_ERROR',
+        message: 'The connection could not be confirmed. Check the connected homes list below before retrying — the sheet may have been connected despite the error.',
+        technicalDetail: `${error.code}: ${error.message}`,
+      });
+      return;
+    }
+
+    this.finishWithError(error.message);
+  }
+
+  /**
+   * Shared read pipeline after a confirmed import: import status, validation
+   * results, participants, then the connected-homes re-read. Returns false and
+   * records the failure when any read fails.
+   */
+  private async runPostSyncPipeline(
+    shelterHomeId: string,
+    syncData: SyncProgress | undefined,
+    importVersionId?: string
+  ): Promise<boolean> {
+    const versionId = importVersionId ?? (syncData ? this.importVersionId(syncData) : undefined);
+
+    const imports = await this.shelterData.loadImportStatus(shelterHomeId, versionId);
     if (!imports) {
       this.finishWithError(this.shelterData.errorFor('IMPORTS', shelterHomeId));
-      return;
+      return false;
     }
-
-    // ---------------------------------------------------------
-    // VALIDATION
-    // ---------------------------------------------------------
 
     this.progressMessage.set('Loading validation results...');
-
-    const validations = await this.shelterData.loadValidationResults(
-      shelterHomeId,
-      importVersionId
-    );
-
+    const validations = await this.shelterData.loadValidationResults(shelterHomeId, versionId);
     if (!validations) {
-      this.finishWithError(
-        this.shelterData.errorFor('VALIDATIONS', shelterHomeId)
-      );
-      return;
+      this.finishWithError(this.shelterData.errorFor('VALIDATIONS', shelterHomeId));
+      return false;
     }
-
-    // ---------------------------------------------------------
-    // PARTICIPANTS
-    // ---------------------------------------------------------
 
     this.progressMessage.set('Refreshing participant data...');
-
     const participants = await this.shelterData.loadParticipants(shelterHomeId);
-
     if (!participants) {
-      this.finishWithError(
-        this.shelterData.errorFor('PARTICIPANTS', shelterHomeId)
-      );
-      return;
+      this.finishWithError(this.shelterData.errorFor('PARTICIPANTS', shelterHomeId));
+      return false;
     }
-
-    // ---------------------------------------------------------
-    // REFRESH CONNECTED HOMES
-    // ---------------------------------------------------------
 
     if (!await this.shelterData.loadConnectedHomes()) {
       this.finishWithError(this.shelterData.homesError());
-      return;
+      return false;
     }
 
-    const currentImport = this.currentImport(
-      imports,
-      shelterHomeId,
-      importVersionId
-    );
-
+    const currentImport = this.currentImport(imports, shelterHomeId, versionId);
     this.validationResults.set(validations);
     this.importedParticipantCount.set(participants.length);
-    this.syncSummary.set(
-      this.toSyncSummary(currentImport, sync.data, participants.length)
-    );
-    this.successMessage.set(this.connectionMessage(response, participants.length));
-    this.progressMessage.set('');
-    this.saving.set(false);
+    this.syncSummary.set(this.toSyncSummary(currentImport, syncData, participants.length));
+    return true;
   }
 
   /**
@@ -713,17 +1000,17 @@ export class Homes implements OnInit {
 
   private toSyncSummary(
     status: ImportStatusEntry | undefined,
-    sync: SyncProgress,
+    sync: SyncProgress | undefined,
     participantCount: number
   ): SyncSummary {
     return {
-      version: status?.versionNumber ?? sync.versionNumber ?? sync.importVersion?.versionNumber ?? null,
-      recordsProcessed: status?.recordCount ?? sync.recordCount ?? null,
+      version: status?.versionNumber ?? sync?.versionNumber ?? sync?.importVersion?.versionNumber ?? null,
+      recordsProcessed: status?.recordCount ?? sync?.recordCount ?? null,
       validParticipants:
-        status?.validParticipantCount ?? sync.validParticipantCount ?? participantCount,
-      validationErrors: status?.errorCount ?? sync.errorCount ?? null,
-      warnings: status?.warningCount ?? sync.warningCount ?? null,
-      syncStatus: status?.status ?? sync.status ?? 'COMPLETED',
+        status?.validParticipantCount ?? sync?.validParticipantCount ?? participantCount,
+      validationErrors: status?.errorCount ?? sync?.errorCount ?? null,
+      warnings: status?.warningCount ?? sync?.warningCount ?? null,
+      syncStatus: status?.status ?? sync?.status ?? 'COMPLETED',
     };
   }
 
@@ -748,6 +1035,38 @@ export class Homes implements OnInit {
 }
 
 type SyncProgress = SyncShelterSheetData;
+
+/**
+ * Terminal state of a connect/import attempt, kept separate from the form
+ * error so a persisted connection is never reported as a total failure just
+ * because a later step failed.
+ */
+export type ConnectionOutcomeState =
+  | 'CONNECTED'
+  | 'SYNC_FAILED'
+  | 'ALREADY_CONNECTED'
+  | 'ARCHIVED_SOURCE'
+  | 'SOURCE_ACCESS_FAILED'
+  | 'REQUEST_ERROR';
+
+export interface ConnectionOutcome {
+  state: ConnectionOutcomeState;
+  /** User-facing summary; backend messages are preserved verbatim. */
+  message: string;
+  shelterHomeId?: string;
+  homeName?: string;
+  /** Raw transport/code detail kept for diagnostics, hidden from the primary text. */
+  technicalDetail?: string;
+}
+
+/** Codes that never reached a definitive backend verdict on the connect call. */
+const AMBIGUOUS_CONNECT_CODES: ReadonlySet<string> = new Set([
+  'SERVER_RESPONSE_MALFORMED',
+  'REQUEST_TIMEOUT',
+  'NETWORK_ERROR',
+  'API_REQUEST_FAILED',
+  'INVALID_SHELTER_SHEET_CONNECTION_RESPONSE',
+]);
 
 interface SyncSummary {
   version: number | null;

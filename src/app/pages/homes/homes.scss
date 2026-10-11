@@ -587,3 +587,16 @@
     }
   }
 }
+
+.sheet-preview-panel{border:1px solid #e3ebf3;border-radius:10px;padding:.9rem 1rem;margin-top:.8rem;background:#fbfdff}
+.sheet-preview-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem 1.2rem;margin:0 0 .6rem}
+.sheet-preview-values dt{font-size:.75rem;text-transform:uppercase;color:#6f8297}
+.sheet-preview-values dd{margin:.15rem 0 0;font-weight:600;overflow-wrap:anywhere}
+.sheet-preview-missing{color:#8a6d1f;background:#fdf6e3;border-radius:8px;padding:.5rem .7rem;margin:.4rem 0}
+.sheet-preview-warning,.sheet-preview-warnings li,.sheet-preview-errors li{color:#8a6d1f}
+.connection-outcome{border:1px solid #e3ebf3;border-left:4px solid #6f8297;border-radius:10px;padding:.8rem 1rem;margin-top:.8rem}
+.connection-outcome[data-state='CONNECTED'],.connection-outcome[data-state='ALREADY_CONNECTED']{border-left-color:#20804d;background:#f4fbf7}
+.connection-outcome[data-state='SYNC_FAILED'],.connection-outcome[data-state='REQUEST_ERROR']{border-left-color:#b7791f;background:#fdf9ef}
+.connection-outcome[data-state='ARCHIVED_SOURCE'],.connection-outcome[data-state='SOURCE_ACCESS_FAILED']{border-left-color:#a53e3e;background:#fff7f7}
+.connection-outcome-message,.connection-outcome-detail{overflow-wrap:anywhere}
+.connection-outcome-detail{font-size:.8rem;color:#6f8297}

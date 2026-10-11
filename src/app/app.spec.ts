@@ -1,7 +1,15 @@
-﻿import { TestBed, type ComponentFixture } from '@angular/core/testing';
+﻿import { Component } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { AuthService, type GoogleAuthenticatedUser } from './core/services/auth/auth.service';
+
+/** Bare stand-in for the login page used to exercise shell/routing behavior. */
+@Component({
+  selector: 'login-route-stub',
+  template: 'login-route-stub',
+})
+class LoginRouteStub {}
 
 /**
  * CERTIFICATE_TEAM may only reach DASHBOARD, RESULTS and CERTIFICATES
@@ -348,6 +356,139 @@ describe('App', () => {
     expect(TestBed.inject(AuthService).applicationSession()).toBeNull();
     expect(sessionStorage.getItem('nakshatra.applicationSession')).toBeNull();
     // No validation request can be issued without a session id.
+    expect(fetchCallCount).toBe(0);
+  });
+
+  it('keeps the persisted session when startup validation fails transiently', async () => {
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'transient-session-1', expiresAt: new Date(Date.now() + 3_600_000).toISOString() }),
+    );
+
+    // The suite default stub rejects every fetch -> ApiClientService maps the
+    // rejection to NETWORK_ERROR. That is an ambiguous transport failure: the
+    // backend never said the session is invalid, so the session must survive.
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const auth = TestBed.inject(AuthService);
+    expect(auth.applicationSession()?.id).toBe('transient-session-1');
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).not.toBeNull();
+
+    // The failure is reported honestly as a recoverable warning, not as an
+    // expired session.
+    const notifications = fixture.componentInstance.notifications();
+    const last = notifications[notifications.length - 1];
+    expect(last?.tone).toBe('warning');
+  });
+
+  it('distinguishes a malformed validation response from a definitive rejection', async () => {
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'malformed-response-session', expiresAt: new Date(Date.now() + 3_600_000).toISOString() }),
+    );
+
+    // An HTML error page (HTTP 404 from Apps Script, for example) is mapped to
+    // SERVER_RESPONSE_MALFORMED — ambiguous, so the session is kept.
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(
+      '<html>Not Found</html>',
+      { status: 404, headers: { 'Content-Type': 'text/html' } },
+    )));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const auth = TestBed.inject(AuthService);
+    expect(auth.applicationSession()?.id).toBe('malformed-response-session');
+    expect(sessionStorage.getItem('nakshatra.applicationSession')).not.toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('App on the login route', () => {
+  const SESSION_KEY = 'nakshatra.applicationSession';
+
+  beforeEach(async () => {
+    fetchCallCount = 0;
+
+    await TestBed.configureTestingModule({
+      imports: [App, LoginRouteStub],
+      providers: [
+        provideRouter([
+          { path: 'login', component: LoginRouteStub },
+          { path: 'dashboard', component: LoginRouteStub },
+        ]),
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('never renders the app shell around the login page, even when authenticated', async () => {
+    signIn(ADMIN_USER);
+    await TestBed.inject(Router).navigateByUrl('/login');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element = host(fixture);
+    expect(element.querySelector('.nk-shell')).toBeNull();
+    expect(element.querySelector('header.nk-header')).toBeNull();
+    // The login route content renders bare, without the authenticated shell.
+    expect(element.querySelector('login-route-stub')).not.toBeNull();
+  });
+
+  it('navigates to the dashboard after startup validation succeeds on /login', async () => {
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({ id: 'login-route-session', expiresAt: new Date(Date.now() + 3_600_000).toISOString() }),
+    );
+    await TestBed.inject(Router).navigateByUrl('/login');
+
+    vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+      fetchCallCount += 1;
+      expect(String(JSON.parse(init.body).action)).toBe('validateSession');
+      return Promise.resolve(new Response(
+        JSON.stringify({
+          success: true,
+          access: 'APPROVED',
+          user: ADMIN_USER,
+          data: { session: { expiresAt: new Date(Date.now() + 3_600_000).toISOString() } },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const router = TestBed.inject(Router);
+    expect(router.url).toBe('/dashboard');
+    expect(TestBed.inject(AuthService).isAuthenticated()).toBe(true);
+    expect(fetchCallCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('stays on /login when the visitor has no session to restore', async () => {
+    await TestBed.inject(Router).navigateByUrl('/login');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(TestBed.inject(Router).url).toBe('/login');
     expect(fetchCallCount).toBe(0);
   });
 });

@@ -62,6 +62,34 @@ export interface ConnectShelterSheetPayload {
   contactPhone: string;
   /** The Google Sheets URL exactly as entered; the backend resolves the sheet. */
   spreadsheetUrl: string;
+  /**
+   * When true the backend runs the initial participant import as part of the
+   * connect call and reports its real outcome in `initialImport`, so the
+   * frontend never issues a duplicate sync request.
+   */
+  runInitialSync?: boolean;
+}
+
+/** Outcome of the initial import run by (or alongside) a connection. */
+export interface ShelterSheetInitialImport {
+  attempted: boolean;
+  status: 'SUCCEEDED' | 'FAILED';
+  importVersionId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface ConnectShelterSheetData {
+  shelterHome: { id: string; homeCode: string; homeName: string; status: 'ACTIVE' };
+  sheetSource: { id: string; spreadsheetName?: string; sourceStatus: 'CONNECTED' };
+  /** Present when the backend resolved the connection state explicitly. */
+  connection?: { status: string };
+  /** Present when an initial import was attempted (with runInitialSync). */
+  initialImport?: ShelterSheetInitialImport;
+  /** True when the source was already connected and the existing home was returned. */
+  alreadyConnected?: boolean;
+  /** Backend qualifier, e.g. ALREADY_CONNECTED or CONNECTION_SUCCEEDED_SYNC_FAILED. */
+  code?: string;
 }
 
 export interface ShelterSheet {
@@ -74,9 +102,52 @@ export interface ListShelterSheetsData {
   sheets: ShelterSheet[];
 }
 
-export interface ConnectShelterSheetData {
-  shelterHome: { id: string; homeCode: string; homeName: string; status: 'ACTIVE' };
-  sheetSource: { id: string; spreadsheetName?: string; sourceStatus: 'CONNECTED' };
+/** Payload for the backend's read-only source-workbook metadata preview. */
+export interface PreviewShelterSheetPayload {
+  /** The Google Sheets URL exactly as entered; the backend resolves the sheet. */
+  spreadsheetUrl: string;
+}
+
+/**
+ * Where the detected contact values were found in the source workbook.
+ * `CARETAKER_LABEL` means the value was inferred from a caretaker/warden
+ * column and describes a person, not the home's official contact.
+ */
+export type MetadataContactSource = 'ABSENT' | 'CARETAKER_LABEL' | 'EXPLICIT_CONTACT_LABEL';
+
+/** Metadata fields the backend looks for: a subset appears in `metadataMissing`. */
+export type ShelterSheetMetadataField = 'homeName' | 'address' | 'contactName' | 'contactPhone';
+
+/** One caretaker detected in the source workbook's caretaker section. */
+export interface SourceSheetCaretaker {
+  fullName: string;
+  contactNumber: string;
+  alternateNumber: string;
+  sourceRowNumber: number;
+  participantName: string;
+}
+
+/** The validated result of `previewShelterSheet` (Code.gs 3898-3922). */
+export interface ShelterSheetPreviewData {
+  /** Workbook display name — never a spreadsheet id. */
+  spreadsheetName: string;
+  metadata: Partial<Record<ShelterSheetMetadataField, string>>;
+  metadataContactSource: MetadataContactSource;
+  metadataEvidence: Record<string, unknown>;
+  metadataMissing: ShelterSheetMetadataField[];
+  caretakers: SourceSheetCaretaker[];
+  caretakerCount: number;
+  /** null when no participant sheet (or no reliable row count) was detected. */
+  participantCount: number | null;
+  participantSheetDetected: boolean;
+  eventWiseSheetDetected: boolean;
+  workbookStructure: {
+    sheetsInspected: number;
+    sheetsTotal: number;
+    sheets: Array<Record<string, unknown>>;
+  };
+  warnings: string[];
+  errors: string[];
 }
 
 export interface SyncShelterSheetPayload {
@@ -279,6 +350,19 @@ export interface MarkAttendancePayload {
 
 export interface AttendanceData {
   attendance: Attendance;
+}
+
+/** Filters for the backend's listAttendance read (Code.gs 16437+). */
+export interface ListAttendancePayload {
+  eventId?: string;
+  participantId?: string;
+  teamId?: string;
+  status?: string;
+}
+
+/** The backend enriches rows with event/participant/home names (Code.gs 15895+). */
+export interface ListAttendanceData {
+  attendance: Attendance[];
 }
 
 /* ================================================================

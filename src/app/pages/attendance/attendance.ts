@@ -81,6 +81,14 @@ export class Attendance implements OnInit {
   readonly registrationsState = signal<RegistrationsState>('IDLE');
   readonly registrationError = signal('');
 
+  /**
+   * Read state of the persisted attendance for the selected event. A failed
+   * read is reported explicitly: rows would otherwise all show "Not marked",
+   * which reads as "nothing was ever saved".
+   */
+  readonly attendanceState = signal<RegistrationsState>('IDLE');
+  readonly attendanceError = signal('');
+
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
     void this.shelterData.ensureLoaded();
@@ -193,10 +201,12 @@ export class Attendance implements OnInit {
     this.registrationsState.set('LOADED');
   }
 
-  setEvent(eventId: string): void {
+  setEvent(eventId: string): Promise<void> {
     this.selectedEventId.set(eventId);
     this.errors.set([]);
-    void this.loadEventData(eventId);
+    this.attendanceError.set('');
+    this.attendanceState.set('IDLE');
+    return this.loadEventData(eventId);
   }
 
   /** Re-issues the registration (and, for group events, team) reads after a failure. */
@@ -209,6 +219,8 @@ export class Attendance implements OnInit {
   /**
    * Reads everything the attendee table needs for one event: its registrations
    * and, for group events, its persisted teams so the Team column is real.
+   * The persisted attendance for the event is read alongside them, so saved
+   * Present/Absent values display on load.
    */
   private async loadEventData(eventId: string, forceTeams = false): Promise<void> {
     // A cold deep link can arrive before the catalogue has loaded; the group
@@ -222,7 +234,30 @@ export class Attendance implements OnInit {
     await Promise.all([
       this.loadRegistrations(eventId),
       event?.mode === 'GROUP' ? this.teamService.loadTeams(event.id, forceTeams) : Promise.resolve(true),
+      this.loadEventAttendanceState(eventId, forceTeams),
     ]);
+  }
+
+  private async loadEventAttendanceState(eventId: string, force = false): Promise<void> {
+    if (!eventId) return;
+
+    this.attendanceState.set('LOADING');
+    this.attendanceError.set('');
+
+    const ok = await this.attendanceService.loadEventAttendance(eventId, force);
+
+    // A newer selection may have replaced this one while the request was open.
+    if (this.selectedEventId() !== eventId) return;
+
+    if (!ok) {
+      this.attendanceError.set(
+        'Saved attendance could not be read. Existing marks may be hidden — use Retry to read them again.'
+      );
+      this.attendanceState.set('FAILED');
+      return;
+    }
+
+    this.attendanceState.set('LOADED');
   }
 
   /** Team read state for the selected group event. */
@@ -275,8 +310,10 @@ export class Attendance implements OnInit {
 
       if (result.errorCode === 'VERSION_CONFLICT') {
         // Another coordinator marked this attendance first: nothing was
-        // overwritten, but the conflict must be explicit.
-        const conflictMessage = 'Attendance was updated elsewhere. Refresh and try again.';
+        // overwritten, and the service has already re-read the persisted
+        // values, so the rows now show the current backend state.
+        const conflictMessage =
+          'Attendance was updated elsewhere. The latest saved values have been reloaded — try again.';
         this.errors.set([conflictMessage]);
         this.notifications.error(`Attendance for ${participant.fullName} was not saved.`, conflictMessage);
         return;

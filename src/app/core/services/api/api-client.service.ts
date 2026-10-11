@@ -40,6 +40,10 @@ import {
   ListParticipantEventsData,
   ListParticipantsData,
   ListShelterHomesData,
+  ListAttendanceData,
+  ListAttendancePayload,
+  PreviewShelterSheetPayload,
+  ShelterSheetPreviewData,
   ListShelterHomesPayload,
   ListShelterSheetsData,
   ListUsersData,
@@ -192,6 +196,38 @@ export class ApiClientService {
     return this.isConnectShelterSheetData(response.data)
       ? response
       : { success: false, error: { code: 'INVALID_SHELTER_SHEET_CONNECTION_RESPONSE', message: 'The server returned an invalid shelter sheet connection.' } };
+  }
+
+  /**
+   * Read-only metadata preview for the connect flow: resolves the pasted URL
+   * server-side and reports what was detected (home name, address, contacts,
+   * caretakers, participant count, warnings). Never writes anything.
+   */
+  async previewShelterSheet(payload: PreviewShelterSheetPayload): Promise<ApiResponse<ShelterSheetPreviewData>> {
+    const response = await this.post<ShelterSheetPreviewData, PreviewShelterSheetPayload>(
+      'previewShelterSheet', payload
+    );
+    if (!response.success) return response;
+    return this.isShelterSheetPreviewData(response.data)
+      ? response
+      : { success: false, error: { code: 'INVALID_SHELTER_SHEET_PREVIEW_RESPONSE', message: 'The server returned an invalid sheet preview.' } };
+  }
+
+  private isShelterSheetPreviewData(value: unknown): value is ShelterSheetPreviewData {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Partial<ShelterSheetPreviewData>;
+    return typeof candidate.spreadsheetName === 'string'
+      && typeof candidate.metadata === 'object' && candidate.metadata !== null
+      && typeof candidate.metadataContactSource === 'string'
+      && Array.isArray(candidate.metadataMissing)
+      && Array.isArray(candidate.caretakers)
+      && typeof candidate.caretakerCount === 'number'
+      && (candidate.participantCount === null || typeof candidate.participantCount === 'number')
+      && typeof candidate.participantSheetDetected === 'boolean'
+      && typeof candidate.eventWiseSheetDetected === 'boolean'
+      && typeof candidate.workbookStructure === 'object' && candidate.workbookStructure !== null
+      && Array.isArray(candidate.warnings)
+      && Array.isArray(candidate.errors);
   }
 
   listShelterSheets(): Promise<ApiResponse<ListShelterSheetsData>> {
@@ -520,6 +556,24 @@ export class ApiClientService {
     return record
       ? { success: true, data: { attendance: record } }
       : { success: false, error: { code: 'INVALID_ATTENDANCE_RESPONSE', message: 'The server returned an invalid attendance response.' } };
+  }
+
+  /**
+   * Read path for persisted attendance (backend `listAttendance`). Rows arrive
+   * enriched with event/participant/home names; the normalized core record is
+   * kept. The operational read never requests archived rows.
+   */
+  async listAttendance(payload: ListAttendancePayload = {}): Promise<ApiResponse<ListAttendanceData>> {
+    const response = await this.post<unknown, ListAttendancePayload>('listAttendance', payload);
+    if (!response.success) return response;
+    const rows = this.collection(response.data, ['attendance']);
+    if (rows === null) {
+      return { success: false, error: { code: 'INVALID_ATTENDANCE_READ_RESPONSE', message: 'The server returned an invalid attendance response.' } };
+    }
+    const records = rows
+      .map(row => this.normalizeAttendance(row))
+      .filter((record): record is Attendance => !!record);
+    return { success: true, data: { attendance: records } };
   }
 
   /* ================================================================

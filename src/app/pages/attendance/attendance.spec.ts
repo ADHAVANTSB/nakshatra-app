@@ -96,7 +96,10 @@ describe('Attendance — mark conflict reporting', () => {
 
     await component.markAttendance(PARTICIPANT, 'PRESENT');
 
-    expect(component.errors()).toContain('Attendance was updated elsewhere. Refresh and try again.');
+    expect(component.errors()[0]).toContain('Attendance was updated elsewhere.');
+    // The service re-reads the persisted values after a conflict, so the
+    // message must no longer ask the user to do the refresh themselves.
+    expect(component.errors()[0]).not.toContain('Refresh and try again.');
   });
 
   it('drops the local record after a conflict so the retry sends no expectedVersion', async () => {
@@ -193,5 +196,188 @@ describe('Attendance — mark conflict reporting', () => {
 
     const lastPayload = payloads[payloads.length - 1];
     expect(lastPayload['expectedVersion']).toBeUndefined();
+  });
+});
+
+describe('Attendance — persisted attendance display', () => {
+  let component: Attendance;
+
+  const EVENT = {
+    id: 'event-1',
+    eventCode: 'E-01',
+    name: 'Vocal',
+    category: 'ARTS',
+    mode: 'SOLO',
+    status: 'ACTIVE',
+    eligibleLevels: ['JUNIOR'],
+  };
+
+  const PARTICIPANT = {
+    id: 'participant-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Test Participant',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    version: 1,
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    validationStatus: 'PASSED',
+  } as never;
+
+  const HOME = {
+    id: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    address: '',
+    contactName: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    version: 1,
+  };
+
+  function envelope(data: unknown): Promise<Response> {
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: true, data }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+  }
+
+  interface Options {
+    attendanceRows?: unknown[];
+    attendanceFails?: boolean;
+  }
+
+  function stubBackend(options: Options = {}): Record<string, number> {
+    const calls: Record<string, number> = {};
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      calls[request.action] = (calls[request.action] ?? 0) + 1;
+
+      if (request.action === 'listEvents') return envelope({ events: [EVENT] });
+      if (request.action === 'listParticipants') return envelope({ participants: [PARTICIPANT] });
+      if (request.action === 'listShelterHomes') return envelope({ shelterHomes: [HOME] });
+      if (request.action === 'listEventRegistrations') {
+        return envelope({
+          participantEvents: [{
+            id: 'reg-1',
+            participantId: 'participant-1',
+            eventId: 'event-1',
+            registrationStatus: 'REGISTERED',
+            version: 1,
+          }],
+        });
+      }
+      if (request.action === 'listAttendance') {
+        if (options.attendanceFails) {
+          return Promise.resolve(new Response(
+            JSON.stringify({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Not permitted.' } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ));
+        }
+        return envelope({
+          attendance: options.attendanceRows ?? [{
+            id: 'ATT-1',
+            eventId: 'event-1',
+            participantId: 'participant-1',
+            teamId: '',
+            status: 'PRESENT',
+            version: 2,
+            createdAt: '',
+            createdBy: '',
+            updatedAt: '',
+            updatedBy: '',
+          }],
+        });
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+    return calls;
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Attendance],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    component = TestBed.createComponent(Attendance).componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('loads saved attendance with the roster and shows existing values on the rows', async () => {
+    const calls = stubBackend();
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadEvents();
+    await store.loadParticipants('home-1');
+    await store.loadEventRegistrations('event-1');
+
+    await component.setEvent('event-1');
+
+    const attendee = component.attendees().find(item => item.participant.id === 'participant-1');
+    expect(attendee).toBeTruthy();
+    // The persisted PRESENT mark displays without any local marking.
+    expect(attendee?.attendance?.status).toBe('PRESENT');
+    expect(attendee?.attendance?.version).toBe(2);
+    expect(calls['listAttendance']).toBe(1);
+    // The operational read never requests archived rows.
+    expect(component.attendanceError()).toBe('');
+  });
+
+  it('surfaces a failed attendance read instead of silently showing all unmarked', async () => {
+    stubBackend({ attendanceFails: true });
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadEvents();
+    await store.loadParticipants('home-1');
+    await store.loadEventRegistrations('event-1');
+
+    await component.setEvent('event-1');
+
+    expect(component.attendanceError()).toContain('could not be read');
+  });
+
+  it('retries the attendance read through the roster retry path', async () => {
+    const calls = stubBackend({ attendanceFails: true });
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadEvents();
+    await store.loadParticipants('home-1');
+    await store.loadEventRegistrations('event-1');
+
+    await component.setEvent('event-1');
+    expect(component.attendanceError()).toContain('could not be read');
+
+    // The retry stub now answers the read successfully.
+    stubBackend({});
+    await component.retryRegistrations();
+
+    expect(component.attendanceError()).toBe('');
+    expect(calls['listAttendance']).toBeGreaterThanOrEqual(1);
   });
 });
