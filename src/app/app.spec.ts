@@ -292,6 +292,12 @@ describe('App', () => {
       ));
     });
 
+    // A successful boot restore navigates into the application; this spec's
+    // empty route table has no /dashboard route, so stub the navigation.
+    const router = TestBed.inject(Router);
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl =
+      vi.fn(() => Promise.resolve(true));
+
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();

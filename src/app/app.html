@@ -47,7 +47,8 @@
   id="sidebar-toggle"
   class="layout-toggle"
   type="checkbox"
-  aria-hidden="true"
+  tabindex="-1"
+  aria-label="Toggle navigation"
 />
 
 
@@ -84,7 +85,6 @@
         for="sidebar-toggle"
         class="nk-sidebar-toggle"
         title="Toggle navigation"
-        aria-label="Toggle navigation"
       >
 
         <span></span>
@@ -171,7 +171,6 @@
   <label
     for="sidebar-toggle"
     class="nk-sidebar-backdrop"
-    aria-label="Close sidebar"
   ></label>
 
 
@@ -435,7 +434,6 @@
         <button
           class="nk-user"
           type="button"
-          aria-label="Open account menu"
           [attr.aria-expanded]="userMenuOpen()"
           (click)="toggleUserMenu(); $event.stopPropagation()"
         >

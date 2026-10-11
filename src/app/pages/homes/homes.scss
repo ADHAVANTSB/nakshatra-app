@@ -1,4 +1,4 @@
-/* =========================================================
+﻿/* =========================================================
    SHELTER HOME LIST
    Phase 1 - Functional Data UI
    ========================================================= */
@@ -103,7 +103,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 
-  color: #8495aa;
+  color: #58707f;
 }
 
 .home-card-title h4 {
@@ -216,7 +216,7 @@
   font-size: 0.75rem;
   font-weight: 600;
 
-  color: #6f8297;
+  color: #58707f;
 }
 
 
@@ -362,7 +362,7 @@
 .connected-home-card h3 { margin: .2rem 0 .35rem; color: #1d3557; }
 .connected-home-card p { margin: .25rem 0; color: #536b83; }
 .connected-home-card dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem 1rem; margin: 1rem 0 0; }
-.connected-home-card dt { color: #8495aa; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.connected-home-card dt { color: #58707f; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .connected-home-card dd { margin: .2rem 0 0; color: #536b83; font-size: .85rem; overflow-wrap: anywhere; }
 .home-detail-panel { margin-top: 1rem; padding: .9rem 1rem; border-radius: 10px; background: #f7f9fc; }
 .home-detail-panel h4 { margin: 0 0 .5rem; }
@@ -370,7 +370,7 @@
 .form-message { padding: .7rem .9rem; border-radius: 8px; }
 .form-message.error { background: #fff0f0; color: #a53e3e; }
 .form-message.success { background: #eaf8f0; color: #20804d; }
-.form-message.progress, .sheet-state { color: #6f8297; }
+.form-message.progress, .sheet-state { color: #58707f; }
 
 
 
@@ -435,7 +435,7 @@
 .source-section h4 {
   margin: 0 0 0.6rem;
 
-  color: #8495aa;
+  color: #58707f;
 
   font-size: 0.72rem;
   font-weight: 700;
@@ -491,7 +491,7 @@
   align-items: center;
 
   small {
-    color: #8a93a3;
+    color: #58707f;
   }
 }
 
@@ -590,13 +590,13 @@
 
 .sheet-preview-panel{border:1px solid #e3ebf3;border-radius:10px;padding:.9rem 1rem;margin-top:.8rem;background:#fbfdff}
 .sheet-preview-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem 1.2rem;margin:0 0 .6rem}
-.sheet-preview-values dt{font-size:.75rem;text-transform:uppercase;color:#6f8297}
+.sheet-preview-values dt{font-size:.75rem;text-transform:uppercase;color:#58707f}
 .sheet-preview-values dd{margin:.15rem 0 0;font-weight:600;overflow-wrap:anywhere}
 .sheet-preview-missing{color:#8a6d1f;background:#fdf6e3;border-radius:8px;padding:.5rem .7rem;margin:.4rem 0}
 .sheet-preview-warning,.sheet-preview-warnings li,.sheet-preview-errors li{color:#8a6d1f}
-.connection-outcome{border:1px solid #e3ebf3;border-left:4px solid #6f8297;border-radius:10px;padding:.8rem 1rem;margin-top:.8rem}
+.connection-outcome{border:1px solid #e3ebf3;border-left:4px solid #58707f;border-radius:10px;padding:.8rem 1rem;margin-top:.8rem}
 .connection-outcome[data-state='CONNECTED'],.connection-outcome[data-state='ALREADY_CONNECTED']{border-left-color:#20804d;background:#f4fbf7}
 .connection-outcome[data-state='SYNC_FAILED'],.connection-outcome[data-state='REQUEST_ERROR']{border-left-color:#b7791f;background:#fdf9ef}
 .connection-outcome[data-state='ARCHIVED_SOURCE'],.connection-outcome[data-state='SOURCE_ACCESS_FAILED']{border-left-color:#a53e3e;background:#fff7f7}
 .connection-outcome-message,.connection-outcome-detail{overflow-wrap:anywhere}
-.connection-outcome-detail{font-size:.8rem;color:#6f8297}
+.connection-outcome-detail{font-size:.8rem;color:#58707f}

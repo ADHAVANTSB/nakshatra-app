@@ -110,6 +110,7 @@
 
 
     <select
+      aria-label="Filter by category"
       [ngModel]="categoryFilter()"
       (ngModelChange)="setCategory($event)">
 
@@ -133,6 +134,7 @@
 
 
     <select
+      aria-label="Filter by mode"
       [ngModel]="modeFilter()"
       (ngModelChange)="setMode($event)">
 
@@ -152,6 +154,7 @@
 
 
     <select
+      aria-label="Filter by status"
       [ngModel]="statusFilter()"
       (ngModelChange)="setStatus($event)">
 
@@ -788,7 +791,7 @@
                       <span class="search-icon">⌕</span>
                       <input type="text" placeholder="Search name or code" [ngModel]="teamParticipantSearch()" (ngModelChange)="setTeamParticipantSearch($event)" />
                     </div>
-                    <select [ngModel]="teamParticipantHomeFilter()" (ngModelChange)="setTeamParticipantHome($event)">
+                    <select aria-label="Filter participants by shelter home" [ngModel]="teamParticipantHomeFilter()" (ngModelChange)="setTeamParticipantHome($event)">
                       <option value="ALL">All shelter homes</option>
                       @for (home of homes(); track home.id) {
                         <option [value]="home.id">{{ home.name }}</option>
@@ -1205,6 +1208,7 @@
 
 
               <select
+                aria-label="Filter participants by shelter home"
                 [ngModel]="participantHomeFilter()"
                 (ngModelChange)="setParticipantHome($event)">
 

@@ -1,9 +1,7 @@
 <div class="page">
-
   <!-- PAGE HEADER -->
 
   <div class="page-header">
-
     <div>
       <span class="eyebrow">REGISTRATION</span>
       <h1>Shelter Homes</h1>
@@ -15,29 +13,25 @@
         class="secondary-button"
         type="button"
         (click)="refreshConnectedHomes()"
-        [disabled]="loading()">
+        [disabled]="loading()"
+      >
         {{ loading() ? 'Refreshing…' : 'Refresh' }}
       </button>
-      <button
-        class="primary-button"
-        type="button"
-        (click)="openAddHome()">
-        + Add Home
-      </button>
+      <button class="primary-button" type="button" (click)="openAddHome()">+ Add Home</button>
     </div>
-
   </div>
-
 
   <!-- SYNC ALL HOMES (backend-managed bulk job) -->
 
   <section class="sync-all-panel" aria-live="polite">
-
     <div class="sync-all-head">
       <div>
         <span class="eyebrow">BULK SYNC</span>
         <h2>Sync All Homes</h2>
-        <p>One backend-managed job syncs every connected home from its Google Sheet in chunks. Progress and per-home outcomes come from the job itself — never from this page refreshing.</p>
+        <p>
+          One backend-managed job syncs every connected home from its Google Sheet in chunks.
+          Progress and per-home outcomes come from the job itself — never from this page refreshing.
+        </p>
       </div>
       <div class="sync-all-action">
         @if (isAdmin()) {
@@ -45,7 +39,8 @@
             class="primary-button"
             type="button"
             (click)="startSyncAll()"
-            [disabled]="syncAll.running() || loading()">
+            [disabled]="syncAll.running() || loading()"
+          >
             @if (syncAll.running()) {
               Syncing…
             } @else {
@@ -77,14 +72,18 @@
     @if (syncAll.state() === 'COMPLETED') {
       <div class="alert success" role="status">
         <strong>Sync completed.</strong>
-        <span>Every home reported synced by the backend. Connected data below has been re-read.</span>
+        <span
+          >Every home reported synced by the backend. Connected data below has been re-read.</span
+        >
       </div>
     }
 
     @if (syncAll.state() === 'COMPLETED_WITH_ERRORS') {
       <div class="alert error" role="alert">
         <strong>Sync finished with errors.</strong>
-        <span>Some homes failed their sync. Running the job again will start a fresh backend job.</span>
+        <span
+          >Some homes failed their sync. Running the job again will start a fresh backend job.</span
+        >
       </div>
     }
 
@@ -117,41 +116,30 @@
         }
       </ul>
     }
-
   </section>
-
 
   <!-- ADD HOME -->
 
   @if (showAddHome()) {
-
     <form class="connect-home-card" (ngSubmit)="connectSheet()">
-
       <div class="connect-home-header">
         <div>
           <span class="eyebrow">NEW CONNECTION</span>
           <h2>Add Shelter Home</h2>
           <p>Enter the shelter home details and paste its Google Sheet URL.</p>
         </div>
-        <button
-          type="button"
-          class="secondary-action"
-          (click)="closeAddHome()">
-          Close
-        </button>
+        <button type="button" class="secondary-action" (click)="closeAddHome()">Close</button>
       </div>
 
       @if (connectedHome(); as home) {
-
         <section class="connected-home" aria-label="Connected shelter home">
           <h3>{{ home.name }}</h3>
-          <p>Google Sheet: <strong>{{ home.spreadsheetName ?? 'Connected' }}</strong></p>
+          <p>
+            Google Sheet: <strong>{{ home.spreadsheetName ?? 'Connected' }}</strong>
+          </p>
         </section>
-
       } @else {
-
         <div class="home-form-grid">
-
           <label>
             Shelter Home Name
             <span aria-hidden="true">*</span>
@@ -161,7 +149,8 @@
               [ngModel]="homeName()"
               (ngModelChange)="homeName.set($event)"
               required
-              [disabled]="saving()" />
+              [disabled]="saving()"
+            />
           </label>
 
           <label>
@@ -171,7 +160,8 @@
               name="address"
               [ngModel]="address()"
               (ngModelChange)="address.set($event)"
-              [disabled]="saving()" />
+              [disabled]="saving()"
+            />
           </label>
 
           <label>
@@ -181,7 +171,8 @@
               name="contactName"
               [ngModel]="contactName()"
               (ngModelChange)="contactName.set($event)"
-              [disabled]="saving()" />
+              [disabled]="saving()"
+            />
           </label>
 
           <label>
@@ -191,9 +182,9 @@
               name="contactPhone"
               [ngModel]="contactPhone()"
               (ngModelChange)="contactPhone.set($event)"
-              [disabled]="saving()" />
+              [disabled]="saving()"
+            />
           </label>
-
         </div>
 
         <section class="sheet-connection" aria-labelledby="sheet-connection-title">
@@ -208,20 +199,21 @@
               [ngModel]="sheetUrl()"
               (ngModelChange)="sheetUrl.set($event)"
               required
-              [disabled]="saving()" />
+              [disabled]="saving()"
+            />
           </label>
 
           <p class="sheet-state">
-            Any Google Sheets link works, provided it is shared with the
-            signed-in Google account. It does not need to appear in a Drive
-            search list.
+            Any Google Sheets link works, provided it is shared with the signed-in Google account.
+            It does not need to appear in a Drive search list.
           </p>
 
           <button
             type="button"
             class="secondary-action"
             (click)="previewSheetMetadata()"
-            [disabled]="!canPreviewSheet()">
+            [disabled]="!canPreviewSheet()"
+          >
             {{ previewing() ? 'Checking the sheet…' : 'Preview source metadata' }}
           </button>
         </section>
@@ -231,7 +223,6 @@
         }
 
         @if (sheetPreview(); as preview) {
-
           <section class="sheet-preview-panel" aria-label="Detected source metadata">
             <h3>Detected from “{{ preview.spreadsheetName }}”</h3>
 
@@ -250,7 +241,11 @@
               </div>
               <div>
                 <dt>Participants detected</dt>
-                <dd>{{ preview.participantCount === null ? 'Not detected' : preview.participantCount }}</dd>
+                <dd>
+                  {{
+                    preview.participantCount === null ? 'Not detected' : preview.participantCount
+                  }}
+                </dd>
               </div>
             </dl>
 
@@ -264,7 +259,10 @@
               <div class="sheet-preview-caretakers">
                 <h4>Caretakers ({{ preview.caretakerCount }})</h4>
                 <ul>
-                  @for (caretaker of preview.caretakers; track caretaker.sourceRowNumber + '-' + caretaker.fullName) {
+                  @for (
+                    caretaker of preview.caretakers;
+                    track caretaker.sourceRowNumber + '-' + caretaker.fullName
+                  ) {
                     <li>
                       <strong>{{ caretaker.fullName }}</strong>
                       @if (caretaker.contactNumber) {
@@ -300,7 +298,6 @@
               </ul>
             }
           </section>
-
         }
       }
 
@@ -313,7 +310,6 @@
       }
 
       @if (connectionOutcome(); as outcome) {
-
         <section class="connection-outcome" [attr.data-state]="outcome.state" aria-live="polite">
           <h3>Connection result</h3>
 
@@ -328,7 +324,8 @@
               type="button"
               class="secondary-action"
               (click)="retryConnectionImport()"
-              [disabled]="retryingImport()">
+              [disabled]="retryingImport()"
+            >
               {{ retryingImport() ? 'Retrying…' : 'Retry sync' }}
             </button>
           }
@@ -341,7 +338,6 @@
             <p>Open the Archived homes section below to restore it.</p>
           }
         </section>
-
       }
 
       @if (successMessage()) {
@@ -349,7 +345,6 @@
       }
 
       @if (syncSummary(); as summary) {
-
         <section class="sync-summary" aria-label="Participant import summary">
           <h3>Participant sync summary</h3>
 
@@ -380,20 +375,26 @@
             </div>
           </dl>
 
-          <p>Imported participant count: <strong>{{ importedParticipantCount() ?? 0 }}</strong></p>
+          <p>
+            Imported participant count: <strong>{{ importedParticipantCount() ?? 0 }}</strong>
+          </p>
 
           @if (validationResults().length) {
             <div class="validation-results">
               <h4>Validation results ({{ validationResults().length }})</h4>
               <ul>
-                @for (result of validationResults(); track result.id ?? result.ruleCode + result.message) {
-                  <li><strong>{{ result.severity }}</strong> · {{ result.message }}</li>
+                @for (
+                  result of validationResults();
+                  track result.id ?? result.ruleCode + result.message
+                ) {
+                  <li>
+                    <strong>{{ result.severity }}</strong> · {{ result.message }}
+                  </li>
                 }
               </ul>
             </div>
           }
         </section>
-
       }
 
       @if (!connectedHome()) {
@@ -403,19 +404,16 @@
           </button>
         </div>
       }
-
     </form>
-
   }
-
 
   <!-- CONNECTED HOMES -->
 
   <section
     class="connected-homes-section"
     aria-labelledby="connected-homes-title"
-    [attr.aria-busy]="loading()">
-
+    [attr.aria-busy]="loading()"
+  >
     <div class="section-card-header">
       <div>
         <span class="eyebrow">CONNECTED SOURCES</span>
@@ -425,29 +423,20 @@
 
     @if (!loaded()) {
       <p class="sheet-state" role="status">Loading connected shelter homes…</p>
-
     } @else if (homesError()) {
       <p class="form-message error" role="alert">{{ homesError() }}</p>
-
     } @else if (connectedHomes().length === 0) {
       <div class="connected-homes-empty">
         <p>
-          No shelter homes are connected yet. Connect one to import its
-          participants from Google Sheets.
+          No shelter homes are connected yet. Connect one to import its participants from Google
+          Sheets.
         </p>
-        <button type="button" class="primary-button" (click)="openAddHome()">
-          + Add Home
-        </button>
+        <button type="button" class="primary-button" (click)="openAddHome()">+ Add Home</button>
       </div>
-
     } @else {
-
       <div class="connected-homes-list">
-
         @for (home of connectedHomes(); track home.id) {
-
           <article class="connected-home-card">
-
             <div>
               <span class="home-code">{{ home.homeCode }}</span>
 
@@ -463,8 +452,11 @@
                     [href]="sheetOpenUrl"
                     target="_blank"
                     rel="noopener noreferrer"
-                    [attr.aria-label]="home.homeName + ' — opens the connected Google Sheet in a new tab'"
-                    (click)="openSpreadsheet($event, sheetOpenUrl)">
+                    [attr.aria-label]="
+                      home.homeName + ' — opens the connected Google Sheet in a new tab'
+                    "
+                    (click)="openSpreadsheet($event, sheetOpenUrl)"
+                  >
                     {{ home.homeName }}<span aria-hidden="true"> ↗</span>
                   </a>
                 } @else {
@@ -522,8 +514,11 @@
                         [href]="sourceSheetUrl"
                         target="_blank"
                         rel="noopener noreferrer"
-                        [attr.aria-label]="(home.spreadsheetName || 'Source sheet') + ' — opens in a new tab'"
-                        (click)="openSpreadsheet($event, sourceSheetUrl)">
+                        [attr.aria-label]="
+                          (home.spreadsheetName || 'Source sheet') + ' — opens in a new tab'
+                        "
+                        (click)="openSpreadsheet($event, sourceSheetUrl)"
+                      >
                         {{ home.spreadsheetName || '—' }}<span aria-hidden="true"> ↗</span>
                       </a>
                     } @else {
@@ -551,7 +546,8 @@
                     type="button"
                     class="secondary-action"
                     (click)="syncFromSheet(home)"
-                    [disabled]="isSyncing(home.id)">
+                    [disabled]="isSyncing(home.id)"
+                  >
                     {{ isSyncing(home.id) ? 'Syncing…' : 'Sync from Google Sheet' }}
                   </button>
                   @if (canArchive(home)) {
@@ -559,7 +555,8 @@
                       type="button"
                       class="secondary-action"
                       (click)="openArchivePreview(home)"
-                      [disabled]="archiving()">
+                      [disabled]="archiving()"
+                    >
                       Archive…
                     </button>
                   }
@@ -581,14 +578,19 @@
             </div>
 
             @if (selectedHomeId() === home.id) {
-
               <div class="home-detail-panel">
                 <h4>{{ home.homeName }}</h4>
                 <p><strong>Home Code:</strong> {{ home.homeCode }}</p>
                 <p><strong>Address:</strong> {{ home.address || '—' }}</p>
-                <p><strong>Contact:</strong> {{ home.contactName || '—' }} · {{ home.contactPhone || '—' }}</p>
+                <p>
+                  <strong>Contact:</strong> {{ home.contactName || '—' }} ·
+                  {{ home.contactPhone || '—' }}
+                </p>
                 <p><strong>Google Sheet:</strong> {{ home.spreadsheetName || 'Connected' }}</p>
-                <p><strong>Source status:</strong> {{ home.sourceStatus || home.status || 'Unknown' }}</p>
+                <p>
+                  <strong>Source status:</strong>
+                  {{ home.sourceStatus || home.status || 'Unknown' }}
+                </p>
                 <p><strong>Import status:</strong> {{ importStatusLabel(home) }}</p>
                 <p><strong>Last synced:</strong> {{ lastSyncedLabel(home) }}</p>
                 <p>
@@ -600,131 +602,148 @@
                   }
                 </p>
               </div>
-
             }
-
           </article>
-
         }
-
       </div>
-
-      <!-- ARCHIVE LIFECYCLE: notice, preview confirmation, archived section -->
-
-      @if (archiveNotice()) {
-        <div class="alert success" role="status">
-          <span>{{ archiveNotice() }}</span>
-        </div>
-      }
-
-      @if (archivePreviewError()) {
-        <div class="alert error" role="alert">
-          <strong>The archive preview failed.</strong>
-          <span>{{ archivePreviewError() }}</span>
-          <button type="button" class="secondary-action" (click)="retryArchivePreview()">
-            Retry preview
-          </button>
-        </div>
-      }
-
-      @if (archivePreview(); as preview) {
-        <div class="archive-preview-panel" role="dialog" aria-labelledby="archive-preview-title">
-          <h3 id="archive-preview-title">Archive {{ preview.shelterHome.homeName }}</h3>
-
-          <p class="archive-note">{{ ARCHIVE_CONFIRMATION_NOTE }}</p>
-
-          <dl class="archive-impact">
-            <div><dt>Participants</dt><dd>{{ preview.impact.participantCount }}</dd></div>
-            <div><dt>Active registrations</dt><dd>{{ preview.impact.activeRegistrationCount }}</dd></div>
-            <div><dt>Attendance records</dt><dd>{{ preview.impact.attendanceCount }}</dd></div>
-            <div><dt>Scores</dt><dd>{{ preview.impact.scoreCount }}</dd></div>
-            <div><dt>Certificates</dt><dd>{{ preview.impact.certificateCount }}</dd></div>
-            <div><dt>Audit history</dt><dd>{{ preview.impact.auditHistoryCount }}</dd></div>
-          </dl>
-
-          @if (preview.source.spreadsheetName || preview.source.sourceStatus) {
-            <p>
-              <strong>Connected source:</strong>
-              {{ preview.source.spreadsheetName || '—' }} · {{ preview.source.sourceStatus || '—' }}
-            </p>
-          }
-
-          @if (preview.triggerCleanupRequired) {
-            <p role="note">The backend reports a source change trigger that will need cleanup.</p>
-          }
-
-          @if (archiveError(); as error) {
-            <p class="form-message error" role="alert">{{ error }}</p>
-          }
-
-          <div class="home-card-actions">
-            <button
-              type="button"
-              class="secondary-action"
-              (click)="confirmArchive()"
-              [disabled]="archiving()">
-              {{ archiving() ? 'Archiving…' : 'Archive home' }}
-            </button>
-            <button
-              type="button"
-              class="secondary-action"
-              (click)="cancelArchive()"
-              [disabled]="archiving()">
-              Cancel
-            </button>
-          </div>
-        </div>
-      }
-
-      @if (canRestore()) {
-        <section class="archived-homes" aria-label="Archived shelter homes">
-          <h3>Archived homes</h3>
-
-          @if (restoreError(); as error) {
-            <div class="alert error" role="alert">
-              <span>{{ error }}</span>
-              <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
-                Retry
-              </button>
-            </div>
-          }
-
-          @if (archivedError(); as error) {
-            <div class="alert error" role="alert">
-              <span>{{ error }}</span>
-              <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
-                Retry
-              </button>
-            </div>
-          }
-
-          @if (archivedLoading()) {
-            <p role="status">Loading archived homes…</p>
-          }
-
-          @if (archivedHomes().length) {
-            <ul class="archived-homes-list">
-              @for (home of archivedHomes(); track home.id) {
-                <li>
-                  <span>{{ home.homeName }} ({{ home.homeCode }})</span>
-                  <button
-                    type="button"
-                    class="secondary-action"
-                    (click)="restoreArchivedHome(home)"
-                    [disabled]="restoringHomeId() !== null">
-                    {{ restoringHomeId() === home.id ? 'Restoring…' : 'Restore' }}
-                  </button>
-                </li>
-              }
-            </ul>
-          } @else if (!archivedLoading() && archivedLoaded() && !archivedError()) {
-            <p>No archived homes.</p>
-          }
-        </section>
-      }
-
     }
 
-  </section>
+    <!-- ARCHIVE LIFECYCLE: notice, preview confirmation, archived section -->
+    <!-- Rendered whenever the section is live, NOT only when at least one
+         active home exists: archiving the last connected home must still
+         leave the restore path reachable. -->
 
+    @if (archiveNotice()) {
+      <div class="alert success" role="status">
+        <span>{{ archiveNotice() }}</span>
+      </div>
+    }
+
+    @if (archivePreviewError()) {
+      <div class="alert error" role="alert">
+        <strong>The archive preview failed.</strong>
+        <span>{{ archivePreviewError() }}</span>
+        <button type="button" class="secondary-action" (click)="retryArchivePreview()">
+          Retry preview
+        </button>
+      </div>
+    }
+
+    @if (archivePreview(); as preview) {
+      <div class="archive-preview-panel" role="dialog" aria-labelledby="archive-preview-title">
+        <h3 id="archive-preview-title">Archive {{ preview.shelterHome.homeName }}</h3>
+
+        <p class="archive-note">{{ ARCHIVE_CONFIRMATION_NOTE }}</p>
+
+        <dl class="archive-impact">
+          <div>
+            <dt>Participants</dt>
+            <dd>{{ preview.impact.participantCount }}</dd>
+          </div>
+          <div>
+            <dt>Active registrations</dt>
+            <dd>{{ preview.impact.activeRegistrationCount }}</dd>
+          </div>
+          <div>
+            <dt>Attendance records</dt>
+            <dd>{{ preview.impact.attendanceCount }}</dd>
+          </div>
+          <div>
+            <dt>Scores</dt>
+            <dd>{{ preview.impact.scoreCount }}</dd>
+          </div>
+          <div>
+            <dt>Certificates</dt>
+            <dd>{{ preview.impact.certificateCount }}</dd>
+          </div>
+          <div>
+            <dt>Audit history</dt>
+            <dd>{{ preview.impact.auditHistoryCount }}</dd>
+          </div>
+        </dl>
+
+        @if (preview.source.spreadsheetName || preview.source.sourceStatus) {
+          <p>
+            <strong>Connected source:</strong>
+            {{ preview.source.spreadsheetName || '—' }} · {{ preview.source.sourceStatus || '—' }}
+          </p>
+        }
+
+        @if (preview.triggerCleanupRequired) {
+          <p role="note">The backend reports a source change trigger that will need cleanup.</p>
+        }
+
+        @if (archiveError(); as error) {
+          <p class="form-message error" role="alert">{{ error }}</p>
+        }
+
+        <div class="home-card-actions">
+          <button
+            type="button"
+            class="secondary-action"
+            (click)="confirmArchive()"
+            [disabled]="archiving()"
+          >
+            {{ archiving() ? 'Archiving…' : 'Archive home' }}
+          </button>
+          <button
+            type="button"
+            class="secondary-action"
+            (click)="cancelArchive()"
+            [disabled]="archiving()"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    }
+
+    @if (canRestore()) {
+      <section class="archived-homes" aria-label="Archived shelter homes">
+        <h3>Archived homes</h3>
+
+        @if (restoreError(); as error) {
+          <div class="alert error" role="alert">
+            <span>{{ error }}</span>
+            <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
+              Retry
+            </button>
+          </div>
+        }
+
+        @if (archivedError(); as error) {
+          <div class="alert error" role="alert">
+            <span>{{ error }}</span>
+            <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
+              Retry
+            </button>
+          </div>
+        }
+
+        @if (archivedLoading()) {
+          <p role="status">Loading archived homes…</p>
+        }
+
+        @if (archivedHomes().length) {
+          <ul class="archived-homes-list">
+            @for (home of archivedHomes(); track home.id) {
+              <li>
+                <span>{{ home.homeName }} ({{ home.homeCode }})</span>
+                <button
+                  type="button"
+                  class="secondary-action"
+                  (click)="restoreArchivedHome(home)"
+                  [disabled]="restoringHomeId() !== null"
+                >
+                  {{ restoringHomeId() === home.id ? 'Restoring…' : 'Restore' }}
+                </button>
+              </li>
+            }
+          </ul>
+        } @else if (!archivedLoading() && archivedLoaded() && !archivedError()) {
+          <p>No archived homes.</p>
+        }
+      </section>
+    }
+  </section>
 </div>

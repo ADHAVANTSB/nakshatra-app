@@ -1,7 +1,7 @@
-/* ================================================================
+﻿/* ================================================================
    ACCESS MANAGEMENT
    Warm/beige palette shared with the rest of the Nakshatra shell:
-   text #39322d, muted #817873, borders #e5dfda / #ded8d3, pill #f0ece9,
+   text #39322d, muted #6e6158, borders #e5dfda / #ded8d3, pill #f0ece9,
    actions #eee9f5 / #5f4d7c, problems #f6e7e7 / #925c5c,
    confirmations #e5f1e6 / #54745a.
    ================================================================ */
@@ -28,12 +28,12 @@
 
   small {
     display: block;
-    color: #817873;
+    color: #6e6158;
     font-size: 11px;
   }
 
   .eyebrow {
-    color: #817873;
+    color: #6e6158;
     font-size: 11px;
   }
 
@@ -87,7 +87,7 @@
 
   button.secondary {
     background: #f0ece9;
-    color: #817873;
+    color: #6e6158;
   }
 
   button.danger {
@@ -110,10 +110,10 @@
     margin: 0 0 16px;
     padding: 12px 14px;
     border: 1px solid #e5dfda;
-    border-left: 3px solid #817873;
+    border-left: 3px solid #6e6158;
     border-radius: 10px;
     background: #fff;
-    color: #817873;
+    color: #6e6158;
     font-size: 13px;
   }
 
@@ -133,7 +133,7 @@
     label {
       display: block;
       margin-bottom: 4px;
-      color: #817873;
+      color: #6e6158;
       font-size: 11px;
       font-weight: 700;
     }
@@ -157,7 +157,7 @@
   }
 
   .state {
-    color: #817873;
+    color: #6e6158;
     text-align: center;
   }
 
@@ -195,13 +195,13 @@
     padding: 2px 7px;
     border-radius: 999px;
     background: #f0ece9;
-    color: #817873;
+    color: #6e6158;
     font-size: 11px;
   }
 
   .hint {
     margin: 4px 0 0;
-    color: #817873;
+    color: #6e6158;
     font-size: 11px;
     line-height: 1.5;
   }
@@ -229,7 +229,7 @@
   }
 
   th {
-    color: #817873;
+    color: #6e6158;
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -249,7 +249,7 @@
     padding: 2px 6px;
     border-radius: 999px;
     background: #f0ece9;
-    color: #817873;
+    color: #6e6158;
     font-weight: 700;
   }
 
@@ -290,7 +290,7 @@
 
   .pill.pending {
     border-color: #e5dfda;
-    color: #817873;
+    color: #6e6158;
   }
 
   .pill.approved {
@@ -331,7 +331,7 @@
   .request-detail .label {
     display: block;
     margin-bottom: 3px;
-    color: #817873;
+    color: #6e6158;
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
@@ -510,7 +510,7 @@
 }
 
 .preview-empty {
-  color: #8a93a3;
+  color: #58707f;
 }
 
 .preview-order {

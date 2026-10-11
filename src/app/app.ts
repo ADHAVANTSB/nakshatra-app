@@ -188,11 +188,13 @@ export class App implements OnInit {
     // A page refresh clears the in-memory session. The backend session may
     // still be alive, so rehydrate the persisted id and let the backend
     // decide; an expired or malformed entry is discarded by the service.
+    let restoredFromStorage = false;
     if (!session) {
       const restored = this.auth.restorePersistedSession();
       if (!restored) return;
       this.auth.setApplicationSession(restored);
       session = restored;
+      restoredFromStorage = true;
     }
 
     const result = await this.apiClient.validateApplicationSession();
@@ -222,7 +224,11 @@ export class App implements OnInit {
 
     // A visitor whose session was just restored while sitting on the sign-in
     // page belongs inside the application, not back on the login card.
-    if (this.isLoginRoute()) {
+    // When the session came from storage the auth guard's boot redirect to
+    // /login may not have committed yet (a fast response can beat it), so a
+    // restored visitor is navigated into the application regardless of the
+    // current route — never left stranded on the sign-in card.
+    if (restoredFromStorage || this.isLoginRoute()) {
       void this.router.navigateByUrl('/dashboard');
     }
   }

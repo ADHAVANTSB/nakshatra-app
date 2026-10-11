@@ -1,4 +1,4 @@
-/* =========================================================
+﻿/* =========================================================
    NAKSHATRA EVENT MANAGEMENT
    APP COMPONENT STYLES
    ========================================================= */
@@ -21,7 +21,7 @@ app-root {
   --nk-navy-hover: #2d4668;
 
   --nk-blue: #159ed0;
-  --nk-blue-dark: #087caf;
+  --nk-blue-dark: #066a8c;
   --nk-blue-light: #eaf8fd;
 
   --nk-purple: #6c3df5;
@@ -39,7 +39,8 @@ app-root {
 
   --nk-text: #17324d;
   --nk-text-soft: #60798f;
-  --nk-muted: #8aa0b0;
+  /* Darkened from #8aa0b0: 2.7:1 on white failed WCAG AA (axe color-contrast). */
+  --nk-muted: #58707f;
 
   --nk-border: #dfebf1;
 
@@ -312,7 +313,7 @@ app-root {
 
 
 /* =========================================================
-   HAMBURGER → X
+   HAMBURGER â†’ X
    ========================================================= */
 
 #sidebar-toggle:checked ~ .nk-shell
@@ -1188,8 +1189,9 @@ app-root {
 
 .nk-footer-brand {
 
+  /* Darkened from --nk-blue (#159ed0): 3.1:1 on white failed WCAG AA. */
   color:
-    var(--nk-blue);
+    #0d7ba4;
 
   font-weight: 800;
 
