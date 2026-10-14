@@ -3,6 +3,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { AuthService, type GoogleAuthenticatedUser } from './core/services/auth/auth.service';
+import { ProgramContextService } from './core/services/program/program-context.service';
 
 /** Bare stand-in for the login page used to exercise shell/routing behavior. */
 @Component({
@@ -416,6 +417,119 @@ describe('App', () => {
   });
 });
 
+describe('App programme/zone scope chip', () => {
+  const SCOPE_KEY = 'nakshatra.programScope';
+
+  beforeEach(async () => {
+    fetchCallCount = 0;
+    vi.stubGlobal('fetch', () => {
+      fetchCallCount += 1;
+      return Promise.reject(new TypeError('Network access is disabled for App unit tests.'));
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter([])],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+    // Reset the file-shared context singleton for later suites.
+    TestBed.inject(ProgramContextService).clear();
+  });
+
+  function selectScope(program: 'ARTS' | 'SPORTS', zone: 'ZONE_1' | 'ZONE_2' | 'TEST'): void {
+    const context = TestBed.inject(ProgramContextService);
+    context.selectProgram(program);
+    context.selectZone(zone);
+  }
+
+  it('shows the programme, zone and environment in the header scope chip', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_1');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const chip = (fixture.nativeElement as HTMLElement).querySelector('.nk-scope-chip');
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent).toContain('Arts');
+    expect(chip?.textContent).toContain('Zone 1');
+    expect(chip?.textContent).toContain('Live');
+  });
+
+  it('marks the Test zone environment in the scope chip', async () => {
+    signIn(ADMIN_USER);
+    selectScope('SPORTS', 'TEST');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const chip = (fixture.nativeElement as HTMLElement).querySelector('.nk-scope-chip');
+    expect(chip?.textContent).toContain('Sports');
+    expect(chip?.textContent).toContain('Test');
+  });
+
+  it('renders no scope chip before a programme and zone are chosen', async () => {
+    signIn(ADMIN_USER);
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.nk-scope-chip')).toBeNull();
+  });
+
+  it('opens the scope switcher from the header chip', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_2');
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const router = TestBed.inject(Router);
+    const navigate = vi.fn<(url: string) => Promise<boolean>>(() => Promise.resolve(true));
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl = navigate;
+
+    const chip = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.nk-scope-chip');
+    chip?.click();
+    await fixture.whenStable();
+
+    expect(navigate).toHaveBeenCalledWith('/select-program');
+  });
+
+  it('removes the stored scope on sign-out so the next sign-in starts the flow again', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_1');
+    TestBed.inject(AuthService).setApplicationSession({
+      id: 'scope-logout-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    expect(sessionStorage.getItem(SCOPE_KEY)).not.toBeNull();
+
+    const router = TestBed.inject(Router);
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl =
+      vi.fn(() => Promise.resolve(true));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    fixture.componentInstance.logout();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(TestBed.inject(ProgramContextService).hasCompleteScope()).toBe(false);
+    expect(sessionStorage.getItem(SCOPE_KEY)).toBeNull();
+  });
+});
+
 describe('App on the login route', () => {
   const SESSION_KEY = 'nakshatra.applicationSession';
 
@@ -496,6 +610,151 @@ describe('App on the login route', () => {
 
     expect(TestBed.inject(Router).url).toBe('/login');
     expect(fetchCallCount).toBe(0);
+  });
+});
+
+/**
+ * Shell layout for the post-sign-in scope selection screens.
+ *
+ * The programme/zone selection screens render WITHOUT the sidebar, hamburger
+ * buttons, expand/collapse controls or navigation icons, while keeping
+ * Nakshatra branding and the signed-in account menu. Operational pages keep
+ * the full shell. (Server-side scope enforcement is covered by the backend
+ * suites; the frontend renders normal empty states for live zones.)
+ */
+describe('App scope selection layout', () => {
+  const SCOPE_KEY = 'nakshatra.programScope';
+
+  @Component({
+    selector: 'scope-route-stub',
+    template: 'scope-route-stub-content',
+  })
+  class ScopeRouteStub {}
+
+  beforeEach(async () => {
+    fetchCallCount = 0;
+    vi.stubGlobal('fetch', () => {
+      fetchCallCount += 1;
+      return Promise.reject(new TypeError('Network access is disabled for unit tests.'));
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [App, ScopeRouteStub],
+      providers: [
+        provideRouter([
+          { path: 'select-program', component: ScopeRouteStub },
+          { path: 'select-zone', component: ScopeRouteStub },
+          { path: 'dashboard', component: ScopeRouteStub },
+          { path: 'settings', component: ScopeRouteStub },
+        ]),
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+    TestBed.inject(ProgramContextService).clear();
+  });
+
+  function selectScope(program: 'ARTS' | 'SPORTS', zone: 'ZONE_1' | 'ZONE_2' | 'TEST'): void {
+    const context = TestBed.inject(ProgramContextService);
+    context.selectProgram(program);
+    context.selectZone(zone);
+  }
+
+  async function open(url: string): Promise<HTMLElement> {
+    await TestBed.inject(Router).navigateByUrl(url);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('renders the selection screens without sidebar, hamburger or navigation controls', async () => {
+    signIn(ADMIN_USER);
+    const element = await open('/select-program');
+
+    expect(element.querySelector('.nk-shell')).toBeNull();
+    expect(element.querySelector('aside.nk-sidebar')).toBeNull();
+    expect(element.querySelector('.nk-sidebar-toggle')).toBeNull();
+    expect(element.querySelector('#sidebar-toggle')).toBeNull();
+    expect(element.querySelector('.nk-menu-button')).toBeNull();
+    expect(element.querySelector('.nk-mobile-drawer')).toBeNull();
+    expect(element.querySelector('.nk-sidebar-nav')).toBeNull();
+    expect(element.querySelector('.nk-scope-chip')).toBeNull();
+
+    // Branding and the signed-in account stay available.
+    expect(element.querySelector('.nk-selection-shell')).not.toBeNull();
+    expect(element.querySelector('.nk-selection-logo')).not.toBeNull();
+    expect(element.querySelector('.nk-user-details strong')?.textContent?.trim())
+      .toBe('Asha Rao');
+    // The selection page itself renders inside the minimal shell.
+    expect(element.querySelector('scope-route-stub')).not.toBeNull();
+  });
+
+  it('keeps branding and account on the zone selection screen too', async () => {
+    signIn(ADMIN_USER);
+    TestBed.inject(ProgramContextService).selectProgram('ARTS');
+    const element = await open('/select-zone');
+
+    expect(element.querySelector('aside.nk-sidebar')).toBeNull();
+    expect(element.querySelector('.nk-selection-shell')).not.toBeNull();
+    expect(element.querySelector('.nk-user-details strong')?.textContent?.trim())
+      .toBe('Asha Rao');
+    expect(element.querySelector('scope-route-stub')).not.toBeNull();
+  });
+
+  it('keeps the full sidebar shell on operational pages after a complete scope', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_1');
+    const element = await open('/dashboard');
+
+    expect(element.querySelector('aside.nk-sidebar')).not.toBeNull();
+    expect(element.querySelector('header.nk-header')).not.toBeNull();
+    expect(element.querySelector('.nk-scope-chip')).not.toBeNull();
+    // Live zones render the normal operational pages (server-enforced data).
+    expect(element.querySelector('scope-route-stub')).not.toBeNull();
+    expect(element.querySelector('.nk-zone-pending')).toBeNull();
+  });
+
+  it('renders Zone 2 operationally like any other scope', async () => {
+    signIn(ADMIN_USER);
+    selectScope('SPORTS', 'ZONE_2');
+    const element = await open('/dashboard');
+
+    expect(element.querySelector('scope-route-stub')).not.toBeNull();
+    expect(element.querySelector('.nk-scope-chip')?.textContent).toContain('Zone 2');
+  });
+
+  it('keeps settings reachable for an admin inside a live zone', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_1');
+    const element = await open('/settings');
+
+    expect(element.querySelector('scope-route-stub')).not.toBeNull();
+  });
+
+  it('keeps the full shell when the scope switches back to Test', async () => {
+    signIn(ADMIN_USER);
+    selectScope('ARTS', 'ZONE_1');
+    await TestBed.inject(Router).navigateByUrl('/dashboard');
+    const live = TestBed.createComponent(App);
+    live.detectChanges();
+    await live.whenStable();
+    expect((live.nativeElement as HTMLElement).querySelector('.nk-scope-chip')?.textContent)
+      .toContain('Zone 1');
+
+    TestBed.inject(ProgramContextService).clear();
+    selectScope('ARTS', 'TEST');
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.nk-scope-chip')?.textContent).toContain('Test');
+    expect(element.querySelector('aside.nk-sidebar')).not.toBeNull();
   });
 });
 

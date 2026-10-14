@@ -23,15 +23,52 @@ export const test = base.extend<{ backend: BackendStub }>({
 export { expect };
 
 /**
+ * Storage key the app's ProgramContextService persists the programme/zone
+ * scope under (src/app/core/constants/program-context.config.ts). Duplicated
+ * here because E2E transpiles without typechecking src imports.
+ */
+const PROGRAM_SCOPE_STORAGE_KEY = 'nakshatra.programScope';
+
+export interface ScopeSeed {
+  program: 'ARTS' | 'SPORTS';
+  zone: 'ZONE_1' | 'ZONE_2' | 'TEST';
+}
+
+/**
+ * Seeds the programme/zone scope into sessionStorage before the app boots.
+ *
+ * The seed only applies when the key is absent, so journeys that switch scope
+ * mid-test are never clobbered by a later navigation.
+ */
+export function seedScope(page: Page, scope: ScopeSeed): Promise<void> {
+  return page.addInitScript(
+    ([key, value]) => {
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, value);
+      }
+    },
+    [PROGRAM_SCOPE_STORAGE_KEY, JSON.stringify({ programId: scope.program, zoneId: scope.zone })] as const,
+  );
+}
+
+/**
  * Signs in through the real login UI with the stubbed Google Identity script
  * (MOCKED sign-in). The credential is crafted locally; no Google service is
  * contacted.
+ *
+ * By default the post-sign-in scope is pre-seeded as Arts → TEST so the
+ * established sample-data workflow journeys keep exercising real page
+ * content (live zones are data-gated until the backend enforces isolation).
+ * Pass `scope: false` to exercise the real selection flow, or an explicit
+ * `ScopeSeed` (e.g. `{ program: 'ARTS', zone: 'ZONE_1' }`) for journeys that
+ * verify live-zone behaviour.
  */
 export async function signIn(
   page: Page,
-  options: { user?: StubUser; backend?: BackendStub } = {},
+  options: { user?: StubUser; backend?: BackendStub; scope?: ScopeSeed | false } = {},
 ): Promise<void> {
   const user = options.user ?? adminUser;
+  const scope = options.scope === false ? null : (options.scope ?? { program: 'ARTS', zone: 'TEST' });
   if (options.backend) {
     // The verification response must confirm the SAME identity as the
     // credential, or the test would silently sign in as the wrong role.
@@ -51,12 +88,15 @@ export async function signIn(
     },
     [credential],
   );
+  if (scope) {
+    await seedScope(page, scope);
+  }
 
   await page.goto('/#/login');
   const googleButton = page.getByTestId('stub-google-signin');
   await googleButton.waitFor({ state: 'visible' });
   await googleButton.click();
-  await page.waitForURL('**/dashboard');
+  await page.waitForURL(scope ? '**/dashboard' : '**/select-program');
 }
 
 /**

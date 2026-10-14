@@ -40,7 +40,9 @@ test.describe('api errors and reliability', () => {
     failSummary = false;
     await page.getByRole('button', { name: 'Retry reading the backend summary' }).click();
 
-    await expect(page.getByText('25')).toBeVisible();
+    await expect(
+      page.locator('.stat-card').filter({ hasText: 'Participants' }).getByText('25', { exact: true }),
+    ).toBeVisible();
     expect(summaryCalls).toBeGreaterThan(callsAfterFailure);
     expect(pageErrors).toEqual([]);
   });
@@ -71,7 +73,9 @@ test.describe('api errors and reliability', () => {
 
     // Load real values first, then fail a refresh.
     await page.getByRole('button', { name: 'Refresh dashboard data from the backend' }).click();
-    await expect(page.getByText('25')).toBeVisible();
+    await expect(
+      page.locator('.stat-card').filter({ hasText: 'Participants' }).getByText('25', { exact: true }),
+    ).toBeVisible();
 
     failSummary = true;
     await page.getByRole('button', { name: 'Refresh dashboard data from the backend' }).click();
@@ -85,7 +89,9 @@ test.describe('api errors and reliability', () => {
 
     failSummary = false;
     await page.getByRole('button', { name: 'Retry reading the backend summary' }).click();
-    await expect(page.getByText('25')).toBeVisible();
+    await expect(
+      page.locator('.stat-card').filter({ hasText: 'Participants' }).getByText('25', { exact: true }),
+    ).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 

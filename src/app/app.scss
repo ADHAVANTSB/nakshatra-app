@@ -872,6 +872,108 @@ app-root {
 
 
 /* =========================================================
+   PROGRAM / ZONE SCOPE CHIP
+   Always-visible context: programme · zone · environment,
+   with a switch action into the selection flow.
+   ========================================================= */
+
+.nk-scope-chip {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 8px 14px;
+
+  border: 1px solid var(--nk-border);
+
+  border-radius: 999px;
+
+  background:
+    #ffffff;
+
+  font-size: 0.82rem;
+
+  font-weight: 600;
+
+  color: var(--nk-text-soft);
+
+  cursor: pointer;
+
+  transition:
+    border-color .15s ease,
+    box-shadow .15s ease;
+}
+
+.nk-scope-chip:hover {
+
+  border-color: var(--nk-primary);
+
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.nk-scope-chip:focus-visible {
+
+  outline: 3px solid var(--nk-primary-dark);
+
+  outline-offset: 2px;
+}
+
+.nk-scope-chip-program {
+
+  color: var(--nk-text-dark);
+}
+
+.nk-scope-chip-separator {
+
+  color: var(--nk-muted);
+}
+
+.nk-scope-chip-environment {
+
+  padding: 2px 8px;
+
+  border-radius: 999px;
+
+  background: #e7f6ee;
+
+  color: #0c6b43;
+
+  font-size: 0.68rem;
+
+  font-weight: 700;
+
+  letter-spacing: 0.07em;
+
+  text-transform: uppercase;
+}
+
+.nk-scope-chip-environment--test {
+
+  background: var(--nk-yellow-light);
+
+  color: #6b4d12;
+}
+
+.nk-scope-chip-switch {
+
+  padding: 2px 8px;
+
+  border-radius: 999px;
+
+  background: var(--nk-primary-light);
+
+  color: var(--nk-primary-dark);
+
+  font-size: 0.72rem;
+
+  font-weight: 700;
+}
+
+
+/* =========================================================
    NOTIFICATION
    ========================================================= */
 
@@ -1457,6 +1559,24 @@ app-root {
   }
 
 
+  /* Compact scope chip on small screens: context stays visible,
+     the switch affordance is dropped (the dashboard card covers it). */
+
+  .nk-scope-chip {
+
+    gap: 6px;
+
+    padding: 6px 10px;
+
+    font-size: 0.76rem;
+  }
+
+  .nk-scope-chip-switch {
+
+    display: none;
+  }
+
+
   .nk-notification {
 
     width: 44px;
@@ -1844,4 +1964,147 @@ app-root {
       background: transparent;
     }
   }
+}
+
+/* =========================================================
+   PROGRAMME / ZONE SELECTION SHELL
+   Minimal chrome: branding + account only. No sidebar,
+   no navigation icons, no hamburger, no expand/collapse.
+   ========================================================= */
+
+.nk-selection-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--nk-page);
+}
+
+.nk-selection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 28px;
+  background: var(--nk-white);
+  border-bottom: 1px solid var(--nk-border);
+}
+
+.nk-selection-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nk-selection-logo {
+  height: 40px;
+  width: auto;
+}
+
+.nk-selection-brand-name {
+  font-weight: 700;
+  color: var(--nk-navy);
+  letter-spacing: 0.04em;
+}
+
+.nk-selection-account {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.nk-selection-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 32px 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .nk-selection-header {
+    padding: 12px 16px;
+  }
+
+  .nk-selection-brand-name {
+    display: none;
+  }
+}
+
+/* =========================================================
+   LIVE ZONE DATA GATE
+   While the backend does not enforce programme/zone
+   isolation, live zones show this panel instead of page
+   data so shared records are never presented as
+   zone-specific.
+   ========================================================= */
+
+.nk-zone-pending {
+  width: 100%;
+  max-width: 640px;
+  margin: 24px auto;
+  background: var(--nk-card);
+  border: 1px solid var(--nk-border);
+  border-radius: 14px;
+  padding: 28px 26px;
+  box-shadow: 0 10px 24px rgba(23, 43, 77, 0.08);
+}
+
+.nk-zone-pending-title {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  color: var(--nk-navy);
+}
+
+.nk-zone-pending-environment {
+  margin: 0 0 4px 0;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--nk-purple-light);
+  color: var(--nk-purple-dark);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nk-zone-pending-date {
+  margin: 8px 0 14px 0;
+  color: var(--nk-text);
+  font-weight: 600;
+}
+
+.nk-zone-pending-body {
+  margin: 0 0 10px 0;
+  color: var(--nk-text);
+  line-height: 1.6;
+}
+
+.nk-zone-pending-note {
+  margin: 0 0 18px 0;
+  color: var(--nk-text-soft);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.nk-zone-pending-switch {
+  border: none;
+  cursor: pointer;
+  background: var(--nk-blue);
+  color: var(--nk-white);
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+}
+
+.nk-zone-pending-switch:hover {
+  background: var(--nk-blue-dark);
+}
+
+.nk-zone-pending-switch:focus-visible {
+  outline: 3px solid var(--nk-blue-light);
+  outline-offset: 2px;
 }

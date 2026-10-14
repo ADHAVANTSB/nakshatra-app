@@ -182,6 +182,105 @@ export class Scoring implements OnInit {
   /** Keys of targets with a write in flight; a second click is ignored. */
   private readonly busyTargets = signal<ReadonlySet<string>>(new Set<string>());
 
+  /** Unsaved per-row score edits, keyed by target key. */
+  readonly drafts = signal<Record<string, number>>({});
+
+  /** True while an event-level save/finalize request is in flight. */
+  readonly scoringBusy = signal(false);
+
+  readonly hasUnsavedDrafts = computed(() => Object.keys(this.drafts()).length > 0);
+
+  /** The whole event is finalized when every scorable target is. */
+  readonly eventFinalized = computed(() => {
+    const targets = this.targets();
+    return targets.length > 0 && targets.every(t => t.score?.status === 'FINALIZED');
+  });
+
+  updateDraft(key: string, raw: string): void {
+    const value = Number(raw);
+    this.drafts.update(current => { const next = { ...current }; if (raw === '' || Number.isNaN(value)) { delete next[key]; } else { next[key] = value; } return next; });
+  }
+
+  /** Event-level Save: persists every staged row in one batch request. */
+  async saveAllDrafts(): Promise<void> {
+    const event = this.selectedEvent();
+    if (!event || this.scoringBusy() || !this.hasUnsavedDrafts()) return;
+
+    this.scoringBusy.set(true);
+    try {
+      const entries = this.targets()
+        .filter(t => this.drafts()[t.key] !== undefined)
+        .map(t => ({
+          participantId: t.participant?.id,
+          teamId: t.team?.id,
+          score: this.drafts()[t.key],
+          expectedVersion: t.score?.version,
+        }));
+      const result = await this.scoringService.saveEventDrafts(event.id, entries);
+      if (!result.success) {
+        this.notify.error(result.errorMessage || 'The scores could not be saved.');
+        return;
+      }
+      if (result.failures.length) {
+        this.notify.error('Some scores were not saved.', result.failures.map(f => f.message).join(' '));
+        return;
+      }
+      this.drafts.set({});
+      this.notify.success('Scores saved as drafts.', 'Finalize the event when every score is entered.');
+    } finally {
+      this.scoringBusy.set(false);
+    }
+  }
+
+  /** Event-level Finalize: saves pending drafts first, then commits. */
+  async finalizeEventAction(): Promise<void> {
+    const event = this.selectedEvent();
+    if (!event || this.scoringBusy()) return;
+
+    this.scoringBusy.set(true);
+    try {
+      if (this.hasUnsavedDrafts()) {
+        await this.saveAllDrafts();
+        if (this.hasUnsavedDrafts()) return;
+      }
+      const result = await this.scoringService.finalizeEventScores(event.id);
+      if (!result.success || !result.data) {
+        this.notify.error(result.errorMessage || 'The event could not be finalized.');
+        return;
+      }
+      this.drafts.set({});
+      this.notify.success(result.data.alreadyFinalized ? 'This event was already finalized.' : 'Event finalized.', result.data.totalScores + ' score(s) are now official results.');
+    } finally {
+      this.scoringBusy.set(false);
+    }
+  }
+
+  /** Controlled reopen (correction workflow) with a mandatory reason. */
+  readonly reopenRequested = signal(false);
+  readonly reopenReason = signal('');
+
+  toggleReopen(): void { this.reopenRequested.update(v => !v); }
+
+  updateReopenReason(raw: string): void { this.reopenReason.set(raw); }
+
+  async reopenEventAction(): Promise<void> {
+    const reason = this.reopenReason().trim();
+    if (!reason) { this.notify.error('A reason is required to reopen the event.'); return; }
+    const event = this.selectedEvent();
+    if (!event || this.scoringBusy()) return;
+
+    this.scoringBusy.set(true);
+    try {
+      const result = await this.scoringService.reopenEventScores(event.id, reason);
+      if (!result.success) { this.notify.error(result.errorMessage || 'The event could not be reopened.'); return; }
+      this.reopenRequested.set(false);
+      this.reopenReason.set('');
+      this.notify.success('Scores reopened for correction.', 'Official results are suspended until the event is finalized again.');
+    } finally {
+      this.scoringBusy.set(false);
+    }
+  }
+
   readonly selectedEvent = computed(() => this.selectedEventId() ? this.eventService.getById(this.selectedEventId()) : undefined);
 
   /** True only while a registration request for the selected event is open. */

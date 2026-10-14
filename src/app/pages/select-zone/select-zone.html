@@ -1,0 +1,65 @@
+<section class="nk-scope-page" aria-labelledby="select-zone-title">
+  @if (missingProgram()) {
+    <div class="nk-scope-empty">
+      <h1 id="select-zone-title">No programme selected</h1>
+      <p>Choose a programme first, then pick its zone.</p>
+      <button type="button" class="nk-zone-back" (click)="changeProgram()">
+        Go to programme selection
+      </button>
+    </div>
+  } @else {
+    <header class="nk-scope-head">
+      <p class="nk-scope-kicker">Nakshatra 2026 · {{ program()?.label }}</p>
+      <h1 id="select-zone-title">Choose your zone</h1>
+      <p class="nk-scope-lede">
+        You are working in <strong>{{ program()?.label }}</strong>. Pick the zone
+        whose events you will manage — you can switch it later.
+      </p>
+      <button type="button" class="nk-zone-back" (click)="changeProgram()">
+        ← Change programme
+      </button>
+    </header>
+
+    <div class="nk-zone-grid" role="group" aria-label="Zone choices">
+      @for (zone of zones; track zone.id) {
+        <button
+          type="button"
+          class="nk-zone-card"
+          [class.nk-zone-card-test]="zone.environment === 'TEST'"
+          [disabled]="saving()"
+          (click)="select(zone.id)"
+        >
+          <span class="nk-zone-top">
+            <span class="nk-zone-name">{{ zone.label }}</span>
+            <span
+              class="nk-zone-environment"
+              [class.nk-zone-environment-test]="zone.environment === 'TEST'"
+            >
+              {{ zone.environment === 'TEST' ? 'Test' : 'Live' }}
+            </span>
+          </span>
+          <span class="nk-zone-description">{{ zone.description }}</span>
+          <span class="nk-zone-date">
+            @if (zone.date) {
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+                <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+              </svg>
+              <span>{{ zone.date | date: 'EEE, d MMM y' }}</span>
+            } @else {
+              <span>{{ zone.dateNote }}</span>
+            }
+          </span>
+          <span class="nk-zone-cta" aria-hidden="true">Enter {{ zone.label }} →</span>
+        </button>
+      }
+    </div>
+
+    @if (saveError()) {
+      <p class="nk-zone-save-error" role="alert">{{ saveError() }}</p>
+    }
+
+    <p class="nk-scope-note">{{ scopeNote }}</p>
+  }
+</section>

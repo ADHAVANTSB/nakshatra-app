@@ -112,9 +112,18 @@ function sessionActionResponse(action: string, user: StubUser): StubResponse | n
         success: true,
         access: 'APPROVED',
         user,
-        data: { session: { expiresAt: fourHoursFromNow() } },
+        data: {
+          session: {
+            expiresAt: fourHoursFromNow(),
+            // The stub backend has no real session storage; the scope the app
+            // seeded into sessionStorage is authoritative for the journey.
+          },
+        },
       },
     };
+  }
+  if (action === 'selectScope') {
+    return { body: { success: true, data: { scope: { programId: 'ARTS', environmentId: 'TEST' } } } };
   }
   if (action === 'getCurrentUser') {
     return { body: { success: true, user, data: { user } } };

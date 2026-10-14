@@ -34,7 +34,73 @@ export interface AuthenticatedApiUser {
 }
 
 export interface SessionValidationData {
-  session: Pick<ApplicationSession, 'expiresAt'>;
+  session: Pick<ApplicationSession, 'expiresAt'> & {
+    /** Programme/environment selected on the server-side session, if any. */
+    programId?: string;
+    environmentId?: string;
+  };
+}
+
+/** Payload of the event-level batch draft save. */
+export interface SaveEventScoresPayload {
+  eventId: string;
+  entries: Array<{
+    participantId?: string;
+    teamId?: string;
+    score: number;
+    expectedVersion?: number;
+  }>;
+}
+
+export interface SaveEventScoresOutcome {
+  index: number;
+  ok: boolean;
+  code: string;
+  message?: string;
+  scoreId?: string;
+  score?: number | null;
+  version?: number;
+  currentVersion?: number;
+}
+
+export interface SaveEventScoresData {
+  eventId: string;
+  saved: number;
+  failed: number;
+  outcomes: SaveEventScoresOutcome[];
+}
+
+export interface FinalizeEventPayload {
+  eventId: string;
+  operationId?: string;
+}
+
+export interface FinalizeEventData {
+  eventId: string;
+  operationId: string;
+  alreadyFinalized: boolean;
+  finalizedCount: number;
+  totalScores: number;
+  scores: Array<{
+    id: string;
+    participantId: string;
+    teamId: string;
+    score: number | null;
+    status: string;
+    version: number;
+  }>;
+}
+
+export interface ReopenEventScoresPayload {
+  eventId: string;
+  reason: string;
+}
+
+export interface ReopenEventScoresData {
+  eventId: string;
+  reopenedCount: number;
+  reason: string;
+  existingCertificates: { generated: number; issued: number };
 }
 
 export type SessionValidationResponse =

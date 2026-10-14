@@ -20,6 +20,45 @@
     </div>
   </div>
 
+  <!-- Current programme/zone scope. Labels and dates come from the
+       configured context; no data counts are shown here. -->
+  @if (programScope(); as scope) {
+    <section class="scope-card" aria-label="Current programme and zone">
+      <div class="scope-card-main">
+        <span class="scope-card-kicker">Current scope</span>
+        <div class="scope-card-scope">
+          <strong>{{ scope.program.label }}</strong>
+          <span class="scope-card-separator" aria-hidden="true">·</span>
+          <strong>{{ scope.zone.label }}</strong>
+          <span
+            class="scope-card-environment"
+            [class.scope-card-environment--test]="scope.zone.environment === 'TEST'"
+          >
+            {{ scope.zone.environment === 'TEST' ? 'Test environment' : 'Live' }}
+          </span>
+        </div>
+        <p class="scope-card-date">
+          @if (scope.zone.date) {
+            Event date: {{ scope.zone.date | date: 'EEEE, d MMMM y' }}
+          } @else {
+            {{ scope.zone.dateNote }}
+          }
+        </p>
+        <p class="scope-card-note">
+          Scope currently filters this interface only; the backend does not yet
+          enforce programme/zone isolation.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="scope-card-switch"
+        (click)="switchScope()"
+      >
+        Switch programme or zone
+      </button>
+    </section>
+  }
+
   <div class="welcome-card">
     <div class="welcome-content">
       <span>{{ greeting }}</span>

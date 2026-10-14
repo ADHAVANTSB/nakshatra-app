@@ -2,6 +2,115 @@
    utilities from src/styles.scss (.page, .welcome-card, .stats-grid,
    .stat-card, .section-card, .empty-state, .badge, .page-actions). */
 
+/* Current programme/zone scope card. */
+.scope-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  margin-bottom: 18px;
+  border: 1px solid var(--nk-border);
+  border-left: 4px solid var(--nk-primary);
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.scope-card-kicker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nk-primary-dark);
+}
+
+.scope-card-scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--nk-text-dark);
+  font-size: 1.05rem;
+}
+
+.scope-card-scope strong {
+  font-weight: 700;
+}
+
+.scope-card-separator {
+  color: var(--nk-muted);
+}
+
+.scope-card-environment {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e7f6ee;
+  color: #0c6b43;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.scope-card-environment--test {
+  background: var(--nk-yellow-light);
+  color: #6b4d12;
+}
+
+.scope-card-date {
+  margin: 6px 0 0;
+  color: var(--nk-text-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.scope-card-note {
+  margin: 4px 0 0;
+  color: var(--nk-muted-light);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.scope-card-switch {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border: 1px solid var(--nk-primary);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-primary-light);
+  color: var(--nk-primary-dark);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--nk-transition-fast),
+    box-shadow var(--nk-transition-fast);
+}
+
+.scope-card-switch:hover {
+  background: #d9f1fa;
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.scope-card-switch:focus-visible {
+  outline: 3px solid var(--nk-primary-dark);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .scope-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scope-card-switch {
+    width: 100%;
+  }
+}
+
 .quick-actions {
   display: flex;
   flex-wrap: wrap;

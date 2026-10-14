@@ -27,6 +27,12 @@ import {
   EventRegistrationData,
   EventRegistrationPayload,
   FinalizeScoreData,
+  FinalizeEventData,
+  FinalizeEventPayload,
+  ReopenEventScoresData,
+  ReopenEventScoresPayload,
+  SaveEventScoresData,
+  SaveEventScoresPayload,
   FinalizeScorePayload,
   GetParticipantData,
   GetReportsData,
@@ -693,6 +699,21 @@ export class ApiClientService {
    * a failed server invalidation honestly — the local logout is never faked
    * as a server-confirmed one.
    */
+  async saveEventScores(payload: SaveEventScoresPayload): Promise<ApiResponse<SaveEventScoresData>> {
+    const response = await this.post<SaveEventScoresData, SaveEventScoresPayload>('saveEventScores', payload);
+    return response;
+  }
+
+  async finalizeEvent(payload: FinalizeEventPayload): Promise<ApiResponse<FinalizeEventData>> {
+    const response = await this.post<FinalizeEventData, FinalizeEventPayload>('finalizeEvent', payload);
+    return response;
+  }
+
+  async reopenEventScores(payload: ReopenEventScoresPayload): Promise<ApiResponse<ReopenEventScoresData>> {
+    const response = await this.post<ReopenEventScoresData, ReopenEventScoresPayload>('reopenEventScores', payload);
+    return response;
+  }
+
   async invalidateApplicationSession(): Promise<ApiResponse<LogoutData>> {
     let result: ApiResponse<LogoutData> = { success: true, data: { loggedOut: false } };
 

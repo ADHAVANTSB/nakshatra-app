@@ -94,7 +94,8 @@ describe('Attendance — mark conflict reporting', () => {
       errorCode: 'VERSION_CONFLICT',
     } as never);
 
-    await component.markAttendance(PARTICIPANT, 'PRESENT');
+    component.stageAttendance(PARTICIPANT, 'PRESENT');
+    await component.saveAttendance();
 
     expect(component.errors()[0]).toContain('Attendance was updated elsewhere.');
     // The service re-reads the persisted values after a conflict, so the
@@ -189,10 +190,13 @@ describe('Attendance — mark conflict reporting', () => {
     component.selectedEventId.set('event-1');
 
     // Mark accepted → local record v1. Retry under conflict → conflict again.
-    await component.markAttendance(PARTICIPANT, 'PRESENT');
-    await component.markAttendance(PARTICIPANT, 'ABSENT');
+    component.stageAttendance(PARTICIPANT, 'PRESENT');
+    await component.saveAttendance();
+    component.stageAttendance(PARTICIPANT, 'ABSENT');
+    await component.saveAttendance();
     // Final retry: the stale local version must no longer be sent.
-    await component.markAttendance(PARTICIPANT, 'ABSENT');
+    component.stageAttendance(PARTICIPANT, 'ABSENT');
+    await component.saveAttendance();
 
     const lastPayload = payloads[payloads.length - 1];
     expect(lastPayload['expectedVersion']).toBeUndefined();

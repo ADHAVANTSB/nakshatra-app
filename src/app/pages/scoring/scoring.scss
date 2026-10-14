@@ -1,1 +1,13 @@
 ﻿.scoring-page { max-width: 1200px; margin: 0 auto; padding: 28px; color: #39322d; }.eyebrow, span, small { display:block; color:#6e6158; font-size:11px; }.page-header { margin-bottom:20px; } h1 { margin:4px 0; }.controls { display:flex; gap:10px; margin-bottom:16px; }.controls select,.controls input,.score-card input { padding:10px; border:1px solid #ded8d3; border-radius:8px; background:#fff; }.controls select { flex:1; }.controls input { width:240px; }.summary,.score-card,.empty,.alert { padding:14px; margin-bottom:12px; border:1px solid #e5dfda; border-radius:10px; background:#fff; }.summary small { margin-top:5px; }.score-list { display:flex; flex-direction:column; gap:8px; }.score-card { display:flex; align-items:center; gap:10px; margin:0; }.score-card > div:first-child { flex:1; }.score-card strong { display:block; }.score-details { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; }.score-card input { width:90px; } button { border:0; border-radius:7px; padding:8px 10px; cursor:pointer; background:#eee9f5; color:#5f4d7c; font-weight:700; }.finalize,.final { background:#e5f1e6; color:#54745a; }.final { padding:7px 10px; border-radius:7px; font-weight:700; }.audit { flex-basis:100%; text-align:right; }.alert.error { border-color:#eadada; color:#825959; }.alert.success { border-color:#d8e5da; color:#527057; } @media(max-width:700px){.scoring-page{padding:18px 14px}.controls,.score-card{align-items:stretch;flex-direction:column}.controls input{width:auto}.score-details{justify-content:flex-start}.audit{text-align:left}}
+
+/* Event-level scoring toolbar + reopen row */
+.scoring-toolbar { display: flex; gap: 12px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+.scoring-toolbar .save { background: #159ed0; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.scoring-toolbar .save:disabled { opacity: 0.5; cursor: default; }
+.scoring-toolbar .finalize { background: #6c3df5; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.scoring-toolbar .finalize:disabled { opacity: 0.5; cursor: default; }
+.scoring-toolbar .link-button { background: none; border: none; color: #066a8c; cursor: pointer; text-decoration: underline; }
+.scoring-toolbar .final { color: #5428d4; font-weight: 700; }
+.reopen-row { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+.reopen-row label { font-weight: 600; }
+.reopen-row input { padding: 8px 10px; border: 1px solid #dfebf1; border-radius: 6px; min-width: 280px; }

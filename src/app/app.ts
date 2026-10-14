@@ -5,11 +5,11 @@ import {
   RouterLink,
   RouterLinkActive,
   RouterOutlet
-} from '@angular/router';
-import { ApplicationSection } from './core/models';
+} from '@angular/router';import { ApplicationSection } from './core/models';
 import { AuthService } from './core/services/auth/auth.service';
 import { ApiClientService } from './core/services/api/api-client.service';
 import { NotificationService } from './core/services/notifications/notification.service';
+import { ProgramContextService } from './core/services/program/program-context.service';
 
 interface NavItem {
   label: string;
@@ -32,6 +32,11 @@ function isLoginUrl(url: string): boolean {
   return url === '/login' || url.startsWith('/login?') || url.startsWith('/login#');
 }
 
+function isScopeSelectionUrl(url: string): boolean {
+  const path = url.split('?')[0].split('#')[0];
+  return path === '/select-program' || path === '/select-zone';
+}
+
 @Component({
   selector: 'app-root',
   imports: [
@@ -52,6 +57,9 @@ export class App implements OnInit {
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly currentUser = this.auth.currentUser;
   readonly notifications = this.notificationService.notifications;
+  /** Program/zone scope shown in the header chip. */
+  private readonly programContext = inject(ProgramContextService);
+  readonly programScope = this.programContext.scope;
 
   /**
    * Whether the router currently shows the sign-in page.
@@ -63,10 +71,21 @@ export class App implements OnInit {
    */
   readonly isLoginRoute = signal(isLoginUrl(this.router.url));
 
+  /**
+   * Whether the router currently shows a programme/zone selection screen.
+   *
+   * The selection flow runs in a minimal shell: Nakshatra branding and the
+   * signed-in account stay available, but the sidebar, navigation icons,
+   * hamburger buttons and expand/collapse controls are removed so the choice
+   * is presented without operational chrome.
+   */
+  readonly isScopeSelectionRoute = signal(isScopeSelectionUrl(this.router.url));
+
   constructor() {
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) {
         this.isLoginRoute.set(isLoginUrl(event.urlAfterRedirects));
+        this.isScopeSelectionRoute.set(isScopeSelectionUrl(event.urlAfterRedirects));
       }
     });
   }
@@ -148,6 +167,15 @@ export class App implements OnInit {
 
   closeUserMenu(): void { this.userMenuOpen.set(false); }
 
+  /**
+   * Opens the scope switcher. The selection flow itself guarantees a fresh
+   * zone choice: picking a different programme clears the zone, and re-picking
+   * a zone re-enters the dashboard without reusing stale scoped state.
+   */
+  switchScope(): void {
+    void this.router.navigateByUrl('/select-program');
+  }
+
   logout(): void {
     void this.signOut();
   }
@@ -169,6 +197,8 @@ export class App implements OnInit {
 
     try {
       const result = await this.apiClient.invalidateApplicationSession();
+      // A new sign-in must start a fresh programme/zone selection.
+      this.programContext.clear();
       await this.router.navigateByUrl('/login');
 
       if (!result.success) {
@@ -221,6 +251,13 @@ export class App implements OnInit {
 
     this.auth.setGoogleAuthenticatedUser(result.user);
     this.auth.setApplicationSession({ id: session.id, expiresAt: result.data.session.expiresAt });
+
+    // The backend session carries the selected programme/environment; restore
+    // it so refreshes and deep links keep the scope without re-selecting.
+    const restoredScope = result.data.session;
+    if (restoredScope.programId && restoredScope.environmentId) {
+      this.programContext.restoreFromBackend(restoredScope.programId, restoredScope.environmentId);
+    }
 
     // A visitor whose session was just restored while sitting on the sign-in
     // page belongs inside the application, not back on the login card.

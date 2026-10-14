@@ -1,0 +1,150 @@
+/* Program selection — step 1 of the post-sign-in scope flow.
+   Styling follows the global Nakshatra design system tokens. */
+
+.nk-scope-page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: clamp(24px, 4vw, 48px) 20px 56px;
+}
+
+.nk-scope-head {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.nk-scope-kicker {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-primary-dark);
+}
+
+.nk-scope-head h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 3.2vw, 2.1rem);
+  color: var(--nk-text-dark);
+}
+
+.nk-scope-lede {
+  margin: 0 auto;
+  max-width: 560px;
+  color: var(--nk-muted-light);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------
+   Programme cards
+   --------------------------------------------------------- */
+
+.nk-program-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.nk-program-card {
+  --card-accent: var(--nk-primary-dark);
+  --card-accent-soft: var(--nk-primary-light);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 24px 28px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-sm);
+  cursor: pointer;
+  text-align: center;
+  font: inherit;
+  transition:
+    transform var(--nk-transition-fast),
+    box-shadow var(--nk-transition),
+    border-color var(--nk-transition-fast);
+}
+
+.nk-program-card-arts {
+  --card-accent: var(--nk-purple-dark);
+  --card-accent-soft: var(--nk-purple-light);
+}
+
+.nk-program-card-sports {
+  --card-accent: #0c7a4d;
+  --card-accent-soft: #e7f6ee;
+}
+
+.nk-program-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--nk-shadow-md);
+  border-color: var(--card-accent);
+}
+
+.nk-program-card:focus-visible {
+  outline: 3px solid var(--card-accent);
+  outline-offset: 3px;
+}
+
+.nk-program-icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 10px;
+  border-radius: 18px;
+  color: var(--card-accent);
+  background: var(--card-accent-soft);
+}
+
+.nk-program-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--nk-text-dark);
+}
+
+.nk-program-tagline {
+  color: var(--nk-muted-light);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.nk-program-cta {
+  margin-top: 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--card-accent);
+}
+
+/* ---------------------------------------------------------
+   Honest scope note
+   --------------------------------------------------------- */
+
+.nk-scope-note {
+  margin: 28px auto 0;
+  max-width: 640px;
+  padding: 12px 16px;
+  border: 1px solid var(--nk-border-light);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-background-soft);
+  color: var(--nk-muted-light);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------
+   Responsive
+   --------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .nk-program-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nk-program-card {
+    padding: 28px 20px 24px;
+  }
+}

@@ -31,6 +31,96 @@
 
 @if (!isAuthenticated() || isLoginRoute()) {
   <router-outlet></router-outlet>
+} @else if (isScopeSelectionRoute()) {
+<!-- =========================================================
+     PROGRAMME / ZONE SELECTION SHELL
+     Minimal chrome by design: branding and the signed-in
+     account stay available, but the sidebar, navigation
+     icons, hamburger buttons and expand/collapse controls
+     are removed so the scope choice stands alone.
+     ========================================================= -->
+
+<div class="nk-selection-shell">
+
+  <header class="nk-selection-header">
+
+    <div class="nk-selection-brand">
+
+      <img
+        src="logo/nakshatra-logo.png"
+        alt="Nakshatra"
+        class="nk-selection-logo"
+      />
+
+      <span class="nk-selection-brand-name">
+        Nakshatra 2026
+      </span>
+
+    </div>
+
+    <div class="nk-selection-account">
+
+      @if (userMenuOpen()) {
+        <div class="nk-user-menu" (click)="$event.stopPropagation()">
+
+          <div class="nk-user-menu-header">
+            <strong>{{ currentUser()?.displayName }}</strong>
+            <span>{{ currentUser()?.role?.replace('_', ' ') }}</span>
+            <span class="nk-user-menu-email">{{ currentUser()?.email }}</span>
+          </div>
+
+          <div class="nk-user-menu-items">
+
+            <button
+              class="nk-user-menu-item nk-user-menu-item--logout"
+              type="button"
+              [disabled]="loggingOut()"
+              (click)="logout()"
+            >
+              {{ loggingOut() ? 'Signing out…' : 'Logout' }}
+            </button>
+
+          </div>
+
+        </div>
+      }
+
+      <button
+        class="nk-user"
+        type="button"
+        [attr.aria-expanded]="userMenuOpen()"
+        (click)="toggleUserMenu(); $event.stopPropagation()"
+      >
+
+        <div class="nk-user-avatar">
+          {{ userInitial() }}
+        </div>
+
+        <div class="nk-user-details">
+
+          <strong>{{ currentUser()?.displayName }}</strong>
+
+          <span>{{ currentUser()?.role?.replace('_', ' ') }}</span>
+
+        </div>
+
+        <span class="nk-user-chevron">
+          ▾
+        </span>
+
+      </button>
+
+    </div>
+
+  </header>
+
+  <main class="nk-selection-main">
+
+    <router-outlet></router-outlet>
+
+  </main>
+
+</div>
 } @else {
 <!-- =========================================================
      NAKSHATRA EVENT MANAGEMENT
@@ -358,6 +448,29 @@
            =================================================== -->
 
       <div class="nk-header-actions">
+
+
+        <!-- Program / zone scope chip -->
+
+        @if (programScope(); as scope) {
+          <button
+            class="nk-scope-chip"
+            type="button"
+            title="Switch programme or zone"
+            (click)="switchScope()"
+          >
+            <span class="nk-scope-chip-program">{{ scope.program.label }}</span>
+            <span class="nk-scope-chip-separator" aria-hidden="true">·</span>
+            <span class="nk-scope-chip-zone">{{ scope.zone.label }}</span>
+            <span
+              class="nk-scope-chip-environment"
+              [class.nk-scope-chip-environment--test]="scope.zone.environment === 'TEST'"
+            >
+              {{ scope.zone.environment === 'TEST' ? 'Test' : 'Live' }}
+            </span>
+            <span class="nk-scope-chip-switch" aria-hidden="true">Switch</span>
+          </button>
+        }
 
 
         <!-- Notification -->

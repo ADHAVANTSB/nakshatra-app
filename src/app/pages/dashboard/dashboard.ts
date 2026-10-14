@@ -6,10 +6,12 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { Router } from '@angular/router';
 
 import { ReportService } from '../../core/services/reports/report.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 
 /** Lifecycle of the connected-homes read. */
 type HomesStatus = 'LOADING' | 'LOADED' | 'ERROR';
@@ -43,7 +45,7 @@ interface QuickAction {
  */
 @Component({
   selector: 'nk-dashboard',
-  imports: [],
+  imports: [DatePipe],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +54,10 @@ export class Dashboard implements OnInit {
   private readonly router = inject(Router);
   private readonly reportService = inject(ReportService);
   private readonly shelterData = inject(ShelterDataService);
+
+  /** Program/zone scope chosen after sign-in, shown in the scope card. */
+  readonly context = inject(ProgramContextService);
+  readonly programScope = this.context.scope;
 
   private readonly homesStatusState = signal<HomesStatus>('LOADING');
   private readonly homesErrorState = signal('');
@@ -163,6 +169,11 @@ export class Dashboard implements OnInit {
 
   goTo(path: string): void {
     void this.router.navigateByUrl(path);
+  }
+
+  /** Opens the scope switcher; the flow forces a fresh zone choice. */
+  switchScope(): void {
+    void this.router.navigateByUrl('/select-program');
   }
 
   /** Re-reads the backend summary and the connected homes; nothing else. */

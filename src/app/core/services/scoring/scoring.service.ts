@@ -20,6 +20,48 @@ export interface ScoreResult {
   sourceWriteBack?: SourceWriteBackResult;
 }
 
+/** One score entry for the event-level batch save. */
+export interface EventScoreEntry {
+  participantId?: string;
+  teamId?: string;
+  score: number;
+  expectedVersion?: number;
+}
+
+export interface SaveEventScoresResult {
+  success: boolean;
+  failures: Array<{ index: number; message: string }>;
+  saved?: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface FinalizeEventResult {
+  success: boolean;
+  data?: {
+    eventId: string;
+    operationId: string;
+    alreadyFinalized: boolean;
+    finalizedCount: number;
+    totalScores: number;
+  };
+  errorCode?: string;
+  errorMessage?: string;
+  error?: { code: string; message: string };
+}
+
+export interface ReopenEventResult {
+  success: boolean;
+  data?: {
+    eventId: string;
+    reopenedCount: number;
+    reason: string;
+    existingCertificates: { generated: number; issued: number };
+  };
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 /**
  * Scores.
  *
@@ -207,6 +249,48 @@ export class ScoringService {
       errors: [],
       sourceWriteBack,
     };
+  }
+
+  /**
+   * Event-level batch draft persistence (one Save for the whole event).
+   * Per-entry failures are returned; the caller keeps its drafts.
+   */
+  async saveEventDrafts(
+    eventId: string,
+    entries: Array<{ participantId?: string; teamId?: string; score: number; expectedVersion?: number }>,
+  ): Promise<SaveEventScoresResult> {
+    if (!entries.length) {
+      return { success: true, failures: [], saved: 0 };
+    }
+    const response = await this.apiClient.saveEventScores({ eventId, entries });
+    if (!response.success) {
+      return { success: false, failures: [], errorCode: response.error.code, errorMessage: response.error.message };
+    }
+    await this.loadScores(eventId, true);
+    const failures = response.data.outcomes
+      .filter(o => !o.ok)
+      .map(o => ({ index: o.index, message: o.message || o.code }));
+    return { success: failures.length === 0, failures, saved: response.data.saved };
+  }
+
+  /** Controlled event-level finalization (idempotent on the backend). */
+  async finalizeEventScores(eventId: string, operationId?: string): Promise<FinalizeEventResult> {
+    const response = await this.apiClient.finalizeEvent(operationId ? { eventId, operationId } : { eventId });
+    if (!response.success) {
+      return { success: false, errorCode: response.error.code, errorMessage: response.error.message, error: response.error };
+    }
+    await this.loadScores(eventId, true);
+    return { success: true, data: response.data };
+  }
+
+  /** Reopens a finalized event's scores with a mandatory reason. */
+  async reopenEventScores(eventId: string, reason: string): Promise<ReopenEventResult> {
+    const response = await this.apiClient.reopenEventScores({ eventId, reason });
+    if (!response.success) {
+      return { success: false, errorCode: response.error.code, errorMessage: response.error.message };
+    }
+    await this.loadScores(eventId, true);
+    return { success: true, data: response.data };
   }
 
   /**

@@ -117,6 +117,48 @@
         <div class="alert" role="status">Refreshing scores…</div>
       }
 
+      <div class="scoring-toolbar" role="toolbar" aria-label="Event scoring actions">
+        <button
+          type="button"
+          class="save"
+          [disabled]="scoringBusy() || !hasUnsavedDrafts()"
+          (click)="saveAllDrafts()">
+          {{ scoringBusy() ? 'Saving…' : 'Save scores' }}
+        </button>
+
+        <button
+          type="button"
+          class="finalize"
+          [disabled]="scoringBusy() || hasUnsavedDrafts() || !targets().length || eventFinalized()"
+          (click)="finalizeEventAction()">
+          Finalize Event
+        </button>
+
+        @if (eventFinalized()) {
+          <button
+            type="button"
+            class="link-button"
+            (click)="toggleReopen()">
+            Reopen for correction
+          </button>
+          <span class="final">Event finalized</span>
+        }
+      </div>
+
+      @if (reopenRequested()) {
+        <div class="reopen-row">
+          <label for="reopen-reason">Reopen reason (required)</label>
+          <input
+            id="reopen-reason"
+            type="text"
+            [value]="reopenReason()"
+            (input)="updateReopenReason($any($event.target).value)"
+            placeholder="Why are these scores being reopened?" />
+          <button type="button" [disabled]="!reopenReason().trim() || scoringBusy()" (click)="reopenEventAction()">Confirm reopen</button>
+          <button type="button" (click)="toggleReopen()">Cancel</button>
+        </div>
+      }
+
       <div class="score-list">
         @for (target of targets(); track target.key) {
 
@@ -143,24 +185,10 @@
                 <input
                   #scoreValue
                   type="number"
-                  [value]="target.score?.value ?? ''"
+                  [value]="drafts()[target.key] ?? target.score?.value ?? ''"
                   placeholder="Score"
-                  [disabled]="isLocked(target)" />
-
-                <button
-                  type="button"
-                  [disabled]="isLocked(target)"
-                  (click)="saveDraft(event, target, scoreValue.value)">
-                  Save draft
-                </button>
-
-                <button
-                  type="button"
-                  class="finalize"
-                  [disabled]="isLocked(target)"
-                  (click)="finalize(event, target, scoreValue.value)">
-                  Finalize
-                </button>
+                  [disabled]="isLocked(target) || eventFinalized()"
+                  (input)="updateDraft(target.key, scoreValue.value)" />
 
               }
 

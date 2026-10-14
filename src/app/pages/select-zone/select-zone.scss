@@ -1,0 +1,227 @@
+/* Zone selection — step 2 of the post-sign-in scope flow.
+   Shares the scope-page scaffolding with the program selection styles. */
+
+.nk-scope-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: clamp(24px, 4vw, 48px) 20px 56px;
+}
+
+.nk-scope-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.nk-scope-kicker {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-primary-dark);
+}
+
+.nk-scope-head h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 3.2vw, 2.1rem);
+  color: var(--nk-text-dark);
+}
+
+.nk-scope-lede {
+  margin: 0 auto;
+  max-width: 560px;
+  color: var(--nk-muted-light);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.nk-zone-back {
+  margin-top: 16px;
+  padding: 8px 14px;
+  border: 1px solid var(--nk-border);
+  border-radius: 999px;
+  background: var(--nk-surface);
+  color: var(--nk-text-soft);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--nk-transition-fast),
+    color var(--nk-transition-fast),
+    box-shadow var(--nk-transition-fast);
+}
+
+.nk-zone-back:hover {
+  border-color: var(--nk-primary);
+  color: var(--nk-primary-dark);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.nk-zone-back:focus-visible {
+  outline: 3px solid var(--nk-primary-dark);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------
+   Zone cards
+   --------------------------------------------------------- */
+
+.nk-zone-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.nk-zone-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 22px 20px;
+  border: 1px solid var(--nk-border);
+  border-top: 4px solid var(--nk-primary);
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition:
+    transform var(--nk-transition-fast),
+    box-shadow var(--nk-transition),
+    border-color var(--nk-transition-fast);
+}
+
+.nk-zone-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--nk-shadow-md);
+  border-color: var(--nk-primary);
+}
+
+.nk-zone-card:focus-visible {
+  outline: 3px solid var(--nk-primary-dark);
+  outline-offset: 3px;
+}
+
+.nk-zone-card-test {
+  border-top-color: var(--nk-warning);
+}
+
+.nk-zone-card-test:hover {
+  border-color: var(--nk-warning);
+}
+
+.nk-zone-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nk-zone-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--nk-text-dark);
+}
+
+.nk-zone-environment {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e7f6ee;
+  color: #0c6b43;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nk-zone-environment-test {
+  background: var(--nk-yellow-light);
+  color: #6b4d12;
+}
+
+.nk-zone-description {
+  color: var(--nk-muted-light);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.nk-zone-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--nk-text-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.nk-zone-date svg {
+  color: var(--nk-primary-dark);
+  flex-shrink: 0;
+}
+
+.nk-zone-cta {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--nk-primary-dark);
+}
+
+/* ---------------------------------------------------------
+   Empty / honest scope note
+   --------------------------------------------------------- */
+
+.nk-scope-empty {
+  max-width: 460px;
+  margin: 48px auto;
+  padding: 32px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-sm);
+  text-align: center;
+}
+
+.nk-scope-empty h1 {
+  margin: 0 0 8px;
+  color: var(--nk-text-dark);
+  font-size: 1.3rem;
+}
+
+.nk-scope-empty p {
+  margin: 0 0 18px;
+  color: var(--nk-muted-light);
+}
+
+.nk-scope-note {
+  margin: 28px auto 0;
+  max-width: 640px;
+  padding: 12px 16px;
+  border: 1px solid var(--nk-border-light);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-background-soft);
+  color: var(--nk-muted-light);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------
+   Responsive
+   --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .nk-zone-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nk-zone-save-error {
+  color: #b3261e;
+  font-weight: 600;
+}

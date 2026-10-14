@@ -178,17 +178,20 @@ test.describe('attendance', () => {
     await expect(rowStatus(page)).toHaveText('Not marked');
 
     await row(page).getByRole('button', { name: 'Present' }).click();
-    await expect(page.getByText('Arun Kumar marked present.')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
+    await expect(page.getByText('Attendance saved for 1 participant.').first()).toBeVisible();
     await expect(rowStatus(page)).toHaveText('Present');
 
     // The identical re-save is handled without a conflict error.
     await row(page).getByRole('button', { name: 'Present' }).click();
-    await expect(page.getByText('Arun Kumar marked present.')).toHaveCount(2);
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
+    await expect(page.getByText('Attendance saved for 1 participant.')).toHaveCount(2);
     await expect(rowStatus(page)).toHaveText('Present');
 
     // Updating reuses the persisted record version, so the backend accepts it.
     await row(page).getByRole('button', { name: 'Absent' }).click();
-    await expect(page.getByText('Arun Kumar marked absent.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
+    await expect(page.getByText('Attendance saved for 1 participant.').first()).toBeVisible();
     await expect(rowStatus(page)).toHaveText('Absent');
 
     const markRequests = backend.requests.filter((request) => request.action === 'markAttendance');
@@ -227,16 +230,18 @@ test.describe('attendance', () => {
 
     await expect(rowStatus(page)).toHaveText('Absent');
     await row(page).getByRole('button', { name: 'Present' }).click();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
 
     await expect(page.locator('.alert.error')).toContainText(
-      'Attendance was updated elsewhere. The latest saved values have been reloaded — try again.',
+      'Attendance was updated elsewhere. The latest saved values have been reloaded.',
     );
     // The forced re-read shows the other coordinator's value, not the stale one.
     await expect(rowStatus(page)).toHaveText('Present');
 
     // Buttons are usable again and a fresh save is accepted.
     await row(page).getByRole('button', { name: 'Present' }).click();
-    await expect(page.getByText('Arun Kumar marked present.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
+    await expect(page.getByText('Attendance saved for 1 participant.').first()).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 
@@ -261,6 +266,7 @@ test.describe('attendance', () => {
     await expect(rowStatus(page)).toHaveText('Not marked');
 
     await row(page).getByRole('button', { name: 'Present' }).click();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
 
     // The backend message is surfaced verbatim — no local fake success.
     await expect(page.getByText('This participant belongs to an archived shelter home.').first()).toBeVisible();
@@ -282,8 +288,9 @@ test.describe('attendance', () => {
 
     await expect(rowStatus(page)).toHaveText('Not marked');
     await row(page).getByRole('button', { name: 'Present' }).click();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
 
-    await expect(page.getByText('Attendance for Arun Kumar was not saved.')).toBeVisible();
+    await expect(page.getByText('Attendance for Arun Kumar was not saved.').first()).toBeVisible();
     await expect(rowStatus(page)).toHaveText('Not marked');
     await expect(row(page).getByRole('button', { name: 'Present' })).toBeEnabled();
     expect(pageErrors).toEqual([]);

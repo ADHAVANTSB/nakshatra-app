@@ -56,7 +56,7 @@
      Backgrounds
      ------------------------------------------------------- */
 
-  --nk-background: #f5fafc;
+  --nk-background: #f4f9fb;
   --nk-background-soft: #f8fbfd;
 
   --nk-white: #ffffff;
@@ -66,8 +66,8 @@
      Borders
      ------------------------------------------------------- */
 
-  --nk-border: #e1edf2;
-  --nk-border-light: #edf3f6;
+  --nk-border: #dbe8ef;
+  --nk-border-light: #e9f1f5;
 
   /* -------------------------------------------------------
      Status
@@ -82,19 +82,19 @@
      ------------------------------------------------------- */
 
   --nk-shadow-xs:
-    0 1px 3px rgba(18, 54, 72, 0.04);
+    0 1px 3px rgba(18, 54, 72, 0.05);
 
   --nk-shadow-sm:
-    0 4px 14px rgba(18, 54, 72, 0.06);
+    0 4px 14px rgba(18, 54, 72, 0.07);
 
   --nk-shadow-md:
-    0 10px 28px rgba(18, 54, 72, 0.08);
+    0 10px 28px rgba(18, 54, 72, 0.1);
 
   --nk-shadow-primary:
-    0 10px 24px rgba(20, 152, 201, 0.18);
+    0 10px 24px rgba(20, 152, 201, 0.2);
 
   --nk-shadow-purple:
-    0 10px 24px rgba(104, 69, 232, 0.18);
+    0 10px 24px rgba(104, 69, 232, 0.2);
 
   /* -------------------------------------------------------
      Radius
@@ -140,6 +140,15 @@ body {
   background: var(--nk-background);
 
   overflow-x: hidden;
+}
+
+/* A gentle top-down tint gives page surfaces a calmer, more layered tone
+   without changing any text/background contrast pair materially. */
+body {
+  background-color: var(--nk-background);
+  background-image: linear-gradient(180deg, #ecf5f9 0%, var(--nk-background) 420px);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 

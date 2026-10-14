@@ -275,57 +275,130 @@ export class Attendance implements OnInit {
     return 'No team assigned';
   }
 
-  /** Exactly one of: Not marked / Present / Absent. */
-  statusLabel(attendance: AttendanceRecord | undefined): string {
-    if (attendance?.status === 'PRESENT') return 'Present';
-    if (attendance?.status === 'ABSENT') return 'Absent';
+  /** Exactly one of: Not marked / Present / Absent (pending choice wins). */
+  statusLabel(attendance: AttendanceRecord | AttendanceStatus | undefined): string {
+    const status = typeof attendance === 'string'
+      ? attendance
+      : attendance?.status;
+    if (status === 'PRESENT') return 'Present';
+    if (status === 'ABSENT') return 'Absent';
     return 'Not marked';
   }
 
   /** Participant ids whose attendance write is currently in flight. */
   readonly markingIds = signal<ReadonlySet<string>>(new Set<string>());
 
+  /**
+   * Unsaved Present/Absent choices, staged separately from the persisted
+   * values until Save Attendance commits them. Reset Changes discards them.
+   */
+  readonly pendingChanges = signal<Record<string, { status: AttendanceStatus; teamId?: string; participantName: string }>>({});
+
+  readonly hasUnsavedChanges = computed(() => Object.keys(this.pendingChanges()).length > 0);
+  readonly pendingCount = computed(() => Object.keys(this.pendingChanges()).length);
+  readonly savingAttendance = signal(false);
+
   isMarking(participantId: string): boolean {
     return this.markingIds().has(participantId);
   }
 
-  async markAttendance(participant: Participant, status: AttendanceStatus, teamId?: string): Promise<void> {
-    const event = this.selectedEvent();
-    if (!event || this.isMarking(participant.id)) return;
+  /**
+   * Effective status for one attendee row: a staged (unsaved) choice wins
+   * over the persisted value until Save or Reset resolves it.
+   */
+  statusFor(item: { participant: Participant; attendance?: AttendanceRecord }): AttendanceStatus | undefined {
+    const pending = this.pendingChanges()[item.participant.id];
+    return pending ? pending.status : item.attendance?.status;
+  }
 
-    this.setMarking(participant.id, true);
+  hasPendingChoice(participantId: string): boolean {
+    return this.pendingChanges()[participantId] !== undefined;
+  }
+
+  /** Stages one Present/Absent choice — nothing is written to the backend yet. */
+  stageAttendance(participant: Participant, status: AttendanceStatus, teamId?: string): void {
+    if (!this.selectedEvent()) return;
     this.errors.set([]);
+    this.pendingChanges.update(current => ({
+      ...current,
+      [participant.id]: { status, teamId, participantName: participant.fullName },
+    }));
+  }
+
+  /** Discards every unsaved choice; the last saved state stays untouched. */
+  resetChanges(): void {
+    if (!this.hasUnsavedChanges()) return;
+    this.pendingChanges.set({});
+    this.errors.set([]);
+  }
+
+  /**
+   * Commits the staged choices to the backend, one record at a time with the
+   * existing per-record version checks. Failed records stay staged so the
+   * coordinator can retry them without re-entering the other choices.
+   */
+  async saveAttendance(): Promise<void> {
+    const event = this.selectedEvent();
+    if (!event || this.savingAttendance()) return;
+
+    const entries = Object.entries(this.pendingChanges());
+    if (!entries.length) return;
+
+    this.savingAttendance.set(true);
+    this.errors.set([]);
+    const failures: string[] = [];
+    let savedCount = 0;
 
     try {
-      const result = await this.attendanceService.markAttendance(
-        participant.id, event.id, status, teamId
-      );
-
-      if (result.success) {
-        this.notifications.success(
-          `${participant.fullName} marked ${this.statusLabel(result.attendance).toLowerCase()}.`
+      for (const [participantId, change] of entries) {
+        const result = await this.attendanceService.markAttendance(
+          participantId, event.id, change.status, change.teamId
         );
-        return;
-      }
 
-      if (result.errorCode === 'VERSION_CONFLICT') {
-        // Another coordinator marked this attendance first: nothing was
-        // overwritten, and the service has already re-read the persisted
-        // values, so the rows now show the current backend state.
-        const conflictMessage =
-          'Attendance was updated elsewhere. The latest saved values have been reloaded — try again.';
-        this.errors.set([conflictMessage]);
-        this.notifications.error(`Attendance for ${participant.fullName} was not saved.`, conflictMessage);
-        return;
-      }
+        if (result.success) {
+          savedCount++;
+          this.pendingChanges.update(current => {
+            const next = { ...current };
+            delete next[participantId];
+            return next;
+          });
+          continue;
+        }
 
-      const detail = result.errors.length > 0
-        ? result.errors.join(' ')
-        : 'The backend did not accept the attendance mark.';
-      this.errors.set(result.errors.length > 0 ? result.errors : [detail]);
-      this.notifications.error(`Attendance for ${participant.fullName} was not saved.`, detail);
+        // Every attempted record leaves the staged state — succeeded records
+        // are persisted, failed records are reported and the row returns to
+        // its persisted value ('Not marked' included).
+        this.pendingChanges.update(current => {
+          const next = { ...current };
+          delete next[participantId];
+          return next;
+        });
+
+        if (result.errorCode === 'VERSION_CONFLICT') {
+          // The latest persisted values have been reloaded by the service;
+          // surface the conflict without asking the user to refresh.
+          failures.push('Attendance was updated elsewhere. The latest saved values have been reloaded.');
+          continue;
+        }
+
+        failures.push(`Attendance for ${change.participantName} was not saved. ${
+          result.errors.length > 0 ? result.errors.join(' ') : ''
+        }`.trim());
+      }
     } finally {
-      this.setMarking(participant.id, false);
+      this.savingAttendance.set(false);
+    }
+
+    if (savedCount > 0) {
+      this.notifications.success(
+        `Attendance saved for ${savedCount} participant${savedCount === 1 ? '' : 's'}.`,
+        failures.length ? `${failures.length} record(s) could not be saved.` : undefined,
+      );
+    }
+
+    if (failures.length) {
+      this.errors.set(failures);
+      this.notifications.error('Some attendance records were not saved.', failures[0]);
     }
   }
 
