@@ -6,6 +6,7 @@ import { Event, EventCategory, Participant, Score, Team } from '../../core/model
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ScoreLoadState, ScoringService } from '../../core/services/scoring/scoring.service';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { TeamLoadState, TeamService } from '../../core/services/teams/team.service';
@@ -39,6 +40,7 @@ export class Results implements OnInit {
   private readonly teamService = inject(TeamService);
   private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly shelterData = inject(ShelterDataService);
+  private readonly apiClient = inject(ApiClientService);
   /** Re-runs the full store load after a failed page load (Retry button). */
   async retryStoreLoad(): Promise<void> {
     await this.shelterData.refresh();
@@ -60,6 +62,7 @@ export class Results implements OnInit {
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
     void this.shelterData.ensureLoaded();
+    void this.loadEventsWithResults();
 
     // Deep link from the Events page: /results?eventId=...
     const deepLinked = this.route.snapshot.queryParamMap.get('eventId');
@@ -71,6 +74,26 @@ export class Results implements OnInit {
     if (preselected) {
       void this.loadEvent(preselected);
     }
+  }
+
+  /**
+   * Events the backend holds finalized results for. Loaded once from the
+   * scope-filtered `listResults` (finalized scores only), so the page can
+   * list every event whose results are out without per-event requests.
+   */
+  private readonly resultEventIds = signal<ReadonlySet<string>>(new Set());
+
+  readonly eventsWithResults = computed(() =>
+    this.events().filter(event => this.resultEventIds().has(event.id)));
+
+  private async loadEventsWithResults(): Promise<void> {
+    const response = await this.apiClient.listResults();
+    if (!response.success) {
+      return;
+    }
+    this.resultEventIds.set(
+      new Set(response.data.results.map(row => row.eventId)),
+    );
   }
 
   readonly events = this.eventService.events$;

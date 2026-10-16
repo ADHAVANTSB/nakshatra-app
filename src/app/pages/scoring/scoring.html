@@ -15,9 +15,10 @@
     <p>Record draft or final judge scores for valid event entries.</p>
   </div>
 
-  <div class="controls">
+  <div class="event-select-card">
+    <label id="scoring-event-label">Select event</label>
 
-    <div class="event-card-grid" role="group" aria-label="Choose an active event to score">
+    <div class="event-card-grid" role="group" aria-labelledby="scoring-event-label">
       @for (event of events(); track event.id) {
         @if (event.status === 'ACTIVE') {
           <button type="button" class="event-card" [class.selected]="event.id === selectedEventId()" (click)="setEvent(event.id)">

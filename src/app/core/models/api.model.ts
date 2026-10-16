@@ -548,6 +548,25 @@ export interface UserMutationData {
   user: ApplicationUser;
   notified?: boolean;
   message?: string;
+  /** Safe mail-failure category from the backend (e.g. EMAIL_AUTHORIZATION). */
+  emailReason?: string;
+  /** Redacted mail-error detail; never contains addresses or tokens. */
+  emailDetail?: string;
+}
+
+/**
+ * One finalized result row from `listResults`. Only finalized scores appear;
+ * the row is an identity reference, not a display value.
+ */
+export interface ListResultRow {
+  scoreId: string;
+  eventId: string;
+  participantId?: string;
+  teamId?: string;
+}
+
+export interface ListResultsData {
+  results: ListResultRow[];
 }
 
 export interface RegistrationRequestData {

@@ -17,3 +17,21 @@ select, input { width: 100%; padding: 10px; border: 1px solid #ded8d3; border-ra
 .medal.silver { background: #eef2f7; color: #4a5a6a; border: 1px solid #c7d2dd; }
 .medal.bronze { background: #f7e9dd; color: #7c4a12; border: 1px solid #d9a86a; }
 .place { color: #60798f; font-weight: 600; }
+
+/* Events-with-results list shown before an event is selected. */
+.results-event-list { display: flex; flex-direction: column; gap: 8px; }
+.results-event-list > strong { margin-bottom: 4px; }
+.results-event-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dfebf1;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.results-event-item:hover { border-color: #159ed0; box-shadow: 0 4px 12px rgba(21, 158, 208, 0.15); }
+.results-event-meta { color: #60798f; font-size: 12px; }
+.results-event-arrow { margin-left: auto; color: #159ed0; }

@@ -456,7 +456,7 @@ export class Settings implements OnInit {
     if (result.data.notified === true) {
       this.notifications.success('User approved. An email has been sent.');
     } else {
-      this.notifications.success('User approved.', 'The backend did not confirm that an email was sent.');
+      this.notifications.success('User approved.', this.emailFailureNote(result.data));
     }
 
     await this.reload();
@@ -734,10 +734,9 @@ export class Settings implements OnInit {
       return;
     }
 
-    const emailNote =
-      result.data.notified === true
-        ? 'An email has been sent.'
-        : 'The backend did not confirm that an email was sent.';
+    const emailNote = result.data.notified === true
+      ? 'An email has been sent.'
+      : this.emailFailureNote(result.data);
 
     this.newEmail.set('');
     this.newDisplayName.set('');
@@ -747,6 +746,26 @@ export class Settings implements OnInit {
     this.notifications.success('User created.', emailNote);
 
     await this.reload();
+  }
+
+  /**
+   * Turns the backend's classified mail failure into an actionable note.
+   * The backend returns only the safe category (`emailReason`) and a redacted
+   * detail — never raw mail errors or addresses.
+   */
+  private emailFailureNote(data: UserMutationData): string {
+    const notes: Record<string, string> = {
+      EMAIL_AUTHORIZATION:
+        'The account exists, but the welcome email was blocked: the Apps Script deployment needs Mail authorization. Reauthorize the script and redeploy.',
+      EMAIL_QUOTA:
+        'The account exists, but the welcome email was blocked: the daily email quota is exhausted. Try again tomorrow.',
+      EMAIL_INVALID_RECIPIENT:
+        'The account exists, but the welcome email was rejected: Google Mail does not accept this recipient address.',
+    };
+    const base =
+      notes[data.emailReason ?? ''] ??
+      'The backend did not confirm that an email was sent.';
+    return data.emailDetail ? `${base} (${data.emailDetail})` : base;
   }
 
   // ---------------------------------------------------------

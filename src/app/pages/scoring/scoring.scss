@@ -124,9 +124,32 @@
   .event-card-grid { grid-template-columns: 1fr; }
 }
 
-/* Scoring workspace layout: event cards full width; search lives in the workspace. */
-.controls { display: block; }
-.event-card-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+/* Scoring workspace layout: event cards in the same white panel the
+   Attendance page uses; search lives in the workspace. */
+.event-select-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #e5dfda;
+  border-radius: 12px;
+  background: #fff;
+}
+.event-select-card > label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #39322d;
+}
+
+/* The scoring page's legacy page-wide `span, small { display: block }` rule
+   leaks into the shared event-card internals (badges stack, code wraps) and
+   makes the cards look different from Attendance. Restore the shared look
+   inside the cards; class rules are restated at higher specificity so the
+   icon/body/badges keep their flex layouts. */
+.event-card span { display: inline; }
+.event-card .event-card-icon { display: flex; }
+.event-card .event-card-body { display: flex; }
+.event-card .event-card-badges { display: flex; }
+.event-card .event-card-arrow { display: inline-block; }
 .roster-search { margin-bottom: 12px; }
 .roster-search input {
   width: 100%;

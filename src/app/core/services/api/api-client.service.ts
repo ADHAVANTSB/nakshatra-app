@@ -48,6 +48,7 @@ import {
   ListParticipantEventsData,
   ListParticipantsData,
   ListShelterHomesData,
+  ListResultsData,
   PageDataData,
   ListAttendanceData,
   ListAttendancePayload,
@@ -261,6 +262,14 @@ export class ApiClientService {
    */
   getPageData(): Promise<ApiResponse<PageDataData>> {
     return this.post<PageDataData>('getPageData');
+  }
+
+  /**
+   * All finalized results in the session scope (optionally filtered). Used by
+   * the Results page to list which events have finalized results.
+   */
+  listResults(): Promise<ApiResponse<ListResultsData>> {
+    return this.post<ListResultsData>('listResults');
   }
 
   /**
