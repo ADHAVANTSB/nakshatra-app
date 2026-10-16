@@ -123,3 +123,35 @@
 @media (max-width: 640px) {
   .event-card-grid { grid-template-columns: 1fr; }
 }
+
+/* Scoring workspace layout: event cards full width; search lives in the workspace. */
+.controls { display: block; }
+.event-card-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.roster-search { margin-bottom: 12px; }
+.roster-search input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #ded8d3;
+  border-radius: 10px;
+  background: #fff;
+}
+.scoring-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.scoring-empty-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: #fff;
+  background: #159ed0;
+}
+.scoring-empty small { max-width: 420px; }

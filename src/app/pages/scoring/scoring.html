@@ -36,12 +36,6 @@
       }
     </div>
 
-    <input
-      placeholder="Search name, code, or home"
-      [ngModel]="search()"
-      (ngModelChange)="setSearch($event)"
-      [disabled]="loading() || targetsLoading()" />
-
   </div>
 
   @if (eventsLoading()) {
@@ -77,6 +71,15 @@
       <strong>{{ event.name }}</strong>
       <span>{{ event.category }} · {{ modeLabel(event) }}</span>
       <small>Only participants marked PRESENT in Attendance are scored here.</small>
+    </div>
+
+    <div class="roster-search">
+      <input
+        aria-label="Search scoring entries"
+        placeholder="Search name, code, or home"
+        [ngModel]="search()"
+        (ngModelChange)="setSearch($event)"
+        [disabled]="loading() || targetsLoading()" />
     </div>
 
     <!--
@@ -229,7 +232,11 @@
     }
 
   } @else {
-    <div class="empty">Select an event to begin scoring.</div>
+    <div class="empty scoring-empty" role="status">
+      <span class="scoring-empty-icon" aria-hidden="true">✦</span>
+      <strong>Select an event to begin scoring</strong>
+      <small>Choose an active event above. Only entries marked PRESENT in Attendance appear in the scoring roster.</small>
+    </div>
   }
 
 </div>
