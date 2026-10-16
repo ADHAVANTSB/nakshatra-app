@@ -7,6 +7,7 @@ import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ScoreLoadState, ScoringService } from '../../core/services/scoring/scoring.service';
 import { ApiClientService } from '../../core/services/api/api-client.service';
+import { ListResultRow } from '../../core/models/api.model';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { TeamLoadState, TeamService } from '../../core/services/teams/team.service';
@@ -86,14 +87,49 @@ export class Results implements OnInit {
   readonly eventsWithResults = computed(() =>
     this.events().filter(event => this.resultEventIds().has(event.id)));
 
+  /** Raw finalized result rows as returned by the backend (display-ready). */
+  private readonly resultRows = signal<ListResultRow[]>([]);
+
   private async loadEventsWithResults(): Promise<void> {
     const response = await this.apiClient.listResults();
     if (!response.success) {
       return;
     }
+    this.resultRows.set(response.data.results);
     this.resultEventIds.set(
       new Set(response.data.results.map(row => row.eventId)),
     );
+  }
+
+  /** One ranked board per event whose results are out. */
+  readonly resultBoards = computed<ResultBoard[]>(() => {
+    const byEvent = new Map<string, ListResultRow[]>();
+    for (const row of this.resultRows()) {
+      const list = byEvent.get(row.eventId) ?? [];
+      list.push(row);
+      byEvent.set(row.eventId, list);
+    }
+
+    return [...byEvent.entries()].map(([eventId, rows]) => {
+      const ranked = rankResultRows(rows);
+      return {
+        eventId,
+        eventCode: ranked[0].row.eventCode,
+        eventName: ranked[0].row.eventName,
+        category: ranked[0].row.category,
+        mode: ranked[0].row.mode,
+        ranked,
+      };
+    });
+  });
+
+  /** Boards honour the category filter. */
+  readonly visibleBoards = computed(() =>
+    this.resultBoards().filter(board => !this.category() || board.category === this.category()));
+
+  /** Display name for a board row: participant first, then team. */
+  boardName(row: ListResultRow): string {
+    return row.fullName || row.teamName || 'Unnamed entry';
   }
 
   readonly events = this.eventService.events$;
@@ -101,7 +137,8 @@ export class Results implements OnInit {
   readonly category = signal<EventCategory | ''>('');
   readonly search = signal('');
 
-  readonly filteredEvents = computed(() => this.events().filter(event =>
+  // The Event dropdown offers only events whose results are out.
+  readonly filteredEvents = computed(() => this.eventsWithResults().filter(event =>
     !this.category() || event.category === this.category()
   ));
 
@@ -265,4 +302,39 @@ export class Results implements OnInit {
       : [row.team?.name ?? '', row.team?.teamCode ?? ''];
     return values.some(value => value.toLowerCase().includes(query));
   }
+}
+
+
+/** One ranked entry on a results board. */
+export interface RankedResultRow {
+  row: ListResultRow;
+  position: number;
+}
+
+/** One event's finalized results, ranked. */
+export interface ResultBoard {
+  eventId: string;
+  eventCode: string;
+  eventName: string;
+  category: string;
+  mode: string;
+  ranked: RankedResultRow[];
+}
+
+/**
+ * Competition ranking, highest score first: ties share a position and the
+ * next position skips (1, 2, 2, 4) — the same rule the winners report uses.
+ */
+export function rankResultRows(rows: ListResultRow[]): RankedResultRow[] {
+  const sorted = [...rows].sort((a, b) => b.score - a.score);
+  let position = 0;
+  let prevScore: number | null = null;
+
+  return sorted.map((row, index) => {
+    if (prevScore === null || row.score < prevScore) {
+      position = index + 1;
+      prevScore = row.score;
+    }
+    return { row, position };
+  });
 }

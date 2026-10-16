@@ -561,8 +561,21 @@ export interface UserMutationData {
 export interface ListResultRow {
   scoreId: string;
   eventId: string;
+  eventCode: string;
+  eventName: string;
+  category: string;
+  mode: string;
   participantId?: string;
   teamId?: string;
+  participantCode?: string;
+  fullName?: string;
+  participantLevel?: string;
+  shelterHomeId?: string;
+  shelterHomeName?: string;
+  teamName?: string;
+  teamCode?: string;
+  score: number;
+  finalizedAt?: string;
 }
 
 export interface ListResultsData {

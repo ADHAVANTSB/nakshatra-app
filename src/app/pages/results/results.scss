@@ -35,3 +35,56 @@ select, input { width: 100%; padding: 10px; border: 1px solid #ded8d3; border-ra
 .results-event-item:hover { border-color: #159ed0; box-shadow: 0 4px 12px rgba(21, 158, 208, 0.15); }
 .results-event-meta { color: #60798f; font-size: 12px; }
 .results-event-arrow { margin-left: auto; color: #159ed0; }
+
+/* Ranked results boards — one card per event whose results are out. */
+.results-boards { display: flex; flex-direction: column; gap: 16px; }
+.results-board {
+  border: 1px solid #e5dfda;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+}
+.results-board-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.results-board-head strong { display: block; font-size: 17px; color: #17324d; }
+.results-board-head small { color: #60798f; }
+.results-finalized-chip {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e5f6ec;
+  color: #1e7a43;
+  font-size: 11px;
+  font-weight: 700;
+}
+.results-board-table { display: flex; flex-direction: column; }
+.results-board-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 70px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.results-board-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6e6158;
+}
+.results-board-row .place { font-weight: 700; color: #39322d; }
+.results-board-row .entry-name { font-weight: 700; color: #17324d; }
+.results-board-row .entry-score { text-align: right; color: #39322d; }
+.results-board-row.place-1 { background: #fdf6e0; }
+.results-board-row.place-2 { background: #eef3fb; }
+.results-board-row.place-3 { background: #fdeee0; }
+.results-board-foot { margin-top: 10px; text-align: right; }
+@media (max-width: 640px) {
+  .results-board-row { grid-template-columns: 72px 1fr 56px; }
+}

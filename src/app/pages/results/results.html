@@ -134,15 +134,41 @@
       <div class="empty-state"><strong>No finalized results for this event</strong><span>Draft scores are intentionally excluded until they are finalized.</span></div>
     }
   } @else {
-    @if (eventsWithResults().length > 0) {
-      <div class="results-event-list" role="group" aria-label="Events with finalized results">
-        <strong>Events with finalized results</strong>
-        @for (event of eventsWithResults(); track event.id) {
-          <button type="button" class="results-event-item" (click)="setEvent(event.id)">
-            <span>{{ event.eventCode }} · {{ event.name }}</span>
-            <span class="results-event-meta">{{ event.category }} · {{ eventModeLabel(event) }}</span>
-            <span class="results-event-arrow" aria-hidden="true">→</span>
-          </button>
+    @if (visibleBoards().length > 0) {
+      <div class="results-boards" role="group" aria-label="Events with finalized results">
+        @for (board of visibleBoards(); track board.eventId) {
+          <article class="results-board">
+            <header class="results-board-head">
+              <div>
+                <strong>{{ board.eventName }}</strong>
+                <small>{{ board.eventCode }} · {{ board.category }}</small>
+              </div>
+              <span class="results-finalized-chip">Results Finalized</span>
+            </header>
+            <div class="results-board-table">
+              <div class="results-board-row results-board-header">
+                <span>Position</span><span>Participant</span><span>Score</span>
+              </div>
+              @for (entry of board.ranked; track entry.row.scoreId) {
+                <div class="results-board-row"
+                     [class.place-1]="entry.position === 1"
+                     [class.place-2]="entry.position === 2"
+                     [class.place-3]="entry.position === 3">
+                  <span class="place">
+                    @if (entry.position === 1) { 🥇 1st }
+                    @else if (entry.position === 2) { 🥈 2nd }
+                    @else if (entry.position === 3) { 🥉 3rd }
+                    @else { {{ entry.position }} }
+                  </span>
+                  <span class="entry-name">{{ boardName(entry.row) }}</span>
+                  <span class="entry-score">{{ entry.row.score }}</span>
+                </div>
+              }
+            </div>
+            <div class="results-board-foot">
+              <button type="button" class="link-button" (click)="setEvent(board.eventId)">Open full results →</button>
+            </div>
+          </article>
         }
       </div>
     } @else {
