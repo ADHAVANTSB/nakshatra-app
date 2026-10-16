@@ -8,6 +8,8 @@ import {
   CreateTeamPayload,
   GetTeamData,
   ListScoresData,
+  ListWinnersData,
+  ListWinnersPayload,
   ListTeamsData,
   MarkAttendancePayload,
   Team,
@@ -46,6 +48,7 @@ import {
   ListParticipantEventsData,
   ListParticipantsData,
   ListShelterHomesData,
+  PageDataData,
   ListAttendanceData,
   ListAttendancePayload,
   PreviewShelterSheetPayload,
@@ -249,6 +252,15 @@ export class ApiClientService {
     return this.post<ListShelterHomesData, ListShelterHomesPayload | undefined>(
       'listShelterHomes', payload
     );
+  }
+
+  /**
+   * Batched page snapshot: homes, participants, import status and current
+   * validation results in one request, all scoped server-side. Replaces the
+   * per-home fan-out on the Homes / Participants pages.
+   */
+  getPageData(): Promise<ApiResponse<PageDataData>> {
+    return this.post<PageDataData>('getPageData');
   }
 
   /**
@@ -712,6 +724,10 @@ export class ApiClientService {
   async reopenEventScores(payload: ReopenEventScoresPayload): Promise<ApiResponse<ReopenEventScoresData>> {
     const response = await this.post<ReopenEventScoresData, ReopenEventScoresPayload>('reopenEventScores', payload);
     return response;
+  }
+
+  listWinners(): Promise<ApiResponse<ListWinnersData>> {
+    return this.post<ListWinnersData, ListWinnersPayload>('listWinners');
   }
 
   async invalidateApplicationSession(): Promise<ApiResponse<LogoutData>> {

@@ -713,8 +713,7 @@
               @for (team of teamsForSelectedEvent(); track team.id) {
                 <article class="team-card">
                   <div class="team-card-main">
-                    <span class="team-code">{{ team.teamCode }}</span>
-                    <strong>{{ team.name }}</strong>
+                                        <strong>{{ team.name }}</strong>
                     <small>{{ getTeamMemberCount(team.id) }} member{{ getTeamMemberCount(team.id) === 1 ? '' : 's' }}</small>
                   </div>
                   <div class="team-card-statuses">
@@ -745,7 +744,7 @@
               <div class="section-heading">
                 <div>
                   <h3>{{ team.name }}</h3>
-                  <span>{{ team.teamCode }} · {{ teamStatusLabel(team) }}</span>
+                  <span>{{ teamStatusLabel(team) }}</span>
                 </div>
                 <button type="button" class="close-button" (click)="closeTeamMembers()">×</button>
               </div>
@@ -762,7 +761,7 @@
                     <div class="team-member-card">
                       <div>
                         <strong>{{ participant.fullName }}</strong>
-                        <span>{{ participant.participantCode }} · {{ getHomeName(participant.shelterHomeId) }}</span>
+                        <span>{{ getHomeName(participant.shelterHomeId) }}</span>
                         <small>{{ participant.gender }} · Age {{ participant.age }} · Class {{ participant.standard }} · {{ participant.level ? levelLabel(participant.level) : 'No level' }}</small>
                       </div>
                       @if (canModifyTeam(team)) {
@@ -804,7 +803,7 @@
                         <div class="team-candidate-card">
                           <div>
                             <strong>{{ candidate.participant.fullName }}</strong>
-                            <span>{{ candidate.participant.participantCode }} · {{ getHomeName(candidate.participant.shelterHomeId) }}</span>
+                            <span>{{ getHomeName(candidate.participant.shelterHomeId) }}</span>
                             <small>{{ candidate.participant.level ? levelLabel(candidate.participant.level) : 'No level' }} · {{ candidate.isRegistered ? 'Registered' : 'Not registered' }} · {{ candidate.isEligible ? 'Eligible' : 'Not eligible' }}</small>
                             @if (candidate.assignedTeam) {
                               <small>Already assigned to {{ candidate.assignedTeam.name }}.</small>
@@ -1294,7 +1293,6 @@
                         </strong>
 
                         <span>
-                          {{ participant.participantCode }}
                         </span>
 
                         <small>

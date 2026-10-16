@@ -51,7 +51,7 @@
     <select id="report-home" [ngModel]="homeId()" (ngModelChange)="setHome($event)">
       <option value="">All homes</option>
       @for (home of homes(); track home.id) {
-        <option [value]="home.id">{{ home.homeCode }} · {{ home.homeName }}</option>
+        <option [value]="home.id">{{ home.homeName }}</option>
       }
     </select>
 
@@ -170,7 +170,6 @@
               <tr>
                 <td>
                   <strong>{{ row.name }}</strong>
-                  <small>{{ row.homeCode }}</small>
                 </td>
                 <td>{{ figure(row.participants) }}</td>
                 <td>{{ figure(row.boys) }} / {{ figure(row.girls) }}</td>
@@ -341,11 +340,9 @@
               <tr>
                 <td>
                   <strong>{{ row.fullName }}</strong>
-                  <small>{{ row.participantCode }}</small>
                 </td>
                 <td>
                   <strong>{{ row.homeName }}</strong>
-                  <small>{{ row.homeCode }}</small>
                 </td>
                 <td>{{ row.level ?? '—' }}</td>
                 <td>{{ figure(row.registrations) }}</td>

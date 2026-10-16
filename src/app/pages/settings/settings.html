@@ -154,7 +154,6 @@
               </td>
 
               <td class="audit">
-                <small>v{{ user.version }}</small>
                 <small>by {{ user.updatedBy }}</small>
                 <small>{{ user.updatedAt }}</small>
               </td>
@@ -409,8 +408,8 @@
         </div>
 
         <p class="hint">
-          Approving grants access immediately with the role selected here. The stored version
-          {{ item.user.version }} is sent with the request, so a concurrent change is refused.
+          Approving grants access immediately with the role selected here. Each approval
+          sends the record's stored state, so a concurrent change is refused.
         </p>
 
         <div class="actions">

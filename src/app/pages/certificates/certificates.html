@@ -1,35 +1,86 @@
 <div class="certificates-page">
-  <div class="page-header"><span class="eyebrow">CERTIFICATE WORKFLOW</span><h1>Certificates</h1><p>Review finalized-score entries and their certificate record status.</p></div>
 
-  <div class="configuration-notice"><strong>Generation is not configured</strong><span>Official certificate eligibility rules and a certificate template are required before records can be generated. No certificate content or eligibility is inferred here.</span></div>
-
-  <div class="filters-card">
-    <label for="certificate-event">Event</label>
-    <select id="certificate-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)" [disabled]="loading() || eventsLoading()"><option value="">Select an event</option>@for (event of events(); track event.id) { <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} ({{ event.status }})</option> }</select>
-    <label for="certificate-search">Search</label>
-    <input id="certificate-search" type="search" placeholder="Participant, team, code, or home" [ngModel]="search()" (ngModelChange)="setSearch($event)" [disabled]="!selectedEvent() || loading() || eventsLoading()" />
+  <div class="certificates-head">
+    <p class="certificates-kicker">CERTIFICATE WORKFLOW</p>
+    <h1>Certificates</h1>
+    <p class="certificates-lede">
+      Winners of every finalized event — the certificate team writes the
+      certificates from this list. Print it or copy the names as needed.
+    </p>
   </div>
 
-  @if (eventsLoading()) { <div class="alert" role="status"><strong>Loading events…</strong><span>The event catalogue is being read from the backend.</span></div> }
-  @if (eventsError()) { <div class="alert error" role="alert"><strong>Events could not be loaded.</strong><span>{{ eventsError() }}</span><button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button></div> }
-  @if (loading()) { <div class="alert" role="status"><strong>Loading participant records…</strong><span>Shelter homes and participants are being read from the backend.</span></div> }
-  @if (loadError()) { <div class="alert error" role="alert"><strong>Participants could not be loaded.</strong><span>{{ loadError() }}</span><button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button></div> }
-  @if (errors().length) { <div class="alert error" role="alert"><ul>@for (error of errors(); track error) { <li>{{ error }}</li> }</ul></div> }
-  @if (message()) { <div class="alert success">✓ {{ message() }}</div> }
+  @if (loading()) {
+    <div class="certificates-empty" role="status">
+      <strong>Loading winners.</strong>
+      <span>Finalized events and their top-three entries are being read from the backend.</span>
+    </div>
+  } @else if (loadError()) {
+    <div class="certificates-empty error" role="alert">
+      <strong>The winners report could not be read.</strong>
+      <span>{{ loadError() }}</span>
+      <button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else if (!events().length) {
+    <div class="certificates-empty" role="status">
+      <strong>No finalized events yet</strong>
+      <span>Once an event is finalized in Scoring, its top-three winners appear here automatically.</span>
+    </div>
+  } @else {
 
-  @if (selectedEvent(); as event) {
-    <div class="event-summary"><div><span>Event</span><strong>{{ event.name }}</strong></div><div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div><div><span>Finalized scores</span><strong>{{ scoresState().status === 'LOADED' ? finalizedCount() : '—' }}</strong></div><div><span>Workflow</span><strong>{{ workflowConfigured() ? 'Configured' : 'Not configured' }}</strong></div></div>
-    @if (event.status !== 'ACTIVE') { <div class="alert warning">This event is {{ event.status.toLowerCase() }}. Certificate generation is unavailable; existing records remain viewable.</div> }
+    <div class="certificates-summary">
+      <span><strong>{{ events().length }}</strong> finalized event(s)</span>
+      <span><strong>{{ totalWinners() }}</strong> winner entries</span>
+      <button type="button" class="print" (click)="print()">Print list</button>
+    </div>
 
-    @if (loading()) { <div class="empty-state" role="status"><strong>Loading finalized-score entries…</strong><span>Participant and team records are being read from the backend.</span></div>
-    } @else if (scoresState().status === 'ERROR') {
-      <div class="alert error" role="alert"><strong>Unable to load scores.</strong>@if (scoresState().error) { <span>{{ scoresState().error }}</span> }<button type="button" (click)="retryScores()">Retry</button></div>
-    } @else if (scoresState().status !== 'LOADED') {
-      <div class="empty-state" role="status"><strong>Loading scores…</strong><span>Persisted scores for this event are being read from the backend.</span></div>
-    } @else if (candidates().length) {
-      @if (teamsFailed()) { <div class="alert error" role="alert"><strong>Unable to load teams.</strong><span>{{ teamsState().error || 'Team names may be unavailable.' }}</span><button type="button" (click)="retryTeams()">Retry</button></div> }
-      <div class="certificates-card"><div class="table-heading"><div><h2>Finalized-score entries</h2><p>Draft scores are excluded. Certificate status does not indicate a placement or award.</p></div>@if (search()) { <span>{{ candidates().length }} matching entry(s)</span> }</div><div class="table-wrapper"><table><thead><tr><th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>@if (event.mode === 'SOLO') { <th>Shelter home</th> }<th>Finalized score</th><th>Certificate status</th><th>Record audit</th><th>Action</th></tr></thead><tbody>@for (candidate of candidates(); track candidate.certificate?.id ?? candidate.score.id) { <tr><td><strong>{{ entryName(candidate) }}</strong><small>{{ entryReference(candidate) }}</small></td>@if (event.mode === 'SOLO') { <td><strong>{{ homeName(candidate.participant?.shelterHomeId) }}</strong><small>{{ homeCode(candidate.participant?.shelterHomeId) }}</small></td> }<td class="score">{{ candidate.score.value }}</td><td>@if (candidate.certificate; as certificate) { <span class="status generated">{{ certificate.status }}</span> } @else { <span class="status pending">Not generated</span> }</td><td>@if (candidate.certificate; as certificate) { <small>v{{ certificate.version }} · {{ certificate.updatedBy }}<br />{{ certificate.updatedAt | date:'medium' }}</small> } @else { <small>No certificate record</small> }</td><td><button type="button" (click)="generate(candidate)" [disabled]="!workflowConfigured() || event.status !== 'ACTIVE' || !!candidate.certificate">Generate when configured</button></td></tr> }</tbody></table></div></div>
-    } @else if (finalizedCount() > 0) { <div class="empty-state"><strong>No matching finalized-score entries</strong><span>Try changing or clearing the search field.</span></div>
-    } @else { <div class="empty-state"><strong>No finalized scores for this event</strong><span>Certificates can only be considered from finalized scores. Draft scores are excluded.</span></div> }
-  } @else { <div class="empty-state"><strong>Select an event to view certificate workflow</strong><span>Only finalized-score entries can appear here.</span></div> }
+    @for (group of events(); track group.eventId) {
+      <section class="winner-group" aria-labelledby="winners-{{ group.eventId }}">
+        <div class="winner-group-head">
+          <h2 id="winners-{{ group.eventId }}">{{ group.eventName }}</h2>
+          <span class="winner-group-meta">
+            {{ group.eventCode }} · {{ group.category }} ·
+            {{ group.mode === 'GROUP' ? 'Team event' : 'Individual event' }}
+          </span>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Position</th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Level</th>
+                <th>Shelter home</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (winner of group.winners; track winner.position + '-' + winner.name) {
+                <tr>
+                  <td>
+                    <span class="medal"
+                      [class.gold]="winner.position === 1"
+                      [class.silver]="winner.position === 2"
+                      [class.bronze]="winner.position === 3">
+                      {{ winner.position === 1 ? '🥇 1st' : winner.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
+                    </span>
+                  </td>
+                  <td>
+                    <strong>{{ winner.name }}</strong>
+                  </td>
+                  <td>{{ winner.className || '—' }}</td>
+                  <td>{{ winner.level || '—' }}</td>
+                  <td>{{ winner.shelterHomeName || '—' }}</td>
+                  <td>{{ winner.score }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+  }
+
 </div>

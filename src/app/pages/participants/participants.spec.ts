@@ -137,14 +137,13 @@ describe('Participants — detail panel presentation', () => {
         .toBe('—');
     });
 
-    it('abbreviates a present source version id', () => {
+    it('reports Imported for an imported record instead of the raw source version id', () => {
       const label = component.sourceVersionLabel({
         ...participant,
         sourceVersionId: 'import-version-0001-abcd',
       });
 
-      expect(label).not.toBe('—');
-      expect(label.length).toBeLessThan('import-version-0001-abcd'.length);
+      expect(label).toBe('Imported');
     });
 
     it('shows an em dash when the source row is absent', () => {
@@ -570,6 +569,48 @@ describe('Participants � participant table presentation', () => {
       if (request.action === 'getValidationResults') {
         return Promise.resolve(new Response(
           JSON.stringify({ success: true, data: { validationResults: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+
+      if (request.action === 'getPageData') {
+        // Batched page snapshot: the same home and participant fixtures the
+        // per-home actions above serve, in one response.
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              shelterHomes: [{
+                id: 'home-1',
+                homeCode: 'H-01',
+                homeName: 'Sunrise Home',
+                contactPhone: '',
+                status: 'ACTIVE',
+                version: 1,
+              }],
+              participants: [{
+                id: 'participant-1',
+                participantCode: 'P-0001',
+                shelterHomeId: 'home-1',
+                fullName: 'Test Participant',
+                gender: 'MALE',
+                age: 10,
+                standard: 5,
+                level: 'JUNIOR',
+                eligibilityStatus: 'ELIGIBLE',
+                validationStatus: 'PASSED',
+                approvalStatus: 'APPROVED',
+                lockStatus: 'UNLOCKED',
+                version: 1,
+                createdAt: '',
+                createdBy: '',
+                updatedAt: '',
+                updatedBy: '',
+              }],
+              imports: [],
+              validationResults: [],
+            },
+          }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ));
       }

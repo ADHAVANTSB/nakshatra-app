@@ -12,6 +12,7 @@ import { TeamLoadState, TeamService } from '../../core/services/teams/team.servi
 
 interface ResultRow {
   score: Score;
+  position: number;
   participant?: Participant;
   team?: Team;
 }
@@ -86,7 +87,7 @@ export class Results implements OnInit {
     : undefined);
 
   /**
-   * Finalized scores for the selected event, in store order.
+   * Finalized scores for the selected event, ranked highest first.
    *
    * No sorting, no place column and no totals: this is a projection of the
    * finalized score records and nothing more.
@@ -95,8 +96,10 @@ export class Results implements OnInit {
     const event = this.selectedEvent();
     if (!event) return [];
 
-    const query = this.search().trim().toLowerCase();
-    return this.scoringService.getByEvent(event.id)
+    // Rank the FULL finalized set first — positions must not renumber when
+    // the search field filters the view (equal scores share a position:
+    // 1, 2, 2, 4) — then apply the search filter.
+    const ranked = this.scoringService.getByEvent(event.id)
       .filter(score => score.status === 'FINALIZED')
       .map(score => ({
         score,
@@ -104,9 +107,31 @@ export class Results implements OnInit {
           ? this.participantService.getParticipantById(score.participantId)
           : undefined,
         team: score.teamId ? this.teamService.getById(score.teamId) : undefined,
-      }))
+      }));
+
+    const sorted = ranked.sort((a, b) =>
+      (b.score?.value ?? 0) - (a.score?.value ?? 0));
+
+    let lastValue: number | null = null;
+    let lastPosition = 0;
+
+    const query = this.search().trim().toLowerCase();
+
+    return sorted
+      .map(row => {
+        const value = row.score?.value ?? 0;
+        const position = lastValue !== null && value === lastValue
+          ? lastPosition
+          : lastPosition + 1;
+        lastValue = value;
+        lastPosition = position;
+        return { ...row, position };
+      })
       .filter(row => this.matchesSearch(row, query));
   });
+
+  /** The first three ranked positions are the winners. */
+  readonly winners = computed(() => this.results().filter(row => row.position <= 3));
 
   readonly finalizedCount = computed(() => {
     const event = this.selectedEvent();

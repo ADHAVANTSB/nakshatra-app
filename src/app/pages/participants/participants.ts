@@ -148,7 +148,6 @@ export class Participants implements OnInit {
   readonly saveErrorCode = signal('');
   readonly saveSuccess = signal('');
   /** Backend version of the last successful save. */
-  readonly saveVersion = signal<number | null>(null);
   /** Non-blocking note about whether the source Google Sheet was written. */
   readonly saveWriteBackNote = signal('');
   /** Backend-supplied detail for the write-back note, when present. */
@@ -928,13 +927,9 @@ export class Participants implements OnInit {
       this.participantService.replaceParticipant(persisted);
     }
 
-    const version =
-      persisted?.version ?? result.participant?.version ?? participant.version;
-
     const writeBack = this.describeSourceWriteBack(result.sourceWriteBack);
 
     this.saveSuccess.set('Updated in Nakshatra');
-    this.saveVersion.set(version);
     this.saveWriteBackNote.set(writeBack.label);
     this.saveWriteBackDetail.set(writeBack.detail);
     this.saveReadBackNote.set(
@@ -1210,19 +1205,11 @@ export class Participants implements OnInit {
   }
 
   /**
-   * Import reference for the record. The import version id is an internal key,
-   * so it is shown abbreviated rather than printed in full.
+   * Source type for the record. The import version id is an internal key and
+   * is never shown; its presence means the record came from an import.
    */
   sourceVersionLabel(participant: Participant): string {
-    const sourceVersionId = participant.sourceVersionId;
-
-    if (!sourceVersionId) {
-      return '—';
-    }
-
-    return sourceVersionId.length > 14
-      ? `${sourceVersionId.slice(0, 8)}…${sourceVersionId.slice(-4)}`
-      : sourceVersionId;
+    return participant.sourceVersionId ? 'Imported' : '—';
   }
 
   sourceRowLabel(participant: Participant): string {
@@ -1251,7 +1238,6 @@ export class Participants implements OnInit {
 
   private clearSaveSuccess(): void {
     this.saveSuccess.set('');
-    this.saveVersion.set(null);
     this.saveWriteBackNote.set('');
     this.saveWriteBackDetail.set('');
     this.saveReadBackNote.set('');

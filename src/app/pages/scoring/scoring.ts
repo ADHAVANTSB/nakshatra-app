@@ -1,5 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 
 import { Attendance, Event, Participant, Score, Team } from '../../core/models';
@@ -92,6 +92,7 @@ export class Scoring implements OnInit {
     await this.eventService.load();
   }
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly notify = inject(NotificationService);
 
   /** True while the shared backend store is filling on direct navigation. */
@@ -183,7 +184,7 @@ export class Scoring implements OnInit {
   private readonly busyTargets = signal<ReadonlySet<string>>(new Set<string>());
 
   /** Unsaved per-row score edits, keyed by target key. */
-  readonly drafts = signal<Record<string, number>>({});
+  readonly drafts = signal<Partial<Record<string, number>>>({});
 
   /** True while an event-level save/finalize request is in flight. */
   readonly scoringBusy = signal(false);
@@ -201,6 +202,36 @@ export class Scoring implements OnInit {
     this.drafts.update(current => { const next = { ...current }; if (raw === '' || Number.isNaN(value)) { delete next[key]; } else { next[key] = value; } return next; });
   }
 
+  /**
+   * True when a team still has at least one member whose attendance for the
+   * event is PRESENT — such teams are scored; fully-absent teams are not.
+   */
+  teamHasPresentMember(teamId: string, eventId: string): boolean {
+    return this.teamService.getMembers(teamId).some(member =>
+      member.status !== 'REMOVED' &&
+      this.attendanceService.getByParticipantEvent(member.participantId, eventId)?.status === 'PRESENT'
+    );
+  }
+
+  /** Rows with a saved score render read-only until Edit is pressed. */
+  readonly editingRows = signal<ReadonlySet<string>>(new Set<string>());
+
+  isEditing(key: string): boolean {
+    return this.editingRows().has(key);
+  }
+
+  startEditing(key: string): void {
+    const target = this.targets().find(t => t.key === key);
+    this.editingRows.update(current => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+    if (target?.score) {
+      this.updateDraft(key, String(target.score.value));
+    }
+  }
+
   /** Event-level Save: persists every staged row in one batch request. */
   async saveAllDrafts(): Promise<void> {
     const event = this.selectedEvent();
@@ -209,13 +240,15 @@ export class Scoring implements OnInit {
     this.scoringBusy.set(true);
     try {
       const entries = this.targets()
-        .filter(t => this.drafts()[t.key] !== undefined)
         .map(t => ({
+          key: t.key,
           participantId: t.participant?.id,
           teamId: t.team?.id,
           score: this.drafts()[t.key],
           expectedVersion: t.score?.version,
-        }));
+        }))
+        .filter((entry): entry is typeof entry & { score: number } => entry.score !== undefined)
+        .map(({ key: _key, ...entry }) => entry);
       const result = await this.scoringService.saveEventDrafts(event.id, entries);
       if (!result.success) {
         this.notify.error(result.errorMessage || 'The scores could not be saved.');
@@ -249,7 +282,10 @@ export class Scoring implements OnInit {
         return;
       }
       this.drafts.set({});
+      this.editingRows.set(new Set());
       this.notify.success(result.data.alreadyFinalized ? 'This event was already finalized.' : 'Event finalized.', result.data.totalScores + ' score(s) are now official results.');
+      // Finalized results feed Results and Certificates — take the user there.
+      void this.router.navigateByUrl('/results');
     } finally {
       this.scoringBusy.set(false);
     }
@@ -325,6 +361,8 @@ export class Scoring implements OnInit {
         .map(item => this.participantService.getParticipantById(item.participantId))
         .filter((participant): participant is Participant => !!participant)
         .filter(participant => this.isValidParticipant(event, participant))
+        // Only PRESENT attendees are scored; ABSENT and unmarked are excluded.
+        .filter(participant => this.attendanceService.getByParticipantEvent(participant.id, event.id)?.status === 'PRESENT')
         .filter(participant => !query || participant.fullName.toLowerCase().includes(query) || participant.participantCode.toLowerCase().includes(query) || this.homeName(participant.shelterHomeId).toLowerCase().includes(query) || this.homeCode(participant.shelterHomeId).toLowerCase().includes(query))
         .map(participant => ({
           key: `${event.id}:P:${participant.id}`,
@@ -338,6 +376,8 @@ export class Scoring implements OnInit {
 
     return this.eventTeams()
       .filter(team => this.teamService.validateTeam(team.id).valid)
+      // Only teams with at least one PRESENT member are scored.
+      .filter(team => this.teamHasPresentMember(team.id, event.id))
       .filter(team => !query || team.name.toLowerCase().includes(query) || team.teamCode.toLowerCase().includes(query))
       .map(team => ({
         key: `${event.id}:T:${team.id}`,
@@ -390,6 +430,10 @@ export class Scoring implements OnInit {
 
     this.registrationsState.set('LOADING');
     this.registrationError.set('');
+
+    // PRESENT attendees are the scoring targets — the persisted attendance
+    // must be read alongside the registrations.
+    void this.attendanceService.loadEventAttendance(eventId);
 
     const result = await this.registrationService.loadEventRegistrations(eventId);
 

@@ -350,10 +350,6 @@
 
           <dl>
             <div>
-              <dt>Version number</dt>
-              <dd>{{ summary.version === null ? 'Unavailable' : 'Version ' + summary.version }}</dd>
-            </div>
-            <div>
               <dt>Records processed</dt>
               <dd>{{ summary.recordsProcessed ?? 'Unavailable' }}</dd>
             </div>
@@ -371,7 +367,7 @@
             </div>
             <div>
               <dt>Sync status</dt>
-              <dd>{{ summary.syncStatus }}</dd>
+              <dd>{{ syncStatusLabel(summary.syncStatus) }}</dd>
             </div>
           </dl>
 
@@ -438,9 +434,7 @@
         @for (home of connectedHomes(); track home.id) {
           <article class="connected-home-card">
             <div>
-              <span class="home-code">{{ home.homeCode }}</span>
-
-              <h3>
+                            <h3>
                 @if (home.spreadsheetOpenUrl; as sheetOpenUrl) {
                   <!--
                     Backend-supplied link only. No URL is built locally and no
@@ -527,7 +521,7 @@
                   </dd>
                 </div>
                 <div>
-                  <dt>Source Version</dt>
+                  <dt>Latest import</dt>
                   <dd>{{ sourceVersion(home.id) }}</dd>
                 </div>
                 <div>
@@ -536,7 +530,7 @@
                 </div>
                 <div>
                   <dt>Sync Status</dt>
-                  <dd>{{ home.sourceStatus || '—' }}</dd>
+                  <dd>{{ syncStatusLabel(home.sourceStatus) }}</dd>
                 </div>
               </dl>
 
@@ -580,8 +574,7 @@
             @if (selectedHomeId() === home.id) {
               <div class="home-detail-panel">
                 <h4>{{ home.homeName }}</h4>
-                <p><strong>Home Code:</strong> {{ home.homeCode }}</p>
-                <p><strong>Address:</strong> {{ home.address || '—' }}</p>
+                                <p><strong>Address:</strong> {{ home.address || '—' }}</p>
                 <p>
                   <strong>Contact:</strong> {{ home.contactName || '—' }} ·
                   {{ home.contactPhone || '—' }}
@@ -728,7 +721,7 @@
           <ul class="archived-homes-list">
             @for (home of archivedHomes(); track home.id) {
               <li>
-                <span>{{ home.homeName }} ({{ home.homeCode }})</span>
+                <span>{{ home.homeName }}</span>
                 <button
                   type="button"
                   class="secondary-action"

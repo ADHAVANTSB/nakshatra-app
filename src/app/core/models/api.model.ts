@@ -103,6 +103,38 @@ export interface ReopenEventScoresData {
   existingCertificates: { generated: number; issued: number };
 }
 
+/** Payload of the winners report read. */
+export interface ListWinnersPayload {
+  // Intentionally empty: the session scope decides what is listed.
+}
+
+export interface WinnerEntry {
+  position: number;
+  name: string;
+  className: string;
+  level: string;
+  shelterHomeName: string;
+  score: number;
+  participantId: string;
+  teamId: string;
+}
+
+export interface WinnersEventGroup {
+  eventId: string;
+  eventCode: string;
+  eventName: string;
+  category: string;
+  mode: string;
+  eventStatus: string;
+  winners: WinnerEntry[];
+}
+
+export interface ListWinnersData {
+  events: WinnersEventGroup[];
+  totalEvents: number;
+  totalWinners: number;
+}
+
 export type SessionValidationResponse =
   | {
       success: true;
@@ -304,6 +336,18 @@ export interface ListShelterHomesData {
 /** Archived homes are excluded by the backend unless this is set. */
 export interface ListShelterHomesPayload {
   includeArchived?: boolean;
+}
+
+/**
+ * Batched page snapshot for the shelter-data driven pages (`getPageData`).
+ * One request replaces the per-home fan-out of listParticipants +
+ * getImportStatus + getValidationResults for every connected home.
+ */
+export interface PageDataData {
+  shelterHomes: ConnectedShelterHome[];
+  participants: Participant[];
+  imports: ImportStatusEntry[];
+  validationResults: ValidationResult[];
 }
 
 /* ================================================================

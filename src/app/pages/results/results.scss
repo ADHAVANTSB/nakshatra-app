@@ -9,3 +9,11 @@ select, input { width: 100%; padding: 10px; border: 1px solid #ded8d3; border-ra
 .empty-state { text-align: center; }.empty-state strong { display: block; }.empty-state span { color: #6e6158; font-size: 12px; }
 @media (max-width: 900px) { .filters-card { grid-template-columns: 1fr 2fr; }.filters-card label { margin-top: 4px; } }
 @media (max-width: 700px) { .results-page { padding: 18px 14px; }.filters-card, .event-summary { grid-template-columns: 1fr; }.table-heading { align-items: flex-start; flex-direction: column; } }
+
+/* Ranking: position column + winner badges */
+.position { white-space: nowrap; }
+.medal { font-weight: 700; padding: 4px 10px; border-radius: 999px; display: inline-block; }
+.medal.gold { background: #fff3c4; color: #7a5c00; border: 1px solid #e6c200; }
+.medal.silver { background: #eef2f7; color: #4a5a6a; border: 1px solid #c7d2dd; }
+.medal.bronze { background: #f7e9dd; color: #7c4a12; border: 1px solid #d9a86a; }
+.place { color: #60798f; font-weight: 600; }

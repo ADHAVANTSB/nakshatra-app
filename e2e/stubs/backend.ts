@@ -125,6 +125,14 @@ function sessionActionResponse(action: string, user: StubUser): StubResponse | n
   if (action === 'selectScope') {
     return { body: { success: true, data: { scope: { programId: 'ARTS', environmentId: 'TEST' } } } };
   }
+  if (action === 'listWinners') {
+    return {
+      body: {
+        success: true,
+        data: { events: [], totalEvents: 0, totalWinners: 0 },
+      },
+    };
+  }
   if (action === 'getCurrentUser') {
     return { body: { success: true, user, data: { user } } };
   }

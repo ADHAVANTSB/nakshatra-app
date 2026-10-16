@@ -72,6 +72,18 @@ function clearCalls(): void {
   calls = {};
 }
 
+/** The single batched request that now assembles the whole page. */
+const PAGE_DATA_ROUTES: Routes = {
+  getPageData: {
+    shelterHomes: [HOME],
+    participants: [PARTICIPANT],
+    imports: [],
+    validationResults: [],
+  },
+  // loadAll also force-reloads the events catalogue (one shared request).
+  listEvents: { events: [EVENT] },
+};
+
 describe('ShelterDataService', () => {
   let service: ShelterDataService;
 
@@ -134,13 +146,7 @@ describe('ShelterDataService', () => {
   });
 
   it('ensureLoaded does not refire the full fan-out when the store is already loaded', async () => {
-    stubBackend({
-      listShelterHomes: { shelterHomes: [HOME] },
-      listEvents: { events: [EVENT] },
-      getImportStatus: { imports: [] },
-      getValidationResults: { validationResults: [] },
-      listParticipants: { participants: [PARTICIPANT] },
-    });
+    stubBackend(PAGE_DATA_ROUTES);
 
     await service.refresh();
     expect(service.loaded()).toBe(true);
@@ -153,19 +159,13 @@ describe('ShelterDataService', () => {
   });
 
   it('ensureLoaded performs the full load on first use', async () => {
-    stubBackend({
-      listShelterHomes: { shelterHomes: [HOME] },
-      listEvents: { events: [EVENT] },
-      getImportStatus: { imports: [] },
-      getValidationResults: { validationResults: [] },
-      listParticipants: { participants: [PARTICIPANT] },
-    });
+    stubBackend(PAGE_DATA_ROUTES);
 
     const result = await service.ensureLoaded();
 
     expect(result.success).toBe(true);
     expect(service.loaded()).toBe(true);
-    expect(calls['listShelterHomes']).toBe(1);
+    expect(calls['getPageData']).toBe(1);
   });
 
   it('loadEvents reuses the cached catalogue; only force re-reads', async () => {
@@ -189,19 +189,13 @@ describe('ShelterDataService', () => {
     const failed = await service.ensureLoaded();
     expect(failed.success).toBe(false);
 
-    stubBackend({
-      listShelterHomes: { shelterHomes: [HOME] },
-      listEvents: { events: [EVENT] },
-      getImportStatus: { imports: [] },
-      getValidationResults: { validationResults: [] },
-      listParticipants: { participants: [PARTICIPANT] },
-    });
+    stubBackend(PAGE_DATA_ROUTES);
     clearCalls();
 
     const recovered = await service.ensureLoaded();
 
     expect(recovered.success).toBe(true);
-    expect(calls['listShelterHomes']).toBe(1);
+    expect(calls['getPageData']).toBe(1);
   });
 
   it('a forced read queued behind an in-flight read resolves with the fresh rows', async () => {
@@ -252,5 +246,23 @@ describe('ShelterDataService', () => {
     const cached = await service.loadEventRegistrations('event-1');
 
     expect(cached?.[0]?.participantId).toBe('participant-new');
+  });
+
+  it('refresh assembles the whole page with ONE getPageData request (no per-home fan-out)', async () => {
+    stubBackend(PAGE_DATA_ROUTES);
+
+    const result = await service.refresh();
+
+    expect(result.success).toBe(true);
+    expect(calls['getPageData']).toBe(1);
+    // The former fan-out (listShelterHomes + listEvents + 3 x N homes) must
+    // not reappear: none of those actions may be called here.
+    expect(calls['listShelterHomes']).toBeUndefined();
+    expect(calls['listParticipants']).toBeUndefined();
+    expect(calls['getImportStatus']).toBeUndefined();
+    expect(calls['getValidationResults']).toBeUndefined();
+    // The stores are populated from the single response.
+    expect(service.homes().length).toBe(1);
+    expect(service.participants().length).toBe(1);
   });
 });

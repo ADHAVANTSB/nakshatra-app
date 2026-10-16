@@ -22,7 +22,7 @@
       [disabled]="homes().length === 0"
     >
       @for (home of homes(); track home.id) {
-        <option [value]="home.id">{{ home.homeCode }} &middot; {{ home.name }}</option>
+        <option [value]="home.id">{{ home.name }}</option>
       }
     </select>
   </div>

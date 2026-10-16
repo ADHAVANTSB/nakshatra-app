@@ -2,7 +2,7 @@
   <div class="page-header">
     <span class="eyebrow">OFFICIAL SCORES</span>
     <h1>Results</h1>
-    <p>View finalized event scores. This view does not assign rankings or winners.</p>
+    <p>Finalized scores ranked highest first. The top three places are the winners.</p>
   </div>
 
   @if (eventsLoading()) {
@@ -96,7 +96,7 @@
           <table>
             <thead>
               <tr>
-                <th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>
+                <th>Position</th><th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>
                 @if (event.mode === 'SOLO') { <th>Shelter home</th> }
                 <th>Score</th>
                 <th>Status</th>
@@ -106,14 +106,22 @@
             <tbody>
               @for (result of results(); track result.score.id) {
                 <tr>
+                  <td class="position">
+                    @if (result.position <= 3) {
+                      <span class="medal" [class.gold]="result.position === 1" [class.silver]="result.position === 2" [class.bronze]="result.position === 3">
+                        {{ result.position === 1 ? '🥇 1st' : result.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
+                      </span>
+                    } @else {
+                      <span class="place">{{ result.position }}</span>
+                    }
+                  </td>
                   <td>
                     <strong>{{ entryName(result) }}</strong>
-                    <small>{{ entryReference(result) }}</small>
                   </td>
-                  @if (event.mode === 'SOLO') { <td>{{ homeName(result.participant?.shelterHomeId) }}<small>{{ homeCode(result.participant?.shelterHomeId) }}</small></td> }
+                  @if (event.mode === 'SOLO') { <td>{{ homeName(result.participant?.shelterHomeId) }}</td> }
                   <td class="score">{{ result.score.value }}</td>
                   <td><span class="status-final">Finalized · Locked</span></td>
-                  <td><small>v{{ result.score.version }} · {{ result.score.updatedBy }}<br />{{ result.score.updatedAt | date:'medium' }}</small></td>
+                  <td><small>{{ result.score.updatedBy }}<br />{{ result.score.updatedAt | date:'medium' }}</small></td>
                 </tr>
               }
             </tbody>

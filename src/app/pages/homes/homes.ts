@@ -418,14 +418,20 @@ export class Homes implements OnInit {
     return this.syncingHomeId() === homeId;
   }
 
-  /** Backend-reported import version for a home, rendered as "v<n>" or "—". */
+  /** Backend-reported import number for a home, rendered as "Import #n" or "—". */
   sourceVersion(homeId: string): string {
     const versionNumber =
       this.shelterData.getImportStatusForHome(homeId)?.versionNumber;
 
     return versionNumber === undefined || versionNumber === null
       ? '—'
-      : `v${versionNumber}`;
+      : `Import #${versionNumber}`;
+  }
+
+  /** Title-cased sync status for display ('COMPLETED' -> 'Completed'). */
+  syncStatusLabel(status: string | null | undefined): string {
+    const raw = String(status ?? '').trim();
+    return raw ? raw.charAt(0) + raw.slice(1).toLowerCase() : '—';
   }
 
   /**

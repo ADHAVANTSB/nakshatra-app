@@ -573,33 +573,43 @@ export class ShelterDataService {
     this.errorsState.set([]);
 
     try {
-      if (!await this.loadConnectedHomes()) {
+      // One batched request replaces the former per-home fan-out
+      // (listParticipants + getImportStatus + getValidationResults for every
+      // connected home = 3N+2 HTTP requests), which dominated page-load time
+      // on mobile networks. The backend scopes every collection server-side.
+      const response = await this.apiClient.getPageData();
+
+      if (!response.success) {
+        this.recordError({ scope: 'HOMES', message: response.error.message });
         this.lastLoadHadErrors = true;
         return { success: false, errors: this.errorsState() };
       }
 
-      // A refresh is always a forced re-read; the events catalogue included.
+      const data = response.data;
+
+      this.homesState.set(data.shelterHomes);
+      this.clearErrors('HOMES');
+
+      this.participantsState.set(data.participants);
+      this.clearErrors('PARTICIPANTS');
+
+      this.importsState.set(
+        data.imports
+          .map(entry => this.toImportRecord(entry))
+          .filter((record): record is ShelterImportRecord => record !== null),
+      );
+      this.clearErrors('IMPORTS');
+
+      this.validationsState.set(data.validationResults);
+      this.clearErrors('VALIDATIONS');
+
+      // The events catalogue keeps its own service, cache and request.
       await this.loadEvents(true);
 
-      const homes = this.homesState();
-
-      // The three reads per home are independent; running them sequentially
-      // would multiply the backend's per-request latency (measured 8–30s) by
-      // three for every home before this page can leave its loading state.
-      await Promise.all(
-        homes.map(home =>
-          Promise.all([
-            this.loadImportStatus(home.id, home.currentImportVersionId),
-            this.loadValidationResults(home.id, home.currentImportVersionId),
-            this.loadParticipants(home.id),
-          ])
-        )
-      );
-
+      // Aggregate verdict: a failed events read is a failed load, so the
+      // next navigation retries instead of treating partial data as loaded.
       const errors = this.errorsState();
-
       this.lastLoadHadErrors = errors.length > 0;
-
       return { success: errors.length === 0, errors };
     } finally {
       this.loadingState.set(false);

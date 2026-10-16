@@ -74,7 +74,7 @@
             (ngModelChange)="selectHome($event)">
             <option value="">All shelter homes</option>
             @for (home of homes(); track home.id) {
-              <option [value]="home.id">{{ home.homeCode }} — {{ home.name }}</option>
+              <option [value]="home.id">{{ home.name }}</option>
             }
           </select>
         </label>
@@ -152,8 +152,7 @@
             <span class="eyebrow">PARTICIPANT DETAIL</span>
             <h3>{{ participant.fullName }}</h3>
             <p class="detail-meta">
-              {{ participant.participantCode }} · {{ homeName(participant.shelterHomeId) }}
-              · Version {{ participant.version }}
+              {{ homeName(participant.shelterHomeId) }}
             </p>
           </div>
           <div class="detail-actions">
@@ -202,9 +201,6 @@
         @if (saveSuccess()) {
           <div class="alert success" role="status">
             <span>{{ saveSuccess() }}</span>
-            @if (saveVersion() !== null) {
-              <small>Backend version {{ saveVersion() }}</small>
-            }
             @if (saveWriteBackNote()) {
               <small>{{ saveWriteBackNote() }}</small>
             }
@@ -274,14 +270,9 @@
             <span>Participant name</span>
             <strong>{{ participant.fullName }}</strong>
           </div>
-          <div class="detail-item">
-            <span>Participant code</span>
-            <strong>{{ participant.participantCode }}</strong>
-          </div>
           <div class="detail-item detail-item--wide">
             <span>Shelter home</span>
             <strong>{{ homeName(participant.shelterHomeId) }}</strong>
-            <small>{{ homeCode(participant.shelterHomeId) }}</small>
           </div>
           <div class="detail-item">
             <span>Gender</span>
@@ -353,7 +344,7 @@
             <strong>{{ sourceRowLabel(participant) }}</strong>
           </div>
           <div class="detail-item">
-            <span>Source version</span>
+            <span>Source</span>
             <strong>{{ sourceVersionLabel(participant) }}</strong>
           </div>
         </div>
@@ -366,8 +357,8 @@
             <p class="panel-note">
               Only name, gender, age and standard are editable. Level, eligibility,
               validation, approval, lock status and version stay exactly as the
-              backend calculated them. This save is checked against version
-              {{ participant.version }}.
+              backend calculated them. Each save is checked against the record's
+              stored state, so a concurrent change is refused.
             </p>
 
             <div class="form-grid">

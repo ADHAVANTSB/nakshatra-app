@@ -17,17 +17,24 @@
 
   <div class="controls">
 
-    <select
-      [ngModel]="selectedEventId()"
-      (ngModelChange)="setEvent($event)"
-      [disabled]="loading() || eventsLoading()">
-      <option value="">Select an active event</option>
+    <div class="event-card-grid" role="group" aria-label="Choose an active event to score">
       @for (event of events(); track event.id) {
         @if (event.status === 'ACTIVE') {
-          <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option>
+          <button type="button" class="event-card" [class.selected]="event.id === selectedEventId()" (click)="setEvent(event.id)">
+            <span class="event-card-icon" [class.icon-lit]="event.category === 'LITERARY'" [class.icon-cul]="event.category === 'CULTURAL'">✦</span>
+            <span class="event-card-body">
+              <strong>{{ event.name }}</strong>
+              <span class="event-card-code">{{ event.eventCode }}</span>
+              <span class="event-card-badges">
+                <span class="badge badge-cat" [class.badge-lit]="event.category === 'LITERARY'" [class.badge-cul]="event.category === 'CULTURAL'">{{ event.category }}</span>
+                <span class="badge badge-mode">{{ event.mode === 'GROUP' ? 'Group' : 'Individual' }}</span>
+              </span>
+            </span>
+            <span class="event-card-arrow" aria-hidden="true">→</span>
+          </button>
         }
       }
-    </select>
+    </div>
 
     <input
       placeholder="Search name, code, or home"
@@ -69,7 +76,7 @@
     <div class="summary">
       <strong>{{ event.name }}</strong>
       <span>{{ event.category }} · {{ modeLabel(event) }}</span>
-      <small>Attendance is context only; it is not required to score.</small>
+      <small>Only participants marked PRESENT in Attendance are scored here.</small>
     </div>
 
     <!--
@@ -180,6 +187,17 @@
               @if (isFinalized(target)) {
                 <!-- Locked by the backend: nothing here can be edited or re-sent. -->
                 <div class="final">Final · {{ target.score?.value }}</div>
+              } @else if (target.score && !isEditing(target.key)) {
+
+                <!-- Saved draft: shown read-only until the judge presses Edit. -->
+                <div class="saved-score">Score: {{ target.score.value }}</div>
+                <button
+                  type="button"
+                  class="edit"
+                  (click)="startEditing(target.key)">
+                  Edit
+                </button>
+
               } @else {
 
                 <input
