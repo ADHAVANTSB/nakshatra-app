@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -35,7 +36,7 @@ type RegistrationLoadStatus = 'LOADING' | 'LOADED' | 'ERROR';
 
 @Component({
   selector: 'nk-events',
-  imports: [FormsModule, RouterLink],
+  imports: [ViewOnlyBannerComponent, FormsModule, RouterLink],
   templateUrl: './events.html'
 })
 export class Events implements OnInit {

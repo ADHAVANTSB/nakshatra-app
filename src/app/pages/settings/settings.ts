@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -109,7 +110,7 @@ function toAccessStatus(value: string): AccessStatus | null {
  */
 @Component({
   selector: 'nk-settings',
-  imports: [FormsModule],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './settings.html',
   styleUrl: './settings.scss',
 })

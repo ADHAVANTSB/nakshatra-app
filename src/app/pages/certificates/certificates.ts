@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 
 import { WinnersEventGroup, WinnersService } from '../../core/services/certificates/winners.service';
@@ -13,7 +14,7 @@ import { WinnersEventGroup, WinnersService } from '../../core/services/certifica
  */
 @Component({
   selector: 'nk-certificates',
-  imports: [],
+  imports: [ViewOnlyBannerComponent, ],
   templateUrl: './certificates.html',
   styleUrl: './certificates.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

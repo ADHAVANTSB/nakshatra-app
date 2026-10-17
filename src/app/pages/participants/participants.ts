@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -89,7 +90,7 @@ interface RegistrationGroup {
  */
 @Component({
   selector: 'nk-participants',
-  imports: [FormsModule, RouterLink],
+  imports: [ViewOnlyBannerComponent, FormsModule, RouterLink],
   templateUrl: './participants.html',
   styleUrl: './participants.scss',
 })

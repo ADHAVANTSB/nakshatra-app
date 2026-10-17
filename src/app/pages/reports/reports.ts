@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -49,7 +50,7 @@ const NO_CERTIFICATES: CertificateSummary = { generated: null, issued: null };
  */
 @Component({
   selector: 'nk-reports',
-  imports: [FormsModule],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './reports.html',
   styleUrl: './reports.scss',
 })

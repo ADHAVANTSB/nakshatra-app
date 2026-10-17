@@ -1,3 +1,4 @@
+import { friendlyError } from '../../permissions/friendly-error';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import {
@@ -158,9 +159,11 @@ export class ApiClientService {
 
       if (this.isApiResponse<TData>(result)) {
         if (!result.success) {
-          // Preserve the real backend error even over a non-200 status.
+          // Preserve the real backend error even over a non-200 status;
+          // only the presented message is friendly (code stays intact).
           this.handleAuthenticationFailure(result.error.code);
-          return result;
+          const friendly = friendlyError(result.error.code, result.error.message);
+          return { success: false, error: { code: friendly.code, message: friendly.message } };
         }
         if (!response.ok) {
           return { success: false, error: { code: 'API_REQUEST_FAILED', message: `The server reported HTTP ${response.status} for a successful payload.` } };

@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -69,7 +70,7 @@ interface ScoreTarget {
  */
 @Component({
   selector: 'nk-scoring',
-  imports: [FormsModule],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './scoring.html',
   styleUrl: './scoring.scss',
 })

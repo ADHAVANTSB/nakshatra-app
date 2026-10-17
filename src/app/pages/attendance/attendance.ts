@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -42,7 +43,7 @@ interface Attendee {
  */
 @Component({
   selector: 'nk-attendance',
-  imports: [FormsModule],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './attendance.html',
   styleUrl: './attendance.scss',
 })

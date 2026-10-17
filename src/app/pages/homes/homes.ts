@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -27,7 +28,7 @@ import { ShelterDataService } from '../../core/services/shelter-homes/shelter-da
  */
 @Component({
   selector: 'nk-homes',
-  imports: [FormsModule],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './homes.html',
   styleUrl: './homes.scss',
 })

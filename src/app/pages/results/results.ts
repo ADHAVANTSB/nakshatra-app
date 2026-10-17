@@ -1,3 +1,4 @@
+import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
@@ -30,7 +31,7 @@ interface ResultRow {
  */
 @Component({
   selector: 'nk-results',
-  imports: [DatePipe, FormsModule],
+  imports: [ViewOnlyBannerComponent, DatePipe, FormsModule],
   templateUrl: './results.html',
   styleUrl: './results.scss',
 })
