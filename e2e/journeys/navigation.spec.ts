@@ -9,12 +9,17 @@ import type { Page } from '@playwright/test';
  * checks alone are UX, not security).
  */
 
-const ADMIN_NAV = ['Dashboard', 'Homes', 'Participants', 'Events', 'Attendance', 'Scoring', 'Results', 'Certificates', 'Reports'];
+const ADMIN_NAV = ['Dashboard', 'Homes', 'Participants', 'Events', 'Attendance', 'Scoring', 'Judging', 'Results', 'Certificates', 'Reports'];
 
+/**
+ * One section link in the role-driven navigation. The accessible name carries
+ * the icon glyph ("📊, Dashboard"), so the label is matched at the END of the
+ * name — plain substring matching would be too loose for multi-word labels.
+ */
 const sectionLink = (page: Page, label: string) =>
   test.info().project.name === 'mobile-chromium'
-    ? page.locator('aside.nk-mobile-drawer').getByRole('link', { name: label })
-    : page.locator('aside.nk-sidebar').getByRole('link', { name: label });
+    ? page.locator('aside.nk-mobile-drawer').getByRole('link', { name: new RegExp(label + '$') })
+    : page.locator('aside.nk-sidebar').getByRole('link', { name: new RegExp(label + '$') });
 
 /**
  * Navigates through the role-driven navigation. On the mobile emulation the
@@ -59,6 +64,32 @@ test.describe('navigation and role gating', () => {
 
     await navigateViaNav(page, 'Homes');
     await expect(page).toHaveURL(/#\/homes/);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('the merged navigation keeps exactly one Results entry and no Results Approval entry', async ({ page, backend }) => {
+    const pageErrors = monitorPageErrors(page);
+
+    await signIn(page);
+
+    if (test.info().project.name === 'mobile-chromium') {
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+    }
+    // One "Results" workspace: the approval page merged into it.
+    await expect(sectionLink(page, 'Results')).toHaveCount(1);
+    await expect(sectionLink(page, 'Results Approval')).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('the legacy /results-approval URL redirects into the unified Results workspace', async ({ page, backend }) => {
+    const pageErrors = monitorPageErrors(page);
+
+    await signIn(page);
+
+    await page.goto('/#/results-approval');
+
+    await expect(page).toHaveURL(/#\/results/);
+    await expect(page.getByRole('heading', { name: 'Results' })).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 

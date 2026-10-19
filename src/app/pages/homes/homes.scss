@@ -454,6 +454,105 @@
   margin-top: 0.75rem;
 }
 
+/* ---------------------------------------------------------
+   HOME SHEET CONFIRMATION & LOCKING
+   --------------------------------------------------------- */
+
+.sheet-section {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed #e7edf5;
+}
+
+.sheet-section h4 {
+  margin: 0 0 0.6rem;
+
+  color: #58707f;
+
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sheet-status-row {
+  margin-bottom: 0.5rem;
+}
+
+.sheet-pill {
+  display: inline-block;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.sheet-pill--draft {
+  background: #eef2f6;
+  color: #4a5f72;
+  border: 1px solid #dfebf1;
+}
+
+.sheet-pill--confirmed {
+  background: #e6f0f9;
+  color: #2a5b8c;
+  border: 1px solid #c6dcf0;
+}
+
+.sheet-pill--locked {
+  background: #e3f4ea;
+  color: #1f7a4d;
+  border: 1px solid #bfe4cd;
+}
+
+.sheet-lock-note {
+  margin: 0.5rem 0 0;
+  padding: 8px 12px;
+  border: 1px solid #efd7b3;
+  border-radius: 10px;
+  background: #fdf0dd;
+  color: #7c4c1c;
+  font-size: 12.5px;
+}
+
+.unlock-box {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e7edf5;
+
+  label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #17324d;
+  }
+
+  input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #dfebf1;
+    border-radius: 9px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+}
+
+.sheet-audit {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+
+  li {
+    border-left: 3px solid #e5dfda;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+    color: #42586b;
+  }
+}
+
 /* =========================================================
    SYNC ALL HOMES (backend-managed bulk job)
    ========================================================= */

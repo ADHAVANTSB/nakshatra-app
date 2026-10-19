@@ -79,6 +79,10 @@ function makeMark(status: 'PRESENT' | 'ABSENT', version: number): Mark {
 const row = (page: import('@playwright/test').Page) =>
   page.locator('tbody tr').filter({ hasText: 'Arun Kumar' });
 
+/** The event picker is a card grid; picking a card opens its attendance. */
+const selectEvent = (page: import('@playwright/test').Page) =>
+  page.locator('button.event-card').first().click();
+
 const rowStatus = (page: import('@playwright/test').Page) =>
   row(page).locator('.status');
 
@@ -114,7 +118,7 @@ test.describe('attendance', () => {
     }));
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
 
     await expect(row(page)).toBeVisible();
     await expect(rowStatus(page)).toHaveText('Present');
@@ -132,7 +136,7 @@ test.describe('attendance', () => {
       : { body: { success: true, data: { attendance: [makeMark('ABSENT', 3)] } } }));
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
 
     const alert = page.getByRole('alert').filter({ hasText: 'Saved attendance could not be read.' });
     await expect(alert).toBeVisible();
@@ -173,7 +177,7 @@ test.describe('attendance', () => {
     });
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
 
     await expect(rowStatus(page)).toHaveText('Not marked');
 
@@ -226,7 +230,7 @@ test.describe('attendance', () => {
     });
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
 
     await expect(rowStatus(page)).toHaveText('Absent');
     await row(page).getByRole('button', { name: 'Present' }).click();
@@ -262,7 +266,7 @@ test.describe('attendance', () => {
     }));
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
     await expect(rowStatus(page)).toHaveText('Not marked');
 
     await row(page).getByRole('button', { name: 'Present' }).click();
@@ -284,7 +288,7 @@ test.describe('attendance', () => {
     backend.on('markAttendance', () => ({ abort: true }));
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await selectEvent(page);
 
     await expect(rowStatus(page)).toHaveText('Not marked');
     await row(page).getByRole('button', { name: 'Present' }).click();

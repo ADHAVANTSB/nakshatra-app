@@ -151,37 +151,6 @@ describe('ApiClientService — response contract alignment', () => {
     }
   });
 
-  it('accepts a score save with the backend payload (scores carry no source write-back)', async () => {
-    stubFetchOnce(jsonResponse({
-      success: true,
-      data: {
-        score: {
-          id: 'score-1',
-          eventId: 'event-1',
-          participantId: 'participant-1',
-          value: 8,
-          status: 'DRAFT',
-          version: 1,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          createdBy: 'backend',
-          updatedAt: '2026-01-01T00:00:00.000Z',
-          updatedBy: 'backend',
-        },
-      },
-    }));
-
-    const result = await client.saveScore({
-      eventId: 'event-1',
-      participantId: 'participant-1',
-      value: 8,
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.score.value).toBe(8);
-    }
-  });
-
   it('accepts a registration whose source write-back is WRITTEN', async () => {
     stubFetchOnce(jsonResponse({
       success: true,
@@ -219,7 +188,7 @@ describe('ApiClientService — response contract alignment', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('SERVER_RESPONSE_MALFORMED');
-      expect(result.error.message).not.toBe('Unable to reach the server. Please try again.');
+      expect(result.error.message).toBe('We couldn’t load this information right now. Please try again later.');
     }
   });
 
@@ -246,7 +215,85 @@ describe('ApiClientService — response contract alignment', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('NETWORK_ERROR');
-      expect(result.error.message).toBe('Unable to reach the server. Please try again.');
+      expect(result.error.message).toBe('We couldn’t load this information right now. Please try again later.');
+    }
+  });
+
+  it('presents synthesized errors in plain English while keeping their codes', async () => {
+    // Unrecognized envelope: diagnosed as a backend version mismatch, not a
+    // generic failure — the deployed backend is the actionable cause.
+    stubFetchOnce(jsonResponse({ ok: true }));
+    const unrecognized = await client.listEvents();
+    expect(unrecognized.success).toBe(false);
+    if (!unrecognized.success) {
+      expect(unrecognized.error.code).toBe('BACKEND_RESPONSE_UNRECOGNIZED');
+      expect(unrecognized.error.message).toContain('out of date');
+    }
+
+    // Success payload behind a non-OK status.
+    stubFetchOnce(jsonResponse({ success: true, data: { events: [] } }, 500));
+    const failed = await client.listEvents();
+    expect(failed.success).toBe(false);
+    if (!failed.success) {
+      expect(failed.error.code).toBe('API_REQUEST_FAILED');
+      expect(failed.error.message).toBe('We couldn’t load this information right now. Please try again later.');
+    }
+
+    // No application session at all.
+    TestBed.inject(AuthService).logout();
+    const noSession = await client.listEvents();
+    expect(noSession.success).toBe(false);
+    if (!noSession.success) {
+      expect(noSession.error.code).toBe('SESSION_REQUIRED');
+      expect(noSession.error.message).toBe('Your session has expired. Please sign in again.');
+    }
+  });
+
+  it('diagnoses a pre-envelope backend that rejected an unrouted action as BACKEND_ACTION_UNKNOWN', async () => {
+    // Deployments predating a feature answer unrouted actions from their
+    // login fall-through with exactly this bare-string error.
+    stubFetchOnce(jsonResponse({ success: false, error: 'Missing Google ID token' }));
+
+    const result = await client.listEventJudges({ eventId: 'event-1' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('BACKEND_ACTION_UNKNOWN');
+      expect(result.error.message).toContain('out of date');
+    }
+  });
+
+  it('keeps other pre-envelope string errors visible as BACKEND_UNSTRUCTURED_ERROR', async () => {
+    stubFetchOnce(jsonResponse({ success: false, error: 'Users sheet not found' }));
+
+    const result = await client.listEvents();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('BACKEND_UNSTRUCTURED_ERROR');
+      expect(result.error.message).toContain('older format');
+    }
+  });
+
+  it('reports a hung request as REQUEST_TIMEOUT with the friendly message', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', (_url: unknown, init: { signal: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+        }));
+
+      const pending = client.listEvents();
+      await vi.advanceTimersByTimeAsync(120_000); // ApiClientService.REQUEST_TIMEOUT_MS
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('REQUEST_TIMEOUT');
+        expect(result.error.message).toBe('This is taking longer than expected. Your request may still have been processed — refresh before retrying.');
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 

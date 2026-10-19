@@ -141,7 +141,7 @@ describe('App', () => {
 
     const element = host(fixture);
 
-    // Dashboard, Results and Certificates â€” in `navItems` declaration order.
+    // Dashboard, Results and Certificates — in `navItems` declaration order.
     expect(sidebarNavLabels(element)).toEqual(['Dashboard', 'Results', 'Certificates']);
     // ACCESS_MANAGEMENT is not granted to CERTIFICATE_TEAM, so no settings link.
     expect(element.querySelector('.nk-sidebar-bottom')).toBeNull();
@@ -162,6 +162,7 @@ describe('App', () => {
       'Events',
       'Attendance',
       'Scoring',
+      'Judging',
       'Results',
       'Certificates',
       'Reports',

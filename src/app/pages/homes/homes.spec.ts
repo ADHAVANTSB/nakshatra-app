@@ -189,7 +189,7 @@ describe('Homes — sync from Google Sheet', () => {
 });
 
 
-describe('Homes � shelter home archive lifecycle', () => {
+describe('Homes — shelter home archive lifecycle', () => {
   let component: Homes;
   let calls: Record<string, number>;
   let lastPayload: Record<string, unknown>;
@@ -864,8 +864,9 @@ describe('Homes — connect outcome handling', () => {
     expect(component.successMessage()).toBe('');
     expect(component.connectedHome()).toBeNull();
     expect(component.saving()).toBe(false);
-    // The raw technical failure is preserved for diagnostics.
-    expect(outcome?.technicalDetail).toContain('HTTP 404');
+    // The error code is preserved for diagnostics (technical detail is only
+    // logged to the console).
+    expect(outcome?.technicalDetail).toContain('SERVER_RESPONSE_MALFORMED');
   });
 
   it('confirms an ambiguous connect failure against the homes list before giving up', async () => {
@@ -1009,5 +1010,136 @@ describe('Homes — friendly connection status labels', () => {
     for (const raw of ['RUNNING', 'COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED']) {
       expect(labelFor(raw)).not.toBe(raw);
     }
+  });
+});
+
+/**
+ * Home sheet confirmation & locking (prototype screen C): confirm locks the
+ * sheet, unlocking requires a mandatory reason, and the audit line is composed
+ * only from the backend's who/when/why fields.
+ */
+describe('Homes — home sheet confirmation & locking', () => {
+  let component: Homes;
+  let calls: Array<{ action: string; payload: Record<string, unknown> }>;
+  let sheetRow: Record<string, unknown>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Homes],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    component = TestBed.createComponent(Homes).componentInstance;
+    calls = [];
+    sheetRow = { ...HOME, sheetStatus: 'NOT_CONFIRMED' };
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
+      calls.push({ action: request.action, payload: (request.payload ?? {}) as Record<string, unknown> });
+
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      switch (request.action) {
+        case 'listShelterHomes':
+          return ok({ shelterHomes: [sheetRow] });
+        case 'confirmHomeSheet':
+          sheetRow = {
+            ...sheetRow,
+            sheetStatus: 'LOCKED',
+            sheetConfirmedAt: '12 Feb 2026, 16:40',
+            sheetConfirmedBy: 'R. Kalyani',
+            sheetLockedAt: '12 Feb 2026, 16:40',
+          };
+          return ok(sheetRow);
+        case 'unlockHomeSheet':
+          sheetRow = {
+            ...sheetRow,
+            sheetStatus: 'CONFIRMED',
+            sheetUnlockedAt: '13 Feb 2026, 08:51',
+            sheetUnlockedBy: 'A. Nirmala',
+            sheetUnlockReason: (request.payload as { reason?: string } | undefined)?.reason ?? '',
+          };
+          return ok(sheetRow);
+        default:
+          return ok({});
+      }
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('confirms and locks the sheet through the backend and shows the locked status', async () => {
+    await component.confirmSheet({ ...sheetRow } as never);
+
+    expect(calls.find(call => call.action === 'confirmHomeSheet')?.payload)
+      .toEqual({ shelterHomeId: 'home-1' });
+
+    const updated = TestBed.inject(ShelterDataService).homes()[0];
+    expect(component.sheetStatusLabel(updated)).toBe('Locked — editing prevented');
+    expect(component.isSheetLocked(updated)).toBe(true);
+  });
+
+  it('requires a reason to unlock a locked sheet', async () => {
+    component.openUnlockSheet({ ...sheetRow } as never);
+    component.updateUnlockReason('   ');
+    await component.confirmUnlockSheet({ ...sheetRow } as never);
+
+    expect(component.unlockReasonError()).toBe(true);
+    expect(calls.some(call => call.action === 'unlockHomeSheet')).toBe(false);
+  });
+
+  it('unlocks with a mandatory reason and closes the unlock box', async () => {
+    component.openUnlockSheet({ ...sheetRow } as never);
+    component.updateUnlockReason('Age correction for Bhavana M');
+    await component.confirmUnlockSheet({ ...sheetRow } as never);
+
+    expect(calls.find(call => call.action === 'unlockHomeSheet')?.payload)
+      .toEqual({ shelterHomeId: 'home-1', reason: 'Age correction for Bhavana M' });
+    expect(component.unlockHomeId()).toBeNull();
+    expect(component.unlockReasonError()).toBe(false);
+  });
+
+  it('composes the audit line from the backend who/when/why fields only', () => {
+    const lines = component.sheetAuditLines({
+      ...sheetRow,
+      sheetStatus: 'CONFIRMED',
+      sheetConfirmedAt: '12 Feb 2026, 16:40',
+      sheetConfirmedBy: 'R. Kalyani',
+      sheetLockedAt: '12 Feb 2026, 16:40',
+      sheetUnlockReason: 'Age correction for Bhavana M',
+      sheetUnlockedBy: 'A. Nirmala',
+      sheetUnlockedAt: '13 Feb 2026, 08:51',
+    } as never);
+
+    const joined = lines.join(' | ');
+    expect(joined).toContain('Confirmed by R. Kalyani — 12 Feb 2026, 16:40');
+    expect(joined).toContain('Locked — confirmation without further changes (12 Feb 2026, 16:40)');
+    expect(joined).toContain('Unlocked for correction — reason: “Age correction for Bhavana M” by A. Nirmala (13 Feb 2026, 08:51)');
+  });
+
+  it('shows no audit line for a sheet the backend has no history for', () => {
+    expect(component.sheetAuditLines({ ...sheetRow } as never)).toEqual([]);
   });
 });

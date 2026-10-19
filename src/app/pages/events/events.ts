@@ -25,12 +25,16 @@ import {
 
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
+import { AuthService } from '../../core/services/auth/auth.service';
+import { ScoringService } from '../../core/services/scoring/scoring.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import {
   TeamLoadState,
   TeamService
 } from '../../core/services/teams/team.service';
+import { canEditRegistrations } from '../../core/permissions/role-matrix';
+import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
 
 type RegistrationLoadStatus = 'LOADING' | 'LOADED' | 'ERROR';
 
@@ -76,8 +80,31 @@ export class Events implements OnInit {
   private readonly notifications =
     inject(NotificationService);
 
+  private readonly auth =
+    inject(AuthService);
+
+  private readonly scoringService =
+    inject(ScoringService);
+
   private readonly route =
     inject(ActivatedRoute);
+
+  /**
+   * Registration writes (add / cancel / reactivate) are hidden for the Events
+   * role on both registration surfaces. Presentation-only; the backend still
+   * authorizes every write.
+   */
+  readonly canManageRegistrations = computed(() =>
+    canEditRegistrations(this.auth.currentUser()?.role));
+
+  /** A finalized event allows no registration writes either. */
+  readonly eventLocked = computed(() => {
+    const event = this.selectedEvent();
+    return !!event && this.scoringService.isEventFinalized(event.id);
+  });
+
+  /** The finalization lock message shown in the participants drawer. */
+  readonly finalizedMessage = EVENT_FINALIZED_MESSAGE;
 
 
   /**
@@ -594,6 +621,9 @@ export class Events implements OnInit {
     this.selectedEvent.set(event);
 
     void this.loadRegistrations(event.id);
+
+    // Scores decide the finalization lock on the registration controls.
+    void this.scoringService.loadScores(event.id);
   }
 
 
@@ -770,6 +800,10 @@ export class Events implements OnInit {
       return;
     }
 
+    if (!this.canManageRegistrations() || this.eventLocked()) {
+      return;
+    }
+
     if (event.status !== 'ACTIVE') {
       return;
     }
@@ -844,6 +878,10 @@ export class Events implements OnInit {
       return;
     }
 
+    if (!this.canManageRegistrations() || this.eventLocked()) {
+      return;
+    }
+
     if (this.registrationBusy()) {
       return;
     }
@@ -897,6 +935,10 @@ export class Events implements OnInit {
     registration: ParticipantEvent
   ): Promise<void> {
 
+    if (!this.canManageRegistrations() || this.eventLocked()) {
+      return;
+    }
+
     if (this.registrationBusy()) {
       return;
     }
@@ -940,6 +982,10 @@ export class Events implements OnInit {
   async reactivateRegistration(
     registration: ParticipantEvent
   ): Promise<void> {
+
+    if (!this.canManageRegistrations() || this.eventLocked()) {
+      return;
+    }
 
     if (this.registrationBusy()) {
       return;

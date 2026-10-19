@@ -1,0 +1,217 @@
+<!--
+  Judging page — judge configuration and administration ONLY (screen A).
+
+  The judge count derives from the coordinator's list and is never pre-filled;
+  the list only takes effect after the explicit "Confirm & Save Judges" action.
+  Once any judge has submitted scores the backend rejects removals
+  (JUDGES_LOCKED_AFTER_SCORING), so rename/remove are disabled then.
+  Score entry lives on the Scoring page.
+-->
+
+<div class="judging-page">
+  <app-view-only-banner section="SCORING" />
+
+  <div class="page-header">
+    <span class="eyebrow">JUDGING</span>
+    <h1>Judging</h1>
+    <p>Enter the judges for each event and review the official judging criteria. Scores are entered on the Scoring page.</p>
+  </div>
+
+  <div class="card">
+    <label id="judging-event-label" for="judging-event-select">Event</label>
+    <select
+      id="judging-event-select"
+      aria-labelledby="judging-event-label"
+      [value]="selectedEventId()"
+      (change)="setEvent($any($event.target).value)">
+      <option value="">Select an event…</option>
+      @for (event of events(); track event.id) {
+        @if (event.status === 'ACTIVE') {
+          <option [value]="event.id">
+            {{ event.eventCode }} {{ event.name }} [{{ event.category }}]
+          </option>
+        }
+      }
+    </select>
+  </div>
+
+  @if (eventsLoading()) {
+    <div class="alert" role="status">Loading the event catalogue from the backend…</div>
+  }
+
+  @if (eventsError()) {
+    <div class="alert error" role="alert">
+      <strong>Events could not be loaded.</strong>
+      <span>{{ eventsError() }}</span>
+      <button type="button" class="link-button" (click)="retryEventsLoad()">Retry</button>
+    </div>
+  }
+
+  @if (loadError()) {
+    <div class="alert error" role="alert">
+      <strong>Participant records could not be loaded.</strong>
+      <span>{{ loadError() }}</span>
+      <button type="button" class="link-button" (click)="retryStoreLoad()">Retry</button>
+    </div>
+  }
+
+  @if (selectedEvent(); as event) {
+
+    <!-- ============ Judge setup ============ -->
+    <section class="card" aria-labelledby="judges-title">
+      <h3 id="judges-title">Judges — {{ event.name }}</h3>
+      <p class="sub">
+        The event coordinator enters each judge — the number of judges follows from how many are added here.
+        Each event remembers its own judges.
+      </p>
+
+      <div class="judge-count-line" role="status">
+        @if (judgeCount() === 0) {
+          0 judges — none added yet
+        } @else {
+          {{ judgeCount() }} judge(s) — allocated by the event coordinator
+        }
+      </div>
+
+      @if (judgesState() === 'FAILED') {
+        <div class="alert error" role="alert">
+          <strong>Judges could not be loaded.</strong>
+          <span>{{ judgeError() }}</span>
+          <button type="button" class="link-button" (click)="retryJudges()">Retry</button>
+        </div>
+      }
+
+      @if (judgesLocked()) {
+        <div class="note warn" role="status">
+          <strong>Judges can no longer be changed.</strong>
+          Scoring has already been submitted for this event, so judges can only be viewed here.
+        </div>
+      }
+
+      @if (judgeNames().length === 0) {
+        <div class="placeholder">
+          <strong>No judges added yet</strong>
+          The event coordinator adds each judge below. The number of judges is decided by how many are added —
+          nothing is pre-filled.
+        </div>
+      } @else {
+        @for (name of judgeNames(); track $index) {
+          <div class="judge-row">
+            <span class="judge-row-label">Judge {{ $index + 1 }} — {{ name || '(unnamed)' }}</span>
+            <input
+              type="text"
+              [value]="name"
+              placeholder="Judge name"
+              [attr.aria-label]="'Judge ' + ($index + 1) + ' name'"
+              [disabled]="!canEdit() || judgesLocked()"
+              (input)="updateJudgeName($index, $any($event.target).value)" />
+            <button
+              type="button"
+              class="secondary-action"
+              title="Remove this judge"
+              [disabled]="!canEdit() || judgesLocked()"
+              (click)="removeJudge($index)">
+              Remove
+            </button>
+          </div>
+        }
+      }
+
+      <div class="judge-actions">
+        <button type="button" class="secondary-action" [disabled]="!canEdit() || judgesLocked()" (click)="addJudge()">+ Add judge</button>
+        <button
+          type="button"
+          class="primary-action"
+          [disabled]="!canEdit() || judgesBusy() || judgesLocked() || judgeNames().length === 0"
+          (click)="saveJudges()">
+          {{ judgesBusy() ? 'Saving…' : 'Confirm & Save Judges' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ Configured judges + submission status ============ -->
+    @if (judges().length > 0) {
+      <section class="card" aria-labelledby="judge-roster-title">
+        <h3 id="judge-roster-title">Configured judges — {{ event.name }}</h3>
+        <p class="sub">
+          Status comes from the stored judge records. Judges with submitted scores are protected by the backend
+          (JUDGES_LOCKED_AFTER_SCORING) and cannot be removed or renamed.
+        </p>
+
+        <div class="grid-wrap">
+          <table class="scoring-grid">
+            <thead>
+              <tr>
+                <th>Judge</th>
+                <th class="num">Status</th>
+                <th class="num">Scoring</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (judge of judges(); track judge.id) {
+                <tr>
+                  <td data-l="Judge"><strong>{{ judgeLabel(judge) }}</strong></td>
+                  <td class="num" data-l="Status">
+                    <span class="total-pill" [class.complete]="judgeStatusLabel(judge) === 'ACTIVE'"
+                      [class.invalid]="judgeStatusLabel(judge) === 'REMOVED'">
+                      {{ judgeStatusLabel(judge) }}
+                    </span>
+                  </td>
+                  <td class="num" data-l="Scoring">
+                    <span class="total-pill" [class.complete]="judgeSubmitted(judge.id)">
+                      {{ judgeSubmissionLabel(judge) }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    <!-- ============ Official criteria ============ -->
+    <section class="card" aria-labelledby="criteria-title">
+      <h3 id="criteria-title">Judging criteria — {{ event.name }}</h3>
+      <p class="sub">Source of truth: only officially supplied criteria are shown.</p>
+
+      @if (scoringMode() === 'CRITERIA') {
+        <div class="criteria-list">
+          @for (criterion of event.criteria ?? []; track criterion.name) {
+            <div class="criteria-chip">
+              <strong>{{ criterion.name }}</strong>
+              <span>0 – {{ criterion.max }} points (0.5 steps)</span>
+            </div>
+          }
+        </div>
+        <div class="note">
+          The judge's overall score per participant is the sum of the criteria (max {{ maxJudgeOverall() }}).
+        </div>
+      } @else if (scoringMode() === 'SINGLE') {
+        <div class="placeholder purple">
+          <strong>One overall score per judge</strong>
+          Rounds are one event-level entry — {{ event.name }} is scored as a single event-level score per judge and
+          per participant (0–10 in 0.5 steps). Rounds must not create separate scoring entries.
+        </div>
+      } @else {
+        <div class="placeholder">
+          <strong>Official judging criteria pending — to be supplied and verified</strong>
+          No criteria are invented for {{ event.name }}. Scoring opens once the official criteria are supplied and
+          verified.
+        </div>
+      }
+
+      <div class="judge-actions">
+        <a class="link-button" [routerLink]="['/scoring']" [queryParams]="{ eventId: event.id }">
+          Enter or review scores on the Scoring page →
+        </a>
+      </div>
+    </section>
+
+  } @else {
+    <div class="empty judging-empty" role="status">
+      <strong>Select an event to begin judge setup</strong>
+      <small>Choose an active event above to enter its judges and review the official judging criteria.</small>
+    </div>
+  }
+</div>

@@ -26,7 +26,11 @@ import {
 } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
+import { AuthService } from '../../core/services/auth/auth.service';
+import { ScoringService } from '../../core/services/scoring/scoring.service';
 import { NAKSHATRA_EVENT_RULES } from '../../core/constants/nakshatra-rules';
+import { canEditRegistrations } from '../../core/permissions/role-matrix';
+import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
 
 /**
  * Compact registration summary for one participant, computed from the
@@ -101,6 +105,8 @@ export class Participants implements OnInit {
   private readonly eventService = inject(EventService);
   private readonly participantEventService = inject(ParticipantEventService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly auth = inject(AuthService);
+  private readonly scoringService = inject(ScoringService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
@@ -333,7 +339,30 @@ export class Participants implements OnInit {
       taken.add(registration.eventId);
     }
 
-    return this.eventService.activeEvents().filter(event => !taken.has(event.id));
+    // A finalized event accepts no registration writes, so it is never offered.
+    return this.eventService.activeEvents().filter(
+      event => !taken.has(event.id) && !this.scoringService.isEventFinalized(event.id)
+    );
+  });
+
+  /**
+   * Registration writes (add / cancel / reactivate) are hidden for the Events
+   * role. Presentation-only; the backend still authorizes every write.
+   */
+  readonly canManageRegistrations = computed(() =>
+    canEditRegistrations(this.auth.currentUser()?.role));
+
+  /** Events whose scores are finalized lock every registration row on them. */
+  readonly lockedEvents = computed(() => {
+    const locked = new Set<string>();
+
+    for (const registration of this.registrations() ?? []) {
+      if (this.scoringService.isEventFinalized(registration.eventId)) {
+        locked.add(registration.eventId);
+      }
+    }
+
+    return locked;
   });
 
   /**
@@ -1043,10 +1072,19 @@ export class Participants implements OnInit {
       return;
     }
 
+    if (!this.canManageRegistrations()) {
+      return;
+    }
+
     const event = this.eventService.getById(eventId);
 
     if (!event || event.status !== 'ACTIVE') {
       this.registrationError.set('The selected event is no longer available.');
+      return;
+    }
+
+    if (this.scoringService.isEventFinalized(event.id)) {
+      this.registrationError.set(EVENT_FINALIZED_MESSAGE);
       return;
     }
 
@@ -1076,6 +1114,15 @@ export class Participants implements OnInit {
       return;
     }
 
+    if (!this.canManageRegistrations()) {
+      return;
+    }
+
+    if (this.lockedEvents().has(registration.eventId)) {
+      this.registrationError.set(EVENT_FINALIZED_MESSAGE);
+      return;
+    }
+
     if (registration.participantId !== participant.id) {
       return;
     }
@@ -1102,6 +1149,15 @@ export class Participants implements OnInit {
     const participant = this.detailParticipant();
 
     if (!participant || this.registrationBusy()) {
+      return;
+    }
+
+    if (!this.canManageRegistrations()) {
+      return;
+    }
+
+    if (this.lockedEvents().has(registration.eventId)) {
+      this.registrationError.set(EVENT_FINALIZED_MESSAGE);
       return;
     }
 
@@ -1278,6 +1334,12 @@ export class Participants implements OnInit {
     }
 
     this.registrations.set(result);
+
+    // Scores decide which registration rows are locked by finalization;
+    // ScoringService caches the read per event.
+    for (const eventId of new Set(result.map(item => item.eventId))) {
+      void this.scoringService.loadScores(eventId);
+    }
   }
 
   private describeSaveFailure(errorCode: string | undefined, errors: string[]): string {

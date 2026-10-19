@@ -3,11 +3,13 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Attendance as AttendanceRecord, AttendanceStatus, Event, Participant, Team } from '../../core/models';
+import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
+import { ScoringService } from '../../core/services/scoring/scoring.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { TeamService } from '../../core/services/teams/team.service';
@@ -52,6 +54,7 @@ export class Attendance implements OnInit {
   private readonly eventService = inject(EventService);
   private readonly registrationService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
+  private readonly scoringService = inject(ScoringService);
   private readonly shelterData = inject(ShelterDataService);
   /** Re-runs the full store load after a failed page load (Retry button). */
   async retryStoreLoad(): Promise<void> {
@@ -104,6 +107,13 @@ export class Attendance implements OnInit {
   readonly selectedEvent = computed(() => this.selectedEventId()
     ? this.eventService.getById(this.selectedEventId())
     : undefined);
+
+  /** A finalized event locks attendance: mutation controls are removed. */
+  readonly eventFinalized = computed(() =>
+    this.scoringService.isEventFinalized(this.selectedEventId()));
+
+  /** The finalization lock message shown in place of the write controls. */
+  readonly finalizedMessage = EVENT_FINALIZED_MESSAGE;
 
   /** True only while a registration request for the selected event is open. */
   readonly attendeesLoading = computed(() => this.registrationsState() === 'LOADING');
@@ -236,6 +246,8 @@ export class Attendance implements OnInit {
       this.loadRegistrations(eventId),
       event?.mode === 'GROUP' ? this.teamService.loadTeams(event.id, forceTeams) : Promise.resolve(true),
       this.loadEventAttendanceState(eventId, forceTeams),
+      // Scores decide the finalization lock, so they are read with the roster.
+      this.scoringService.loadScores(eventId),
     ]);
   }
 
@@ -318,7 +330,7 @@ export class Attendance implements OnInit {
 
   /** Stages one Present/Absent choice — nothing is written to the backend yet. */
   stageAttendance(participant: Participant, status: AttendanceStatus, teamId?: string): void {
-    if (!this.selectedEvent()) return;
+    if (!this.selectedEvent() || this.eventFinalized()) return;
     this.errors.set([]);
     this.pendingChanges.update(current => ({
       ...current,
@@ -340,7 +352,7 @@ export class Attendance implements OnInit {
    */
   async saveAttendance(): Promise<void> {
     const event = this.selectedEvent();
-    if (!event || this.savingAttendance()) return;
+    if (!event || this.savingAttendance() || this.eventFinalized()) return;
 
     const entries = Object.entries(this.pendingChanges());
     if (!entries.length) return;

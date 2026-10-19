@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -242,5 +242,116 @@ describe('Events — category grouping and card details', () => {
     const rows = component.cardParticipants('event-1');
 
     expect(rows[0].homeName).toBe('Sunrise Home');
+  });
+});
+
+/**
+ * Registration mutation controls (Add Participant / Cancel / Reactivate) are
+ * hidden for the Events role and kept for ADMIN. Rendered through the real
+ * template so a hidden control is proven absent from the DOM, not disabled.
+ */
+describe('Events — registration controls per role', () => {
+  let fixture: ComponentFixture<Events>;
+  let component: Events;
+
+  function stubBackend(): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      if (request.action === 'listEvents' || request.action === 'getPageData') {
+        return ok({
+          events: [event({ id: 'event-1' })],
+          shelterHomes: [],
+          participants: [],
+          imports: [],
+          validationResults: [],
+        });
+      }
+      if (request.action === 'listEventRegistrations') {
+        return ok({
+          participantEvents: [
+            registration({ id: 'reg-1', eventId: 'event-1', registrationStatus: 'REGISTERED', participantName: 'Ana' }),
+            registration({ id: 'reg-2', eventId: 'event-1', registrationStatus: 'CANCELLED', participantName: 'Cy' }),
+          ],
+        });
+      }
+      if (request.action === 'listScores') {
+        return ok({ scores: [] });
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+  }
+
+  async function renderDrawerWithRole(role: 'ADMIN' | 'EVENTS_TEAM'): Promise<void> {
+    stubBackend();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role,
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Events);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(component.events().length).toBe(1));
+    component.openParticipants(component.events()[0]);
+    await vi.waitFor(() => expect(component.registrationsReady()).toBe(true));
+    fixture.detectChanges();
+  }
+
+  function drawerButtonLabels(): string[] {
+    const drawer = (fixture.nativeElement as HTMLElement).querySelector('.participant-drawer');
+    expect(drawer).toBeTruthy();
+    return Array.from(drawer!.querySelectorAll('button')).map(button => (button.textContent ?? '').trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Events],
+      providers: [provideRouter([])],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('ADMIN keeps Add Participant, Cancel and Reactivate in the Event Participants drawer', async () => {
+    await renderDrawerWithRole('ADMIN');
+
+    const labels = drawerButtonLabels();
+    expect(labels).toContain('+ Add Participant');
+    expect(labels).toContain('Cancel');
+    expect(labels).toContain('Reactivate');
+  });
+
+  it('the Events role sees no Add Participant, Cancel or Reactivate controls', async () => {
+    await renderDrawerWithRole('EVENTS_TEAM');
+
+    const labels = drawerButtonLabels();
+    expect(labels.some(label => label.includes('Add Participant'))).toBe(false);
+    expect(labels).not.toContain('Cancel');
+    expect(labels).not.toContain('Reactivate');
   });
 });

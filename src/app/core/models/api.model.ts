@@ -327,6 +327,14 @@ export interface ConnectedShelterHome {
   sourceStatus?: string;
   currentImportVersionId?: string;
   lastSyncedAt?: string;
+  /** Home sheet confirmation/locking state; backend-owned, never derived locally. */
+  sheetStatus?: HomeSheetStatus;
+  sheetConfirmedAt?: string;
+  sheetConfirmedBy?: string;
+  sheetLockedAt?: string;
+  sheetUnlockedAt?: string;
+  sheetUnlockedBy?: string;
+  sheetUnlockReason?: string;
 }
 
 export interface ListShelterHomesData {
@@ -641,4 +649,139 @@ export interface ReportScopePayload {
   homeId?: string;
   eventId?: string;
   category?: Event['category'];
+}
+
+/* ================================================================
+   JUDGING — per-event judges and per-judge scoring
+   ================================================================ */
+
+/** One judge of an event. The count derives from the saved list; nothing is pre-filled. */
+export interface EventJudge {
+  id: string;
+  eventId: string;
+  judgeNumber: number;
+  name: string;
+  status: string;
+}
+
+export interface ListEventJudgesPayload {
+  eventId: string;
+}
+
+export interface ListEventJudgesData {
+  judges: EventJudge[];
+}
+
+/** Payload of the coordinator's Confirm & Save Judges action (replaces the list). */
+export interface SaveEventJudgesPayload {
+  eventId: string;
+  judges: Array<{ name: string }>;
+}
+
+export interface SaveEventJudgesData {
+  judges: EventJudge[];
+}
+
+/** One criterion score of a judge entry; 0–10 in 0.5 steps (backend re-validates). */
+export interface JudgeCriterionScore {
+  name: string;
+  score: number;
+}
+
+export interface SaveJudgeScoreEntry {
+  participantId: string;
+  /** CRITERIA mode: one score per official criterion. */
+  criteria?: JudgeCriterionScore[];
+  /** SINGLE mode: one event-level overall score (rounds are one entry). */
+  score?: number;
+  /** Optimistic concurrency for an already-stored row; unknown on first save. */
+  expectedVersion?: number;
+}
+
+export interface SaveJudgeScoresPayload {
+  eventId: string;
+  judgeId: string;
+  entries: SaveJudgeScoreEntry[];
+  /** Draft keeps the sheet editable; Submitted is the judge's final entry. */
+  status?: 'DRAFT' | 'SUBMITTED';
+}
+
+/** One saved judge-score row from `listJudgeScores` (a draft or a submission). */
+export interface JudgeScoreRow {
+  id: string;
+  eventId: string;
+  judgeId: string;
+  participantId: string;
+  /** CRITERIA mode: one score per official criterion. */
+  criteria: JudgeCriterionScore[];
+  /** SINGLE mode: the event-level overall score (the criteria sum in CRITERIA mode). */
+  score: number;
+  status: 'DRAFT' | 'SUBMITTED';
+  /** Optimistic-concurrency version, sent back as `expectedVersion` on the next save. */
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** Saved judge scores for an event; `judgeId` narrows the read to one judge. */
+export interface ListJudgeScoresPayload {
+  eventId: string;
+  judgeId?: string;
+}
+
+export interface ListJudgeScoresData {
+  scores: JudgeScoreRow[];
+}
+
+/* ================================================================
+   HOME SHEET CONFIRMATION & LOCKING
+   ================================================================ */
+
+/**
+ * Home sheet lifecycle. Confirmation locks the sheet; corrections require a
+ * logged unlock with a mandatory reason, after which the sheet is editable
+ * again until re-confirmed.
+ */
+export type HomeSheetStatus = 'NOT_CONFIRMED' | 'CONFIRMED' | 'LOCKED';
+
+export interface ConfirmHomeSheetPayload {
+  shelterHomeId: string;
+}
+
+export interface UnlockHomeSheetPayload {
+  shelterHomeId: string;
+  reason: string;
+}
+
+/** Sheet fields returned by the confirm/unlock actions (and by listShelterHomes). */
+export interface HomeSheetData {
+  shelterHomeId: string;
+  sheetStatus?: HomeSheetStatus;
+  sheetConfirmedAt?: string;
+  sheetConfirmedBy?: string;
+  sheetLockedAt?: string;
+  sheetUnlockedAt?: string;
+  sheetUnlockedBy?: string;
+  sheetUnlockReason?: string;
+}
+
+/* ================================================================
+   RESULTS APPROVAL
+   ================================================================ */
+
+export type ResultApprovalDecision = 'ACCEPTED' | 'RETURNED';
+
+/**
+ * Reviewer decision for an event's results. Accepting while discrepancies are
+ * unresolved requires `acknowledgedDiscrepancyIds` to name each acknowledged
+ * participant — totals-only approval is never enough. The backend rejects an
+ * unacknowledged accept with RECONCILIATION_INCOMPLETE.
+ */
+export interface SaveResultApprovalPayload {
+  eventId: string;
+  decision: ResultApprovalDecision;
+  comments: string;
+  acknowledgedDiscrepancyIds?: string[];
+  /** Optimistic concurrency for a previously recorded decision. */
+  expectedVersion?: number;
 }

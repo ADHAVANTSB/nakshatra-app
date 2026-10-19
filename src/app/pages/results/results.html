@@ -1,9 +1,19 @@
+<!--
+  Unified Results workspace: event selection + results status (1),
+  reconciliation count cards (2), participant-level discrepancy table (3),
+  reviewer decision (4), the official results table (5), finalization +
+  approval status (6) and certificate eligibility (7).
+
+  Only FINALIZED scores are ever presented as official results — draft
+  scores never appear as results. Approval and finalization stay distinct.
+-->
+
 <div class="results-page">
   <app-view-only-banner section="RESULTS" />
   <div class="page-header">
-    <span class="eyebrow">OFFICIAL SCORES</span>
+    <span class="eyebrow">OFFICIAL RESULTS</span>
     <h1>Results</h1>
-    <p>Finalized scores ranked highest first. The top three places are the winners.</p>
+    <p>Reconcile each participant's journey, review and decide on the results, then read the finalized standings.</p>
   </div>
 
   @if (eventsLoading()) {
@@ -29,6 +39,7 @@
     </div>
   }
 
+  <!-- ===== (1) Event selection + results status ===== -->
   <div class="filters-card">
     <label for="result-category">Event category</label>
     <select id="result-category" [ngModel]="category()" (ngModelChange)="setCategory($event)" [disabled]="loading() || eventsLoading()">
@@ -55,7 +66,18 @@
       <div><span>Event</span><strong>{{ event.name }}</strong></div>
       <div><span>Category</span><strong>{{ event.category }}</strong></div>
       <div><span>Mode</span><strong>{{ eventModeLabel(event) }}</strong></div>
-      <div><span>Finalized scores</span><strong>{{ scoresState().status === 'LOADED' ? finalizedCount() : '—' }}</strong></div>
+      <div><span>Results status</span><strong>{{ resultsStatusLabel() }}</strong></div>
+    </div>
+
+    <div class="status-strip" role="status">
+      <span class="pill" [class.pill-locked]="eventFinalized()" [class.pill-err]="!eventFinalized()">
+        {{ eventFinalized() ? 'Finalized' : 'Not finalized' }}
+      </span>
+      <span class="pill" [class.pill-purple]="reviewStatus() === 'UNDER_REVIEW'"
+        [class.pill-locked]="reviewStatus() === 'APPROVED'"
+        [class.pill-err]="reviewStatus() === 'RETURNED'">
+        Review: {{ statusLabel() }}
+      </span>
     </div>
 
     @if (event.status !== 'ACTIVE') {
@@ -66,6 +88,17 @@
       <div class="empty-state" role="status">
         <strong>Loading participant records…</strong>
         <span>Shelter homes and participants are being read from the backend. Finalized scores appear once that read completes.</span>
+      </div>
+    } @else if (dataState() === 'LOADING') {
+      <div class="empty-state" role="status">
+        <strong>Loading registrations, attendance and scores…</strong>
+        <span>The reconciliation and the results table appear once that read completes.</span>
+      </div>
+    } @else if (dataState() === 'FAILED') {
+      <div class="alert error" role="alert">
+        <strong>Unable to load the reconciliation data.</strong>
+        <span>{{ dataError() }}</span>
+        <button type="button" class="link-button" (click)="retryData()">Retry</button>
       </div>
     } @else if (scoresState().status === 'ERROR') {
       <div class="alert error" role="alert">
@@ -80,7 +113,8 @@
         <strong>Loading scores…</strong>
         <span>Persisted scores for this event are being read from the backend.</span>
       </div>
-    } @else if (results().length) {
+    } @else {
+
       @if (teamsFailed()) {
         <div class="alert error" role="alert">
           <strong>Unable to load teams.</strong>
@@ -88,51 +122,320 @@
           <button type="button" (click)="retryTeams()">Retry</button>
         </div>
       }
-      <div class="results-card">
-        <div class="table-heading">
-          <div><h2>Finalized scores</h2><p>Scores are locked at finalization.</p></div>
-          @if (search()) { <span>{{ results().length }} matching result(s)</span> }
+
+      @if (!eventFinalized()) {
+        <div class="note warn">
+          <strong>What remains before these results become official:</strong>
+          <ul class="discrepancy-list">
+            @for (item of remainingItems(); track item) {
+              <li>{{ item }}</li>
+            }
+          </ul>
+          Draft scores are never shown as official results.
         </div>
-        <div class="table-wrapper">
-          <table>
+      }
+
+      <!-- ===== (2) Reconciliation count cards ===== -->
+      <div class="count-grid">
+        <div class="count-card">
+          <div class="count-num">{{ registeredCount() }}</div>
+          <div class="count-label">Registered</div>
+        </div>
+        <div class="count-card att">
+          <div class="count-num">{{ attendanceCount() }}</div>
+          <div class="count-label">Event Attendance</div>
+        </div>
+        <div class="count-card score">
+          <div class="count-num">{{ scoringCompletedCount() }}</div>
+          <div class="count-label">Scoring Completed</div>
+        </div>
+      </div>
+
+      <div class="note warn">
+        <strong>Equal totals do not prove every participant completed every step — participant-level validation is required.</strong>
+        The reconciliation table below is that validation: totals alone are never sufficient.
+      </div>
+
+      @if (approvalError()) {
+        <div class="alert error" role="alert">
+          <strong>Results could not be saved.</strong>
+          <span>{{ approvalError() }}</span>
+        </div>
+      }
+
+      <!-- ===== (3) Participant-level discrepancy table ===== -->
+      <section class="card" aria-labelledby="recon-title">
+        <h3 id="recon-title">Participant-level reconciliation — {{ event.name }}</h3>
+        <p class="sub">
+          Registration ✓/✗ · Attendance ✓/✗ · Scoring ✓/✗ (including missing judge submissions) — with an explicit
+          status naming what each participant is missing.
+        </p>
+
+        <div class="grid-wrap">
+          <table class="recon-table">
             <thead>
               <tr>
-                <th>Position</th><th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>
-                @if (event.mode === 'SOLO') { <th>Shelter home</th> }
-                <th>Score</th>
+                <th>Participant</th>
+                <th>Home</th>
+                <th class="num">Registration</th>
+                <th class="num">Attendance</th>
+                <th class="num">Scoring</th>
                 <th>Status</th>
-                <th>Audit</th>
               </tr>
             </thead>
             <tbody>
-              @for (result of results(); track result.score.id) {
-                <tr>
-                  <td class="position">
-                    @if (result.position <= 3) {
-                      <span class="medal" [class.gold]="result.position === 1" [class.silver]="result.position === 2" [class.bronze]="result.position === 3">
-                        {{ result.position === 1 ? '🥇 1st' : result.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
-                      </span>
-                    } @else {
-                      <span class="place">{{ result.position }}</span>
+              @for (row of rows(); track row.participantId) {
+                <tr [class.discrepancy]="!row.ok">
+                  <td data-l="Participant">
+                    <strong>{{ row.name }}</strong>
+                    <span class="code">{{ row.code }}</span>
+                  </td>
+                  <td data-l="Home">{{ row.home }}</td>
+                  <td class="num" data-l="Registration">
+                    <span class="check y" [class.n]="!row.registered">{{ row.registered ? '✓' : '✗' }}</span>
+                  </td>
+                  <td class="num" data-l="Attendance">
+                    <span class="check y" [class.n]="!row.attended">{{ row.attended ? '✓' : '✗' }}</span>
+                  </td>
+                  <td class="num" data-l="Scoring">
+                    <span class="check y" [class.n]="!row.scored">{{ row.scored ? '✓' : '✗' }}</span>
+                    @if (row.judgeNote) {
+                      <span class="code">{{ row.judgeNote }}</span>
                     }
                   </td>
-                  <td>
-                    <strong>{{ entryName(result) }}</strong>
+                  <td data-l="Status">
+                    {{ row.statusText }}
+                    @if (row.ok) {
+                      <span class="pill pill-locked">complete</span>
+                    } @else {
+                      <span class="pill pill-err">discrepancy</span>
+                    }
                   </td>
-                  @if (event.mode === 'SOLO') { <td>{{ homeName(result.participant?.shelterHomeId) }}</td> }
-                  <td class="score">{{ result.score.value }}</td>
-                  <td><span class="status-final">Finalized · Locked</span></td>
-                  <td><small>{{ result.score.updatedBy }}<br />{{ result.score.updatedAt | date:'medium' }}</small></td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-      </div>
-    } @else if (finalizedCount() > 0) {
-      <div class="empty-state"><strong>No matching finalized results</strong><span>Try changing or clearing the search field.</span></div>
-    } @else {
-      <div class="empty-state"><strong>No finalized results for this event</strong><span>Draft scores are intentionally excluded until they are finalized.</span></div>
+
+        @if (rows().length === 0) {
+          <div class="empty">No participants are registered or marked for this event.</div>
+        }
+      </section>
+
+      <!-- ===== (4) Reviewer decision ===== -->
+      <section class="card" aria-labelledby="decision-title">
+        <h3 id="decision-title">Reviewer decision</h3>
+        <app-view-only-banner section="RESULT_APPROVAL" />
+        <p class="sub">Comments are recorded with the decision. Acceptance never overrides unresolved items.</p>
+
+        <h3 id="discrepancy-title">Discrepancies requiring reviewer attention</h3>
+        @if (discrepancies().length === 0) {
+          <div class="note">
+            <strong>No discrepancies.</strong> Every registered participant has attendance and scoring recorded.
+          </div>
+        } @else {
+          <div class="note warn">
+            <strong>{{ discrepancies().length }} unresolved discrepancy(ies).</strong>
+            Accepting the results requires explicit reviewer acknowledgement of each item below — there is no
+            automatic approval for unresolved items.
+          </div>
+          <ul class="discrepancy-list">
+            @for (item of discrepancies(); track item.id) {
+              <li><strong>{{ item.name }}</strong> — {{ item.label }}</li>
+            }
+          </ul>
+        }
+
+        <label for="reviewer-comments">Reviewer comments</label>
+        <textarea
+          id="reviewer-comments"
+          rows="4"
+          placeholder="e.g. Scoring missing for 2 participants — return to judge panel for completion."
+          [value]="comments()"
+          (input)="updateComments($any($event.target).value)"></textarea>
+        @if (declineError()) {
+          <div class="err-msg" role="alert">A comment is required to return results for correction.</div>
+        }
+
+        <div class="decision-actions">
+          <button
+            type="button"
+            class="primary-action"
+            [disabled]="!canEdit() || busy()"
+            (click)="openAccept()">
+            Accept Results
+          </button>
+          <button
+            type="button"
+            class="danger-action"
+            [disabled]="!canEdit() || busy()"
+            (click)="decline()">
+            Decline / Return for Correction
+          </button>
+        </div>
+      </section>
+
+      @if (acceptDialogOpen()) {
+        <div class="modal-overlay" role="presentation">
+          <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accept-dialog-title">
+            <h3 id="accept-dialog-title">
+              {{ discrepancies().length ? 'Unresolved discrepancies' : 'Accept results?' }}
+            </h3>
+
+            @if (discrepancies().length === 0) {
+              <p>
+                Every registered participant has attendance and scoring recorded for
+                <strong>{{ event.name }}</strong>.
+              </p>
+            } @else {
+              <p>
+                These <strong>{{ discrepancies().length }}</strong> item(s) do not have a complete
+                registration → attendance → scoring chain for <strong>{{ event.name }}</strong>. There is no
+                automatic approval: each item must be acknowledged explicitly.
+              </p>
+              <ul class="ack-list">
+                @for (item of discrepancies(); track item.id) {
+                  <li>
+                    <label class="ack">
+                      <input
+                        type="checkbox"
+                        [checked]="acknowledged().has(item.id)"
+                        (change)="toggleAcknowledgement(item.id)" />
+                      <span><strong>{{ item.name }}</strong> — {{ item.label }}</span>
+                    </label>
+                  </li>
+                }
+              </ul>
+            }
+
+            <div class="modal-actions">
+              <button type="button" class="secondary-action" (click)="closeAccept()">Cancel</button>
+              <button
+                type="button"
+                class="primary-action"
+                [disabled]="busy() || !allAcknowledged()"
+                (click)="confirmAccept()">
+                {{ discrepancies().length ? 'Accept with acknowledgement' : 'Accept Results' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ===== (5) Official results table (finalized scores only) ===== -->
+      @if (results().length) {
+        <div class="results-card">
+          <div class="table-heading">
+            <div><h2>Official results</h2><p>Finalized scores only — ranked with dense ranking (ties share a position).</p></div>
+            @if (search()) { <span>{{ results().length }} matching result(s)</span> }
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th><th>{{ event.mode === 'SOLO' ? 'Participant' : 'Team' }}</th>
+                  <th>Home</th>
+                  <th>Category / Level</th>
+                  <th>Score</th>
+                  <th>Approval status</th>
+                  <th>Audit</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (result of results(); track result.score.id) {
+                  <tr>
+                    <td class="position">
+                      @if (result.position <= 3) {
+                        <span class="medal" [class.gold]="result.position === 1" [class.silver]="result.position === 2" [class.bronze]="result.position === 3">
+                          {{ result.position === 1 ? '🥇 1st' : result.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
+                        </span>
+                      } @else {
+                        <span class="place">{{ result.position }}</span>
+                      }
+                    </td>
+                    <td>
+                      <strong>{{ entryName(result) }}</strong>
+                    </td>
+                    <td>{{ result.participant ? homeName(result.participant.shelterHomeId) : '—' }}</td>
+                    <td>{{ event.category }} / {{ entryLevel(result) }}</td>
+                    <td class="score">{{ formatScore(result.score.value) }}</td>
+                    <td>
+                      <span class="pill" [class.pill-purple]="reviewStatus() === 'UNDER_REVIEW'"
+                        [class.pill-locked]="reviewStatus() === 'APPROVED'"
+                        [class.pill-err]="reviewStatus() === 'RETURNED'">
+                        {{ statusLabel() }}
+                      </span>
+                    </td>
+                    <td><small>{{ result.score.updatedBy }}<br />{{ result.score.updatedAt | date:'medium' }}</small></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else if (finalizedCount() > 0) {
+        <div class="empty-state"><strong>No matching finalized results</strong><span>Try changing or clearing the search field.</span></div>
+      } @else {
+        <div class="empty-state"><strong>No finalized results for this event</strong><span>Draft scores are intentionally excluded until they are finalized.</span></div>
+      }
+
+      <!-- ===== (6) Finalization + approval status ===== -->
+      <section class="card" aria-labelledby="status-title">
+        <h3 id="status-title">Finalization and approval status</h3>
+        <div class="status-strip" role="status">
+          <span class="pill" [class.pill-locked]="eventFinalized()" [class.pill-err]="!eventFinalized()">
+            {{ eventFinalized() ? `Finalized — ${finalizedCount()} official score(s)` : 'Not finalized' }}
+          </span>
+          <span class="pill" [class.pill-purple]="reviewStatus() === 'UNDER_REVIEW'"
+            [class.pill-locked]="reviewStatus() === 'APPROVED'"
+            [class.pill-err]="reviewStatus() === 'RETURNED'">
+            {{ statusLabel() }}
+          </span>
+        </div>
+        <p class="sub">
+          Approval and finalization are separate: approving the results does not finalize scores, and finalizing
+          scores does not approve them. No certificates are issued automatically.
+        </p>
+        @if (!eventFinalized()) {
+          <div class="note warn">
+            <strong>Results are not official yet.</strong>
+            Finalization happens on the Scoring page once every judge has submitted and every score is entered.
+          </div>
+        }
+      </section>
+
+      <!-- ===== (7) Certificate eligibility (where permitted) ===== -->
+      @if (canSeeCertificates()) {
+        <section class="card" aria-labelledby="certificate-title">
+          <h3 id="certificate-title">Certificate eligibility</h3>
+          @if (eventFinalized() && winners().length > 0) {
+            <p class="sub">
+              The top {{ winners().length }} ranked entr{{ winners().length === 1 ? 'ant' : 'ants' }} below
+              {{ winners().length === 1 ? 'is' : 'are' }} eligible for certificates once the results are approved.
+            </p>
+            <ul class="discrepancy-list">
+              @for (winner of winners(); track winner.score.id) {
+                <li>
+                  <strong>{{ winner.position }}. {{ entryName(winner) }}</strong>
+                  — {{ formatScore(winner.score.value) }}
+                  @if (winner.participant) {
+                    — {{ homeName(winner.participant.shelterHomeId) }}
+                  }
+                </li>
+              }
+            </ul>
+            <p class="sub">
+              Certificates are generated from the
+              <a routerLink="/certificates">Certificates page</a> — nothing is issued automatically.
+            </p>
+          } @else {
+            <div class="empty">
+              <strong>No certificate-eligible results yet</strong>
+              <small>Certificate eligibility appears once the event's scores are finalized and approved.</small>
+            </div>
+          }
+        </section>
+      }
     }
   } @else {
     @if (visibleBoards().length > 0) {
@@ -162,7 +465,7 @@
                     @else { {{ entry.position }} }
                   </span>
                   <span class="entry-name">{{ boardName(entry.row) }}</span>
-                  <span class="entry-score">{{ entry.row.score }}</span>
+                  <span class="entry-score">{{ formatScore(entry.row.score) }}</span>
                 </div>
               }
             </div>

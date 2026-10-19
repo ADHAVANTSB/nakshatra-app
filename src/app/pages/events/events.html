@@ -951,6 +951,15 @@
         </div>
 
 
+        @if (eventLocked()) {
+
+          <div class="alert" role="note">
+            {{ finalizedMessage }}
+          </div>
+
+        }
+
+
         <!-- REGISTERED PARTICIPANTS -->
 
         <div class="section-heading">
@@ -980,7 +989,9 @@
 
           @if (
             selectedEvent()?.status === 'ACTIVE' &&
-            registrationsReady()
+            registrationsReady() &&
+            canManageRegistrations() &&
+            !eventLocked()
           ) {
 
             <button
@@ -1092,6 +1103,8 @@
                   </span>
 
                   @if (
+                    canManageRegistrations() &&
+                    !eventLocked() &&
                     item.registration.registrationStatus === 'REGISTERED'
                   ) {
 
@@ -1110,6 +1123,8 @@
                   }
 
                   @if (
+                    canManageRegistrations() &&
+                    !eventLocked() &&
                     item.registration.registrationStatus === 'CANCELLED'
                   ) {
 
@@ -1158,7 +1173,7 @@
 
         <!-- ADD PARTICIPANT -->
 
-        @if (showAddParticipant()) {
+        @if (showAddParticipant() && canManageRegistrations() && !eventLocked()) {
 
           <div class="add-participant-panel">
 
@@ -1443,7 +1458,7 @@
 
       <!-- FOOTER -->
 
-      @if (showAddParticipant()) {
+      @if (showAddParticipant() && canManageRegistrations() && !eventLocked()) {
 
         <div class="drawer-footer">
 

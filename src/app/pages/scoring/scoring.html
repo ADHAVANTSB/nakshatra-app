@@ -1,10 +1,14 @@
 <!--
-  Scoring page.
+  Scoring page — the ONE authoritative scoring workflow (judge-based).
 
-  A score whose backend status is FINALIZED renders read-only: no input, no
-  draft button, no finalize button. Write outcomes are reported by the shell
-  toast outlet, so a rejected save never replaces this page and the value the
-  judge typed stays in the input.
+  Judges are configured on /judging; here each judge scores the PRESENT
+  participants and saves drafts or submits final scores. The official score
+  is the average of the submitted judge totals (shown read-only), and
+  Finalize Event is the single official finalization path. There is no
+  manual score entry anywhere on this page.
+
+  Write outcomes are reported by the shell toast outlet, so a rejected save
+  never replaces this page and the values the judge typed stay in the grid.
 -->
 
 <div class="scoring-page">
@@ -13,7 +17,7 @@
   <div class="page-header">
     <span class="eyebrow">JUDGING</span>
     <h1>Scoring</h1>
-    <p>Record draft or final judge scores for valid event entries.</p>
+    <p>Enter each judge's scores for the event, then finalize when every judge has submitted. Judges are configured on the Judging page.</p>
   </div>
 
   <div class="event-select-card">
@@ -75,76 +79,238 @@
       <small>Only participants marked PRESENT in Attendance are scored here.</small>
     </div>
 
-    <div class="roster-search">
-      <input
-        aria-label="Search scoring entries"
-        placeholder="Search name, code, or home"
-        [ngModel]="search()"
-        (ngModelChange)="setSearch($event)"
-        [disabled]="loading() || targetsLoading()" />
-    </div>
+    <!-- ===== Official judging criteria ===== -->
+    <section class="card" aria-labelledby="scoring-criteria-title">
+      <h3 id="scoring-criteria-title">Judging criteria — {{ event.name }}</h3>
+      <p class="sub">Source of truth: only officially supplied criteria are shown.</p>
 
-    <!--
-      A failed read keeps the registrations error above as its state. Rendering
-      an empty list here would read as "0 entries", which the backend never said.
-    -->
-    <!--
-      Entry is blocked until persisted scores (and, for group events, teams)
-      are loaded: blank inputs over a failed read would let a judge overwrite a
-      score they cannot see.
-    -->
-    @if (loading() || targetsLoading()) {
-      <div class="empty" role="status">Loading registered entries…</div>
-    } @else if (registrationsFailed()) {
-      <div class="alert error" role="alert">
-        <strong>Unable to load registered entries.</strong>
-        @if (registrationError()) {
-          <span>{{ registrationError() }}</span>
-        }
-        <button type="button" (click)="retryRegistrations()">Retry</button>
-      </div>
-    } @else if (scoresState().status === 'ERROR') {
-      <div class="alert error" role="alert">
-        <strong>Unable to load scores.</strong>
-        @if (scoresState().error) {
-          <span>{{ scoresState().error }}</span>
-        }
-        <button type="button" (click)="retryScores()">Retry</button>
-      </div>
-    } @else if (!scoresReady()) {
-      <div class="empty" role="status">Loading scores…</div>
-    } @else if (teamsFailed()) {
-      <div class="alert error" role="alert">
-        <strong>Unable to load teams.</strong>
-        @if (teamsState().error) {
-          <span>{{ teamsState().error }}</span>
-        }
-        <button type="button" (click)="retryTeams()">Retry</button>
-      </div>
-    } @else if (teamsPending()) {
-      <div class="empty" role="status">Loading teams…</div>
-    } @else if (targets().length > 0) {
+      @if (scoringMode() === 'CRITERIA') {
+        <div class="criteria-list">
+          @for (criterion of event.criteria ?? []; track criterion.name) {
+            <div class="criteria-chip">
+              <strong>{{ criterion.name }}</strong>
+              <span>0 – {{ criterion.max }} points (0.5 steps)</span>
+            </div>
+          }
+        </div>
+        <div class="note">
+          The judge's overall score per participant is the sum of the criteria (max {{ maxJudgeOverall() }}).
+        </div>
+      } @else if (scoringMode() === 'SINGLE') {
+        <div class="placeholder purple">
+          <strong>One overall score per judge</strong>
+          Rounds are one event-level entry — {{ event.name }} is scored as a single event-level score per judge and
+          per participant (0–10 in 0.5 steps). Rounds must not create separate scoring entries.
+        </div>
+      } @else {
+        <div class="placeholder">
+          <strong>Official judging criteria pending — scoring opens once supplied</strong>
+          No criteria are invented for {{ event.name }}. Judge scoring and finalization stay closed until the
+          official criteria are supplied and verified.
+        </div>
+      }
+    </section>
 
-      @if (scoresRefreshing()) {
-        <div class="alert" role="status">Refreshing scores…</div>
+    <!-- ===== Configured judges (configured on /judging) ===== -->
+    <section class="card" aria-labelledby="scoring-judges-title">
+      <h3 id="scoring-judges-title">Judges — {{ event.name }}</h3>
+      <p class="sub">
+        Configured on the <a routerLink="/judging" [queryParams]="{ eventId: event.id }">Judging page</a>.
+        @if (judgesState() === 'LOADED') {
+          {{ activeJudgeCount() }} active judge(s).
+        }
+      </p>
+
+      @if (judgesState() === 'LOADING') {
+        <div class="empty" role="status">Loading the configured judges…</div>
+      } @else if (judgesState() === 'FAILED') {
+        <div class="alert error" role="alert">
+          <strong>Judges could not be loaded.</strong>
+          <span>{{ judgeError() }}</span>
+          <button type="button" class="link-button" (click)="retryJudges()">Retry</button>
+        </div>
+      } @else if (judges().length === 0) {
+        <div class="placeholder">
+          <strong>No judges configured yet</strong>
+          Judge scoring opens once this event's judges are configured.
+          <a class="link-button" routerLink="/judging" [queryParams]="{ eventId: event.id }">
+            Set up judges on the Judging page
+          </a>
+        </div>
+      } @else {
+
+        <div class="judge-chips" role="group" aria-label="Judge selector">
+          @for (judge of judges(); track judge.id) {
+            <button
+              type="button"
+              class="judge-chip"
+              [class.selected]="judge.id === selectedJudgeId()"
+              [class.submitted]="judgeSubmission(judge.id) === 'SUBMITTED'"
+              [attr.aria-pressed]="judge.id === selectedJudgeId()"
+              (click)="setJudge(judge.id)">
+              <strong>{{ judgeLabel(judge) }}</strong>
+              <span>{{ judgeStatusLabel(judge) }}</span>
+            </button>
+          }
+        </div>
+
+        @if (scoringMode() === 'PENDING') {
+          <div class="placeholder">
+            <strong>Official judging criteria pending — scoring opens once supplied</strong>
+            No score fields are invented for {{ event.name }}. The judge grid opens once the official criteria are
+            supplied and verified.
+          </div>
+        } @else if (selectedJudge(); as judge) {
+
+          @if (judgeScoresState() === 'FAILED') {
+            <div class="alert error" role="alert">
+              <strong>Saved judge scores could not be loaded.</strong>
+              <span>{{ judgeScoresError() }}</span>
+              <button type="button" class="link-button" (click)="retryJudgeScores()">Retry</button>
+            </div>
+          }
+
+          <div class="note warn">
+            <strong>Present participants only — attendance confirmed.</strong>
+            @if (judgeExcludedCount() > 0) {
+              {{ judgeExcludedCount() }} registered participant(s) are absent or unmarked and cannot be scored.
+            }
+          </div>
+
+          @if (scoringMode() === 'SINGLE') {
+            <div class="note purple">
+              Rounds are one event-level entry — one overall score per judge per participant (0–10 in 0.5 steps).
+            </div>
+          }
+
+          @if (judgeRows().length === 0) {
+            <div class="empty">No participants are marked present for this event.</div>
+          } @else {
+            <div class="grid-wrap">
+              <table class="scoring-grid">
+                <thead>
+                  <tr>
+                    <th>Participant</th>
+                    @for (field of judgeScoreFields(); track field) {
+                      <th class="num">{{ field }}<br /><span class="th-range">0–10</span></th>
+                    }
+                    <th class="num">
+                      {{ scoringMode() === 'CRITERIA' ? 'Judge total' : 'Judge score' }}
+                      <br /><span class="th-range">/ {{ maxJudgeOverall() }}</span>
+                    </th>
+                    <th class="num">
+                      Official aggregate
+                      <br /><span class="th-range">submitted judges</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of judgeRows(); track row.id) {
+                    <tr>
+                      <td data-l="Participant"><strong>{{ row.fullName }}</strong></td>
+                      @for (field of judgeScoreFields(); track field) {
+                        <td class="num" [attr.data-l]="field">
+                          <input
+                            class="score-input"
+                            [class.invalid]="!!judgeFieldError(row.id, field)"
+                            type="text"
+                            inputmode="decimal"
+                            [value]="judgeScoreValue(row.id, field)"
+                            [attr.aria-label]="field + ' score for ' + row.fullName"
+                            [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized()"
+                            (input)="setJudgeScore(row.id, field, $any($event.target).value)" />
+                          @if (judgeFieldError(row.id, field); as error) {
+                            <div class="err-msg" role="alert">{{ error }}</div>
+                          }
+                        </td>
+                      }
+                      <td class="num" data-l="Judge total">
+                        <span class="total-pill" [class.complete]="judgeRowTotal(row.id).tone === 'complete'"
+                          [class.invalid]="judgeRowTotal(row.id).tone === 'invalid'">
+                          {{ judgeRowTotal(row.id).label }}
+                        </span>
+                      </td>
+                      <td class="num" data-l="Official aggregate">
+                        <span class="total-pill aggregate">{{ officialAggregateLabel(row.id) }}</span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                @if (scoringMode() === 'CRITERIA') {
+                  <tfoot>
+                    <tr>
+                      <td>Criterion totals</td>
+                      @for (field of judgeScoreFields(); track field) {
+                        <td class="num">{{ formatTotal(judgeColumnTotal(field)) }}</td>
+                      }
+                      <td class="num">{{ formatTotal(judgeOverallTotal()) }} total</td>
+                      <td class="num">—</td>
+                    </tr>
+                  </tfoot>
+                }
+              </table>
+            </div>
+
+            <div class="judge-actions">
+              <button
+                type="button"
+                class="secondary-action"
+                [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized()"
+                (click)="saveJudgeDraft()">
+                Save draft
+              </button>
+              <button
+                type="button"
+                class="primary-action"
+                [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized()"
+                (click)="submitJudgeFinal()">
+                Submit final scores
+              </button>
+            </div>
+
+            <div class="note">
+              <strong>Judge total vs official aggregate.</strong>
+              The judge total is {{ selectedJudge()?.name || 'this judge' }}'s own score for the participant. The
+              official aggregate is the arithmetic average of the submitted totals of all active judges — drafts and
+              removed judges are excluded — and is never edited here.
+            </div>
+          }
+        }
+      }
+    </section>
+
+    <!-- ===== Official finalization (the single official path) ===== -->
+    <section class="card" aria-labelledby="scoring-finalize-title">
+      <h3 id="scoring-finalize-title">Official results — {{ event.name }}</h3>
+      <p class="sub">
+        The official score of every entry is the average of the submitted judge totals. Finalizing commits those
+        scores as official results for Results and Certificates.
+      </p>
+
+      @if (scoresState().status === 'ERROR') {
+        <div class="alert error" role="alert">
+          <strong>Unable to load scores.</strong>
+          @if (scoresState().error) {
+            <span>{{ scoresState().error }}</span>
+          }
+          <button type="button" (click)="retryScores()">Retry</button>
+        </div>
+      }
+
+      @if (eventFinalized()) {
+        <div class="alert" role="note">{{ finalizedMessage }}</div>
       }
 
       <div class="scoring-toolbar" role="toolbar" aria-label="Event scoring actions">
-        <button
-          type="button"
-          class="save"
-          [disabled]="scoringBusy() || !hasUnsavedDrafts()"
-          (click)="saveAllDrafts()">
-          {{ scoringBusy() ? 'Saving…' : 'Save scores' }}
-        </button>
-
-        <button
-          type="button"
-          class="finalize"
-          [disabled]="scoringBusy() || hasUnsavedDrafts() || !targets().length || eventFinalized()"
-          (click)="finalizeEventAction()">
-          Finalize Event
-        </button>
+        @if (!eventFinalized()) {
+          <button
+            type="button"
+            class="finalize"
+            [disabled]="scoringBusy() || finalizeBlocked()"
+            (click)="finalizeEventAction()">
+            Finalize Event
+          </button>
+        }
 
         @if (eventFinalized()) {
           <button
@@ -156,6 +322,16 @@
           <span class="final">Event finalized</span>
         }
       </div>
+
+      @if (!eventFinalized() && finalizeBlocked()) {
+        <div class="alert" role="note">
+          <strong>Finalization is not available yet.</strong>
+          <span>{{ finalizeBlockedMessage() }}</span>
+          @if (missingJudgeSubmissions().length > 0) {
+            <span>Still missing: {{ missingJudgeSubmissions().join(', ') }}.</span>
+          }
+        </div>
+      }
 
       @if (reopenRequested()) {
         <div class="reopen-row">
@@ -170,68 +346,7 @@
           <button type="button" (click)="toggleReopen()">Cancel</button>
         </div>
       }
-
-      <div class="score-list">
-        @for (target of targets(); track target.key) {
-
-          <div class="score-card">
-
-            <div>
-              <strong>{{ targetName(target) }}</strong>
-              <span>{{ target.reference }}</span>
-              @if (target.homeLabel) {
-                <small>{{ target.homeLabel }}</small>
-              }
-              @if (target.participant) {
-                <small>Attendance: {{ target.attendance?.status ?? 'Not marked' }}</small>
-              }
-            </div>
-
-            <div class="score-details">
-
-              @if (isFinalized(target)) {
-                <!-- Locked by the backend: nothing here can be edited or re-sent. -->
-                <div class="final">Final · {{ target.score?.value }}</div>
-              } @else if (target.score && !isEditing(target.key)) {
-
-                <!-- Saved draft: shown read-only until the judge presses Edit. -->
-                <div class="saved-score">Score: {{ target.score.value }}</div>
-                <button
-                  type="button"
-                  class="edit"
-                  (click)="startEditing(target.key)">
-                  Edit
-                </button>
-
-              } @else {
-
-                <input
-                  #scoreValue
-                  type="number"
-                  [value]="drafts()[target.key] ?? target.score?.value ?? ''"
-                  placeholder="Score"
-                  [disabled]="isLocked(target) || eventFinalized()"
-                  (input)="updateDraft(target.key, scoreValue.value)" />
-
-              }
-
-              <!-- Audit line uses the status, version and author the backend returned. -->
-              @if (target.score; as score) {
-                <small class="audit">{{ scoreStatusLabel(score) }} · Updated by {{ score.updatedBy }}</small>
-              } @else {
-                <small class="audit">No score recorded yet</small>
-              }
-
-            </div>
-
-          </div>
-
-        }
-      </div>
-
-    } @else {
-      <div class="empty">{{ emptyState() }}</div>
-    }
+    </section>
 
   } @else {
     <div class="empty scoring-empty" role="status">

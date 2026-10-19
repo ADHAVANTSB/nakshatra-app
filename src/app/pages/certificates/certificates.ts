@@ -2,6 +2,7 @@ import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 
 import { WinnersEventGroup, WinnersService } from '../../core/services/certificates/winners.service';
+import { formatScore } from '../../shared/score-format';
 
 /**
  * Winners report for the Certificate Team.
@@ -20,6 +21,9 @@ import { WinnersEventGroup, WinnersService } from '../../core/services/certifica
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Certificates implements OnInit {
+  /** Official score display rule: one decimal where necessary — "21.5", never "21.0". */
+  readonly formatScore = formatScore;
+
   private readonly winnersService = inject(WinnersService);
 
   readonly loading = this.winnersService.loading$;

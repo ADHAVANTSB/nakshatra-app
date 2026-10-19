@@ -1,25 +1,63 @@
 import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
-import { Attendance, Event, Participant, Score, Team } from '../../core/models';
+import {
+  Event,
+  EventJudge,
+  EventScoringMode,
+  JudgeScoreRow,
+  Participant,
+  SaveJudgeScoreEntry,
+} from '../../core/models';
+import { EVENT_FINALIZED_MESSAGE, persistenceUnconfirmed } from '../../core/permissions/friendly-error';
+import { canEditModule } from '../../core/permissions/role-matrix';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
+import { AuthService } from '../../core/services/auth/auth.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import {
   ScoreLoadState,
-  ScoreResult,
   ScoringService,
 } from '../../core/services/scoring/scoring.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
-import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
-import { TeamLoadState, TeamService } from '../../core/services/teams/team.service';
+import { formatScore } from '../../shared/score-format';
+
+/** The exact inline rejection text for any value outside 0–10 in 0.5 steps. */
+export const SCORE_VALIDATION_MESSAGE = 'Scores must be 0–10 in increments of 0.5';
+
+/** The finalization gate message while judge submissions are missing. */
+export const JUDGES_INCOMPLETE_MESSAGE =
+  'Every judge must submit final scores before this event can be finalized.';
+
+export type ScoreValidation = { empty: true } | { value: number } | { error: string };
 
 /**
- * Read state of the registration request behind the scoring target list.
+ * Validates one raw score input: empty, a 0–10 value in 0.5 steps, or the
+ * single inline rejection message. Anything else — negative, above 10, or a
+ * non-0.5 increment — is rejected before it can reach the backend.
+ */
+export function validateJudgeScore(raw: string): ScoreValidation {
+  const trimmed = raw.trim();
+  if (!trimmed) return { empty: true };
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0 || value > 10 || !Number.isInteger(value * 2)) {
+    return { error: SCORE_VALIDATION_MESSAGE };
+  }
+  return { value };
+}
+
+type JudgesState = 'IDLE' | 'LOADING' | 'LOADED' | 'FAILED';
+type JudgeScoresState = 'IDLE' | 'LOADING' | 'LOADED' | 'FAILED';
+
+/** Per-judge submission state, derived from the stored judge-score rows. */
+export type JudgeSubmissionState = 'SUBMITTED' | 'DRAFT' | 'NONE';
+
+/**
+ * Read state of the registration request behind the judge grid.
  *
  * The cache this state guards starts empty, so a request that has not been
  * issued, is in flight, or has failed must never be presented as "no targets".
@@ -27,61 +65,35 @@ import { TeamLoadState, TeamService } from '../../core/services/teams/team.servi
 type RegistrationsState = 'IDLE' | 'LOADING' | 'LOADED' | 'FAILED';
 
 /**
- * What a single button press asked the backend to do.
+ * Judge score entry for one event — the ONE authoritative scoring workflow.
  *
- * Draft and finalize are two separate backend actions, so the page never sends
- * a "finalize" flag: each maps to its own service method.
- */
-type ScoreAction = 'DRAFT' | 'FINALIZE';
-
-interface ScoreTarget {
-  /**
-   * Stable identity used for `@for` tracking and for the per-target in-flight
-   * guard. Event-scoped so switching events cannot collide two busy targets.
-   */
-  key: string;
-  participant?: Participant;
-  team?: Team;
-  attendance?: Attendance;
-  score?: Score;
-  /** Readable reference for the entry; never a raw backend id. */
-  reference: string;
-  /** Shelter home name for participant entries, empty for team entries. */
-  homeLabel: string;
-}
-
-/**
- * Judge score entry for one event.
+ * Judges are configured on /judging; here each judge scores the PRESENT
+ * participants of the event and saves drafts or submits final scores through
+ * `saveJudgeScores` (one upsert row per judge + participant). The official
+ * score is the arithmetic average of the submitted judge totals — written by
+ * the backend into the event's Scores rows and shown read-only in the
+ * "Official aggregate" column. The single official finalization path is
+ * `finalizeEvent`; nothing on this page writes a score outside the judge
+ * workflow.
  *
- * The draft → finalize → locked lifecycle lives entirely in `ScoringService`;
- * this page only decides which registered entries may be scored and delegates
- * every write to the service, which re-validates the target and persists
- * through the backend. Attendance is displayed as context only and is never a
- * precondition for scoring.
- *
- * Every write is awaited: a draft uses `save*Score`, a finalization uses
- * `finalize*Score`, and both report their outcome as a compact toast rather
- * than by replacing page content. A rejected write leaves the typed value in
- * place so nothing a judge entered is lost.
- *
- * Scorable entries are derived from the registrations the backend holds for the
- * selected event, so those are read on selection: the synchronous
- * `getEventRegistrations()` read only reflects what that request cached.
+ * Every write is awaited and reports its outcome as a compact toast. A
+ * rejected write leaves the typed values in place so nothing a judge entered
+ * is lost, and the page never claims a write it cannot confirm.
  */
 @Component({
   selector: 'nk-scoring',
-  imports: [ViewOnlyBannerComponent, FormsModule],
+  imports: [ViewOnlyBannerComponent, RouterLink],
   templateUrl: './scoring.html',
   styleUrl: './scoring.scss',
 })
 export class Scoring implements OnInit {
+  private readonly apiClient = inject(ApiClientService);
+  private readonly auth = inject(AuthService);
   private readonly eventService = inject(EventService);
   private readonly registrationService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
-  private readonly teamService = inject(TeamService);
   private readonly attendanceService = inject(AttendanceService);
   private readonly scoringService = inject(ScoringService);
-  private readonly shelterHomeService = inject(ShelterHomeService);
   private readonly shelterData = inject(ShelterDataService);
   /** Re-runs the full store load after a failed page load (Retry button). */
   async retryStoreLoad(): Promise<void> {
@@ -124,16 +136,6 @@ export class Scoring implements OnInit {
 
   readonly events = this.eventService.events$;
   readonly selectedEventId = signal('');
-  readonly search = signal('');
-
-  /**
-   * Events whose scores this page has seen load successfully at least once.
-   *
-   * A write re-reads `listScores`, which briefly reports LOADING; for an event
-   * already shown, the list stays rendered (controls disabled) instead of being
-   * replaced, so values typed into other entries are not lost.
-   */
-  private readonly scoresSeen = signal<ReadonlySet<string>>(new Set<string>());
 
   /** Backend read state of the selected event's scores. */
   readonly scoresState = computed<ScoreLoadState>(() => {
@@ -141,149 +143,62 @@ export class Scoring implements OnInit {
     return id ? this.scoringService.loadState(id) : { status: 'IDLE', error: '' };
   });
 
-  /** Backend read state of the selected event's teams (group events only). */
-  readonly teamsState = computed<TeamLoadState>(() => {
-    const id = this.selectedEventId();
-    return id ? this.teamService.loadState(id) : { status: 'IDLE', error: '' };
-  });
-
-  /**
-   * True when persisted scores for the selected event are known.
-   *
-   * Entry is blocked otherwise, so a judge can never overwrite a persisted
-   * score that failed to load and is therefore invisible here.
-   */
-  readonly scoresReady = computed(() => {
-    const id = this.selectedEventId();
-    const status = this.scoresState().status;
-    return status === 'LOADED' || (status === 'LOADING' && this.scoresSeen().has(id));
-  });
-
-  /** True while a re-read of already-shown scores is open. */
-  readonly scoresRefreshing = computed(() =>
-    this.scoresState().status === 'LOADING' && this.scoresSeen().has(this.selectedEventId())
-  );
-
-  /** True when the selected event needs teams and they are not yet usable. */
-  readonly teamsPending = computed(() => {
-    const event = this.selectedEvent();
-    if (!event || event.mode !== 'GROUP') return false;
-    const status = this.teamsState().status;
-    return status === 'IDLE' || status === 'LOADING';
-  });
-
-  readonly teamsFailed = computed(() => {
-    const event = this.selectedEvent();
-    return !!event && event.mode === 'GROUP' && this.teamsState().status === 'ERROR';
-  });
-
   /** Read state of the registrations for the currently selected event. */
   readonly registrationsState = signal<RegistrationsState>('IDLE');
   readonly registrationError = signal('');
 
-  /** Keys of targets with a write in flight; a second click is ignored. */
-  private readonly busyTargets = signal<ReadonlySet<string>>(new Set<string>());
-
-  /** Unsaved per-row score edits, keyed by target key. */
-  readonly drafts = signal<Partial<Record<string, number>>>({});
-
-  /** True while an event-level save/finalize request is in flight. */
+  /** True while an event-level finalize/reopen request is in flight. */
   readonly scoringBusy = signal(false);
 
-  readonly hasUnsavedDrafts = computed(() => Object.keys(this.drafts()).length > 0);
+  /** The whole event is finalized when every persisted score for it is. */
+  readonly eventFinalized = computed(() =>
+    this.scoringService.isEventFinalized(this.selectedEventId()));
 
-  /** The whole event is finalized when every scorable target is. */
-  readonly eventFinalized = computed(() => {
-    const targets = this.targets();
-    return targets.length > 0 && targets.every(t => t.score?.status === 'FINALIZED');
-  });
-
-  updateDraft(key: string, raw: string): void {
-    const value = Number(raw);
-    this.drafts.update(current => { const next = { ...current }; if (raw === '' || Number.isNaN(value)) { delete next[key]; } else { next[key] = value; } return next; });
-  }
+  /** The finalization lock message shown in place of the write controls. */
+  readonly finalizedMessage = EVENT_FINALIZED_MESSAGE;
 
   /**
-   * True when a team still has at least one member whose attendance for the
-   * event is PRESENT — such teams are scored; fully-absent teams are not.
+   * Official finalization (the ONE official finalization path): the backend
+   * gates it on complete judge submissions (JUDGE_SCORES_INCOMPLETE) and
+   * commits the official judge-average scores idempotently.
    */
-  teamHasPresentMember(teamId: string, eventId: string): boolean {
-    return this.teamService.getMembers(teamId).some(member =>
-      member.status !== 'REMOVED' &&
-      this.attendanceService.getByParticipantEvent(member.participantId, eventId)?.status === 'PRESENT'
-    );
-  }
-
-  /** Rows with a saved score render read-only until Edit is pressed. */
-  readonly editingRows = signal<ReadonlySet<string>>(new Set<string>());
-
-  isEditing(key: string): boolean {
-    return this.editingRows().has(key);
-  }
-
-  startEditing(key: string): void {
-    const target = this.targets().find(t => t.key === key);
-    this.editingRows.update(current => {
-      const next = new Set(current);
-      next.add(key);
-      return next;
-    });
-    if (target?.score) {
-      this.updateDraft(key, String(target.score.value));
-    }
-  }
-
-  /** Event-level Save: persists every staged row in one batch request. */
-  async saveAllDrafts(): Promise<void> {
-    const event = this.selectedEvent();
-    if (!event || this.scoringBusy() || !this.hasUnsavedDrafts()) return;
-
-    this.scoringBusy.set(true);
-    try {
-      const entries = this.targets()
-        .map(t => ({
-          key: t.key,
-          participantId: t.participant?.id,
-          teamId: t.team?.id,
-          score: this.drafts()[t.key],
-          expectedVersion: t.score?.version,
-        }))
-        .filter((entry): entry is typeof entry & { score: number } => entry.score !== undefined)
-        .map(({ key: _key, ...entry }) => entry);
-      const result = await this.scoringService.saveEventDrafts(event.id, entries);
-      if (!result.success) {
-        this.notify.error(result.errorMessage || 'The scores could not be saved.');
-        return;
-      }
-      if (result.failures.length) {
-        this.notify.error('Some scores were not saved.', result.failures.map(f => f.message).join(' '));
-        return;
-      }
-      this.drafts.set({});
-      this.notify.success('Scores saved as drafts.', 'Finalize the event when every score is entered.');
-    } finally {
-      this.scoringBusy.set(false);
-    }
-  }
-
-  /** Event-level Finalize: saves pending drafts first, then commits. */
   async finalizeEventAction(): Promise<void> {
     const event = this.selectedEvent();
-    if (!event || this.scoringBusy()) return;
+    if (!event || this.scoringBusy() || this.eventFinalized()) return;
+
+    // PENDING events cannot be finalized: no official criteria, no official results.
+    if (this.scoringMode() === 'PENDING') {
+      this.notify.warning(
+        'This event cannot be finalized yet.',
+        'Official judging criteria pending — finalization opens once the criteria are supplied and verified.'
+      );
+      return;
+    }
+
+    // The backend blocks this with JUDGE_SCORES_INCOMPLETE; the UI blocks it
+    // first with the same plain-English message whenever the facts are known.
+    if (!this.allJudgesSubmitted()) {
+      this.notify.error(JUDGES_INCOMPLETE_MESSAGE);
+      return;
+    }
 
     this.scoringBusy.set(true);
     try {
-      if (this.hasUnsavedDrafts()) {
-        await this.saveAllDrafts();
-        if (this.hasUnsavedDrafts()) return;
-      }
       const result = await this.scoringService.finalizeEventScores(event.id);
       if (!result.success || !result.data) {
-        this.notify.error(result.errorMessage || 'The event could not be finalized.');
+        const code = result.errorCode ?? '';
+        // A structured rejection means the backend committed nothing; a
+        // transport/protocol failure leaves the outcome unknown, and the
+        // user must not be told either way.
+        const detail = persistenceUnconfirmed(code)
+          ? 'The outcome is unknown — retry (finalization is idempotent) or reload to check what was committed.'
+          : 'Nothing was finalized.';
+        this.notify.error(
+          result.errorMessage || 'The event could not be finalized.',
+          code ? `${detail} (code: ${code})` : detail
+        );
         return;
       }
-      this.drafts.set({});
-      this.editingRows.set(new Set());
       this.notify.success(result.data.alreadyFinalized ? 'This event was already finalized.' : 'Event finalized.', result.data.totalScores + ' score(s) are now official results.');
       // Finalized results feed Results and Certificates — take the user there.
       void this.router.navigateByUrl('/results');
@@ -309,7 +224,17 @@ export class Scoring implements OnInit {
     this.scoringBusy.set(true);
     try {
       const result = await this.scoringService.reopenEventScores(event.id, reason);
-      if (!result.success) { this.notify.error(result.errorMessage || 'The event could not be reopened.'); return; }
+      if (!result.success) {
+        const code = result.errorCode ?? '';
+        const detail = persistenceUnconfirmed(code)
+          ? 'The outcome is unknown — reload to check whether the event was reopened.'
+          : 'The event stays finalized.';
+        this.notify.error(
+          result.errorMessage || 'The event could not be reopened.',
+          code ? `${detail} (code: ${code})` : detail
+        );
+        return;
+      }
       this.reopenRequested.set(false);
       this.reopenReason.set('');
       this.notify.success('Scores reopened for correction.', 'Official results are suspended until the event is finalized again.');
@@ -320,107 +245,9 @@ export class Scoring implements OnInit {
 
   readonly selectedEvent = computed(() => this.selectedEventId() ? this.eventService.getById(this.selectedEventId()) : undefined);
 
-  /** True only while a registration request for the selected event is open. */
-  readonly targetsLoading = computed(() => this.registrationsState() === 'LOADING');
-
-  /** True when the registrations for the selected event could not be read. */
-  readonly registrationsFailed = computed(() => this.registrationsState() === 'FAILED');
-
   /**
-   * Registrations the backend returned for the selected event.
-   *
-   * Kept separate from `targets` so an empty list can distinguish "the backend
-   * holds no registrations" from "registrations exist but none are scorable".
-   */
-  readonly registeredRegistrations = computed(() => {
-    const event = this.selectedEvent();
-    if (!event) return [];
-    return this.registrationService.getEventRegistrations(event.id)
-      .filter(item => item.registrationStatus === 'REGISTERED');
-  });
-
-  /** Teams held locally for the selected event. */
-  readonly eventTeams = computed(() => {
-    const event = this.selectedEvent();
-    return event ? this.teamService.getTeamsByEvent(event.id) : [];
-  });
-
-  /**
-   * Entries a judge may score for the selected event.
-   *
-   * Individual events resolve to registered and eligible participants; group
-   * events resolve to teams that pass `TeamService.validateTeam()`, which itself
-   * requires every member to be registered. Attendance never removes a target.
-   */
-  readonly targets = computed<ScoreTarget[]>(() => {
-    const event = this.selectedEvent();
-    const query = this.search().trim().toLowerCase();
-    if (!event) return [];
-
-    if (event.mode === 'SOLO') {
-      return this.registeredRegistrations()
-        .map(item => this.participantService.getParticipantById(item.participantId))
-        .filter((participant): participant is Participant => !!participant)
-        .filter(participant => this.isValidParticipant(event, participant))
-        // Only PRESENT attendees are scored; ABSENT and unmarked are excluded.
-        .filter(participant => this.attendanceService.getByParticipantEvent(participant.id, event.id)?.status === 'PRESENT')
-        .filter(participant => !query || participant.fullName.toLowerCase().includes(query) || participant.participantCode.toLowerCase().includes(query) || this.homeName(participant.shelterHomeId).toLowerCase().includes(query) || this.homeCode(participant.shelterHomeId).toLowerCase().includes(query))
-        .map(participant => ({
-          key: `${event.id}:P:${participant.id}`,
-          participant,
-          reference: participant.participantCode,
-          homeLabel: this.homeName(participant.shelterHomeId),
-          score: this.scoringService.getParticipantScore(event.id, participant.id),
-          attendance: this.attendanceService.getByParticipantEvent(participant.id, event.id),
-        }));
-    }
-
-    return this.eventTeams()
-      .filter(team => this.teamService.validateTeam(team.id).valid)
-      // Only teams with at least one PRESENT member are scored.
-      .filter(team => this.teamHasPresentMember(team.id, event.id))
-      .filter(team => !query || team.name.toLowerCase().includes(query) || team.teamCode.toLowerCase().includes(query))
-      .map(team => ({
-        key: `${event.id}:T:${team.id}`,
-        team,
-        reference: team.teamCode,
-        homeLabel: '',
-        score: this.scoringService.getTeamScore(event.id, team.id),
-      }));
-  });
-
-  /**
-   * Honest empty-list copy.
-   *
-   * Only ever rendered when the registrations genuinely loaded; a failed read
-   * keeps its own error state, and an active search is never described as an
-   * event that has no registrations.
-   */
-  readonly emptyState = computed<string>(() => {
-    if (this.registrationsState() !== 'LOADED') return '';
-
-    const query = this.search().trim();
-    if (query) return `No entries match "${query}".`;
-
-    const event = this.selectedEvent();
-    if (!event) return '';
-
-    if (event.mode === 'SOLO') {
-      return this.registeredRegistrations().length
-        ? 'No registered, eligible participants were returned for this event.'
-        : 'No participants registered for this event.';
-    }
-
-    return this.eventTeams().length
-      ? 'No registered, eligible teams were returned for this event.'
-      : 'No teams are available to score for this event.';
-  });
-
-  /**
-   * Reads the registrations for one event from the backend.
-   *
-   * Group events depend on this too, because team validity is evaluated against
-   * the same registration cache.
+   * Reads the registrations for one event from the backend. The judge grid is
+   * derived from them (PRESENT attendees only), so they load with the event.
    */
   async loadRegistrations(eventId: string): Promise<void> {
     if (!eventId) {
@@ -456,12 +283,9 @@ export class Scoring implements OnInit {
   }
 
   /**
-   * Reads everything the selected event needs, in parallel: registrations,
-   * persisted scores and, for group events, persisted teams.
-   *
-   * Score and team load state is held per event by the services and read here
-   * through the current selection, so a response for an event the user has
-   * already left can never be shown against the new one.
+   * Reads everything the selected event needs: registrations, the persisted
+   * official scores (they drive the finalization lock) and, in order, the
+   * configured judges and the saved judge scores that fill the grid.
    */
   async loadEvent(eventId: string): Promise<void> {
     if (!eventId) {
@@ -470,17 +294,15 @@ export class Scoring implements OnInit {
     }
 
     // A cold deep link can arrive before the event catalogue has loaded; the
-    // group check below must not silently miss the event and skip its teams.
+    // scoring rule below must not silently miss the event.
     if (!this.eventService.loaded()) {
       await this.eventService.load();
     }
 
-    const isGroup = this.eventService.getById(eventId)?.mode === 'GROUP';
-
     await Promise.allSettled([
       this.loadRegistrations(eventId),
       this.loadScores(eventId, false),
-      isGroup ? this.teamService.loadTeams(eventId) : Promise.resolve(true),
+      this.loadJudges(eventId).then(() => this.loadJudgeScores(eventId)),
     ]);
   }
 
@@ -490,259 +312,528 @@ export class Scoring implements OnInit {
     if (id) await this.loadScores(id, true);
   }
 
-  /** Re-reads the selected event's teams after a failed read. */
-  async retryTeams(): Promise<void> {
-    const id = this.selectedEventId();
-    if (id) await this.teamService.loadTeams(id, true);
-  }
-
   /** Re-reads the selected event's registrations after a failed read. */
   async retryRegistrations(): Promise<void> {
     const id = this.selectedEventId();
     if (id) await this.loadRegistrations(id);
   }
 
-  private async loadScores(eventId: string, force: boolean): Promise<void> {
-    const loaded = await this.scoringService.loadScores(eventId, force);
-    if (loaded) this.markScoresSeen(eventId);
-  }
-
-  private markScoresSeen(eventId: string): void {
-    if (this.scoresSeen().has(eventId)) return;
-    this.scoresSeen.update(current => new Set(current).add(eventId));
-  }
-
-  setEvent(id: string): void {
-    this.selectedEventId.set(id);
-    void this.loadEvent(id);
-  }
-
-  setSearch(value: string): void {
-    this.search.set(value);
-  }
-
-  /** Persists a draft. The backend keeps the score editable. */
-  async saveDraft(event: Event, target: ScoreTarget, rawValue: string): Promise<void> {
-    await this.submit(event, target, rawValue, 'DRAFT');
-  }
-
-  /** Finalizes a score. The backend locks it against any further edit. */
-  async finalize(event: Event, target: ScoreTarget, rawValue: string): Promise<void> {
-    await this.submit(event, target, rawValue, 'FINALIZE');
-  }
-
-  /** True while this target has an open write; used to disable its controls. */
-  isBusy(target: ScoreTarget): boolean {
-    return this.busyTargets().has(target.key);
+  private loadScores(eventId: string, force: boolean): Promise<boolean> {
+    return this.scoringService.loadScores(eventId, force);
   }
 
   /**
-   * True when this target's controls must not accept input: a write is open
-   * for it, or the persisted scores are not confirmed current.
+   * Switches the event. Unsaved judge edits survive a judge switch (they are
+   * keyed per judge) but cannot survive an event switch, so the user is warned
+   * before anything typed is discarded.
    */
-  isLocked(target: ScoreTarget): boolean {
-    return this.isBusy(target) || this.scoresState().status !== 'LOADED';
-  }
+  setEvent(id: string): void {
+    if (id === this.selectedEventId()) return;
 
-  /** Status and version line for a persisted score, e.g. "DRAFT · v3". */
-  scoreStatusLabel(score: Score): string {
-    return `${score.status} · v${score.version}`;
-  }
+    if (this.hasUnsavedJudgeEdits() &&
+        !window.confirm('Unsaved judge scores will be lost if you switch events. Discard them and switch?')) {
+      return;
+    }
 
-  /** A finalized score is immutable and is rendered read-only. */
-  isFinalized(target: ScoreTarget): boolean {
-    return target.score?.status === 'FINALIZED';
+    this.selectedEventId.set(id);
+    this.selectedJudgeId.set('');
+    this.judgeDrafts.set({});
+    this.editedCells.set(new Set());
+    this.savedRows.set({});
+    this.judges.set([]);
+    this.judgesState.set('IDLE');
+    this.judgeScoresState.set('IDLE');
+    void this.loadEvent(id);
   }
 
   modeLabel(event: Event): string {
     return event.mode === 'SOLO' ? 'Individual' : 'Group';
   }
 
-  /** Display name for a scoring target, falling back to a readable label. */
-  targetName(target: ScoreTarget): string {
-    return target.participant?.fullName ?? target.team?.name ?? 'Unnamed entry';
+  /* ------------------------------------------------------------------
+     Judge scoring workspace (judges are configured on /judging)
+     ------------------------------------------------------------------ */
+
+  /** Judging is the Scoring module for the approved role matrix. */
+  readonly canEdit = computed(() => canEditModule(this.auth.currentUser()?.role, 'SCORING'));
+
+  readonly scoringMode = computed<EventScoringMode>(() => this.selectedEvent()?.scoringMode ?? 'PENDING');
+
+  readonly judgesState = signal<JudgesState>('IDLE');
+  readonly judges = signal<EventJudge[]>([]);
+  readonly judgeError = signal('');
+  readonly judgeScoresState = signal<JudgeScoresState>('IDLE');
+  readonly judgeScoresError = signal('');
+
+  /** Saved judge-score rows keyed `${judgeId}|${participantId}`; `version` guards saves. */
+  private readonly savedRows = signal<Record<string, JudgeScoreRow>>({});
+
+  /** Active (non-REMOVED) judges; removed judges never enter any calculation. */
+  readonly activeJudges = computed(() =>
+    this.judges().filter(judge => (judge.status ?? 'ACTIVE').toUpperCase() !== 'REMOVED')
+  );
+
+  readonly activeJudgeCount = computed(() => this.activeJudges().length);
+
+  readonly selectedJudgeId = signal('');
+  readonly selectedJudge = computed(() =>
+    this.judges().find(judge => judge.id === this.selectedJudgeId())
+  );
+
+  private async loadJudges(eventId: string): Promise<void> {
+    if (!eventId) {
+      this.judgesState.set('IDLE');
+      this.judges.set([]);
+      return;
+    }
+
+    this.judgesState.set('LOADING');
+    this.judgeError.set('');
+
+    const response = await this.apiClient.listEventJudges({ eventId });
+    if (this.selectedEventId() !== eventId) return;
+
+    if (!response.success) {
+      this.judgeError.set(`${response.error.message} (code: ${response.error.code})`);
+      this.judgesState.set('FAILED');
+      return;
+    }
+
+    const judges = response.data.judges ?? [];
+    this.judges.set(judges);
+    this.judgesState.set('LOADED');
+
+    // Keep the workspace on a judge that still exists after a config change.
+    if (!judges.some(judge => judge.id === this.selectedJudgeId())) {
+      this.selectedJudgeId.set(judges[0]?.id ?? '');
+    }
   }
 
-  /** Resolves a backend shelter home id to its readable name. */
-  homeName(homeId: string | null | undefined): string {
-    if (!homeId) return 'Unknown Home';
-    return this.shelterHomeService.getHomeById(homeId)?.name ?? 'Unknown Home';
+  /** Re-reads the configured judges after a failed read (safe, read-only). */
+  async retryJudges(): Promise<void> {
+    const id = this.selectedEventId();
+    if (id) {
+      await this.loadJudges(id);
+      await this.loadJudgeScores(id);
+    }
   }
 
-  /** Resolves a backend shelter home id to its short code. */
-  homeCode(homeId: string | null | undefined): string {
-    if (!homeId) return '—';
-    return this.shelterHomeService.getHomeById(homeId)?.homeCode ?? '—';
-  }
-
-  /**
-   * One write: guard, delegate, report.
-   *
-   * Draft and finalize differ only in the service method used; everything
-   * around them — input validation, the in-flight guard, and the outcome report
-   * — is shared so neither path can double-submit or silently claim success.
-   */
-  private async submit(
-    event: Event,
-    target: ScoreTarget,
-    rawValue: string,
-    action: ScoreAction
-  ): Promise<void> {
-    // Belt-and-braces: the UI never renders controls for a finalized score.
-    if (this.isFinalized(target)) {
-      this.notify.warning(
-        'Score is already final.',
-        `${this.targetName(target)} was finalized and cannot be changed.`
-      );
-      return;
-    }
-
-    // A second click while the first request is open must not submit again.
-    if (this.isBusy(target)) return;
-
-    // Never write over a persisted score this page could not read.
-    if (this.scoresState().status !== 'LOADED' || this.selectedEventId() !== event.id) {
-      this.notify.warning(
-        'Scores are not loaded.',
-        `Wait for the persisted scores to load before scoring ${this.targetName(target)}.`
-      );
-      return;
-    }
-
-    const entered = rawValue.trim();
-    if (!entered) {
-      this.notify.error(
-        action === 'FINALIZE' ? 'Enter a score before finalizing.' : 'Enter a score before saving.',
-        `${this.targetName(target)} is unchanged.`
-      );
-      return;
-    }
-
-    const value = Number(entered);
-    if (!Number.isFinite(value)) {
-      this.notify.error(
-        'Enter a valid numeric score.',
-        `"${entered}" is not a number, so nothing was written for ${this.targetName(target)}.`
-      );
-      return;
-    }
-
-    const participantId = target.participant?.id ?? '';
-    const teamId = target.team?.id ?? '';
-
-    if (!participantId && !teamId) {
-      this.notify.error('This entry cannot be scored.', 'No participant or team is attached to it.');
-      return;
-    }
-
-    this.setBusy(target.key, true);
-
-    try {
-      let result: ScoreResult;
-
-      if (participantId) {
-        result = action === 'FINALIZE'
-          ? await this.scoringService.finalizeParticipantScore(event.id, participantId, value)
-          : await this.scoringService.saveParticipantScore(event.id, participantId, value);
-      } else {
-        result = action === 'FINALIZE'
-          ? await this.scoringService.finalizeTeamScore(event.id, teamId, value)
-          : await this.scoringService.saveTeamScore(event.id, teamId, value);
-      }
-
-      this.report(result, action, target);
-    } catch {
-      this.notify.error(
-        action === 'FINALIZE' ? 'Score could not be finalized.' : 'Score could not be saved.',
-        `${this.targetName(target)} is unchanged. Please try again.`
-      );
-    } finally {
-      this.setBusy(target.key, false);
-    }
+  /** Re-reads the saved judge scores after a failed read (safe, read-only). */
+  async retryJudgeScores(): Promise<void> {
+    const id = this.selectedEventId();
+    if (id) await this.loadJudgeScores(id);
   }
 
   /**
-   * Reports one backend outcome without replacing page content.
-   *
-   * A rejected write only raises a toast, which leaves the typed value in the
-   * input for the judge to correct. A successful write refreshes the cached
-   * score, so the audit line renders the version the backend returned.
-   *
-   * The Google Sheet is only mentioned when the backend said something about
-   * it; an absent `sourceWriteBack` makes no claim either way.
+   * Loads every judge's saved scores for the event — drafts and submissions —
+   * and fills the grid, so the workspace survives refresh and navigation.
+   * Cells edited this session keep their in-progress value; every other cell
+   * adopts the stored one.
    */
-  private report(result: ScoreResult, action: ScoreAction, target: ScoreTarget): void {
-    const name = this.targetName(target);
-    const headline = action === 'FINALIZE' ? 'Score finalized.' : 'Draft saved.';
+  async loadJudgeScores(eventId: string): Promise<void> {
+    if (!eventId) {
+      this.judgeScoresState.set('IDLE');
+      return;
+    }
 
-    if (!result.success) {
-      if (result.errorCode === 'SCORE_FINALIZED') {
-        this.notify.warning('Score is already final.', `${name} was finalized and cannot be changed.`);
-        return;
-      }
+    this.judgeScoresState.set('LOADING');
+    this.judgeScoresError.set('');
 
-      if (result.errorCode === 'VERSION_CONFLICT') {
-        // Another judge saved this score first: nothing was overwritten, but
-        // the conflict must be explicit so the judge re-reads before retyping.
-        // The persisted scores are re-read immediately so the retry uses the
-        // version the backend actually has.
-        const eventId = this.selectedEventId();
+    const response = await this.apiClient.listJudgeScores({ eventId });
+    if (this.selectedEventId() !== eventId) return;
 
-        if (eventId) {
-          void this.loadScores(eventId, true);
+    if (!response.success) {
+      this.judgeScoresError.set(`${response.error.message} (code: ${response.error.code})`);
+      this.judgeScoresState.set('FAILED');
+      return;
+    }
+
+    const rows = (response.data.scores ?? []).filter(row => row.eventId === eventId);
+    this.savedRows.update(saved => {
+      const next = { ...saved };
+      for (const row of rows) next[`${row.judgeId}|${row.participantId}`] = row;
+      return next;
+    });
+    this.mergeSavedJudgeScores(rows);
+    this.judgeScoresState.set('LOADED');
+  }
+
+  /** Applies saved rows to the grid; only untouched cells take saved values. */
+  private mergeSavedJudgeScores(rows: JudgeScoreRow[]): void {
+    const fields = this.judgeScoreFields();
+    this.judgeDrafts.update(drafts => {
+      const next = { ...drafts };
+      for (const row of rows) {
+        const saved = new Map<string, string>();
+        if (this.scoringMode() === 'CRITERIA') {
+          for (const criterion of row.criteria ?? []) saved.set(criterion.name, String(criterion.score));
+        } else if (typeof row.score === 'number') {
+          saved.set('Overall', String(row.score));
         }
-
-        this.notify.warning(
-          'Score could not be saved.',
-          `This score was updated elsewhere. Refresh and try again. ${name} is unchanged.`
-        );
-        return;
+        const merged = { ...(next[row.judgeId] ?? {}) };
+        for (const field of fields) {
+          const key = `${row.participantId}|${field}`;
+          if (this.editedCells().has(`${row.judgeId}|${key}`)) continue;
+          merged[key] = saved.get(field) ?? '';
+        }
+        next[row.judgeId] = merged;
       }
-
-      this.notify.error(
-        action === 'FINALIZE' ? 'Score could not be finalized.' : 'Score could not be saved.',
-        `${result.errors.join(' ') || 'The backend did not accept the score.'} ${name} is unchanged.`
-      );
-      return;
-    }
-
-    const writeBack = result.sourceWriteBack;
-
-    if (!writeBack) {
-      this.notify.success(headline);
-      return;
-    }
-
-    if (writeBack.status === 'UPDATED') {
-      this.notify.success(headline, 'Google Sheet updated.');
-      return;
-    }
-
-    if (writeBack.status === 'SKIPPED') {
-      this.notify.success(headline, 'Updated in Nakshatra; the Google Sheet was not changed.');
-      return;
-    }
-
-    this.notify.warning(
-      headline,
-      writeBack.message
-        || (writeBack.status === 'FAILED'
-          ? 'Updated in Nakshatra; the Google Sheet could not be updated.'
-          : 'Updated in Nakshatra; the Google Sheet could not be verified.')
-    );
-  }
-
-  private setBusy(key: string, busy: boolean): void {
-    this.busyTargets.update(current => {
-      const next = new Set(current);
-      if (busy) next.add(key); else next.delete(key);
       return next;
     });
   }
 
-  private isValidParticipant(event: Event, participant: Participant): boolean {
-    return participant.eligibilityStatus === 'ELIGIBLE'
-      && participant.validationStatus !== 'FAILED'
-      && (!participant.level || event.eligibleLevels.includes(participant.level));
+  /** Submission state of one judge, derived from the stored rows. */
+  judgeSubmission(judgeId: string): JudgeSubmissionState {
+    const rows = Object.values(this.savedRows()).filter(row => row.judgeId === judgeId);
+    if (rows.some(row => row.status === 'SUBMITTED')) return 'SUBMITTED';
+    if (rows.length) return 'DRAFT';
+    return 'NONE';
+  }
+
+  /** Friendly per-judge submission label for the judge chips and roster. */
+  judgeStatusLabel(judge: EventJudge): string {
+    switch (this.judgeSubmission(judge.id)) {
+      case 'SUBMITTED': return 'Submitted';
+      case 'DRAFT': return 'Draft saved';
+      default: return 'Not started';
+    }
+  }
+
+  judgeLabel(judge: EventJudge): string {
+    return `Judge ${judge.judgeNumber} — ${judge.name || '(unnamed)'}`;
+  }
+
+  /**
+   * True when the judging record is complete: every active judge has a
+   * SUBMITTED row for every scoreable (PRESENT) participant. Unknown reads
+   * never block here — the backend stays the authority and rejects an
+   * incomplete finalize with JUDGE_SCORES_INCOMPLETE.
+   */
+  readonly allJudgesSubmitted = computed(() => {
+    if (this.judgesState() !== 'LOADED' || this.judgeScoresState() !== 'LOADED') return true;
+    const active = this.activeJudges();
+    if (!active.length) return true;
+    return this.judgeRows().every(row =>
+      active.every(judge => this.savedRows()[`${judge.id}|${row.id}`]?.status === 'SUBMITTED'));
+  });
+
+  /** Judge → participant pairs still missing a submission, in plain words. */
+  readonly missingJudgeSubmissions = computed(() => {
+    const missing: string[] = [];
+    if (this.judgesState() !== 'LOADED' || this.judgeScoresState() !== 'LOADED') return missing;
+    for (const row of this.judgeRows()) {
+      for (const judge of this.activeJudges()) {
+        if (this.savedRows()[`${judge.id}|${row.id}`]?.status !== 'SUBMITTED') {
+          missing.push(`${judge.name || `Judge ${judge.judgeNumber}`} → ${row.fullName}`);
+        }
+      }
+    }
+    return missing;
+  });
+
+  /** The one-column label for SINGLE events, one column per criterion otherwise. */
+  readonly judgeScoreFields = computed<string[]>(() => {
+    const event = this.selectedEvent();
+    if (!event) return [];
+    if (this.scoringMode() === 'CRITERIA') return (event.criteria ?? []).map(criterion => criterion.name);
+    return ['Overall'];
+  });
+
+  readonly maxJudgeOverall = computed(() =>
+    this.scoringMode() === 'CRITERIA' ? this.judgeScoreFields().length * 10 : 10
+  );
+
+  /** Registered participants of the selected event (any registration state). */
+  private readonly registeredParticipants = computed<Participant[]>(() => {
+    const event = this.selectedEvent();
+    if (!event) return [];
+    return this.registrationService.getEventRegistrations(event.id)
+      .filter(item => item.registrationStatus === 'REGISTERED')
+      .map(item => this.participantService.getParticipantById(item.participantId))
+      .filter((participant): participant is Participant => !!participant);
+  });
+
+  /**
+   * Judge grid rows: PRESENT participants only. Absent and unmarked
+   * participants are excluded entirely and cannot be judge-scored.
+   */
+  readonly judgeRows = computed<Participant[]>(() =>
+    this.registeredParticipants().filter(participant =>
+      this.attendanceService.getByParticipantEvent(participant.id, this.selectedEventId())?.status === 'PRESENT')
+  );
+
+  /** Registered participants excluded from judge scoring (absent or unmarked). */
+  readonly judgeExcludedCount = computed(() => this.registeredParticipants().length - this.judgeRows().length);
+
+  /** Raw judge score inputs, keyed judgeId → `${participantId}|${field}`. */
+  readonly judgeDrafts = signal<Record<string, Record<string, string>>>({});
+
+  /**
+   * Cells typed into this session (`${judgeId}|${participantId}|${field}`).
+   * A reload of saved scores never overwrites them: in-progress edits win.
+   */
+  private readonly editedCells = signal<ReadonlySet<string>>(new Set());
+
+  /** True while any judge score edit is unsaved; switching events must warn. */
+  hasUnsavedJudgeEdits(): boolean {
+    return this.editedCells().size > 0;
+  }
+
+  /** True while a judge score save/submit request is in flight. */
+  readonly judgeScoringBusy = signal(false);
+
+  /**
+   * Judge switch: drafts are keyed per judge, so unsaved edits for other
+   * judges are preserved and only the stored rows are re-read.
+   */
+  async setJudge(judgeId: string): Promise<void> {
+    this.selectedJudgeId.set(judgeId);
+    await this.loadJudgeScores(this.selectedEventId());
+  }
+
+  judgeScoreValue(participantId: string, field: string): string {
+    return this.judgeDrafts()[this.selectedJudgeId()]?.[`${participantId}|${field}`] ?? '';
+  }
+
+  setJudgeScore(participantId: string, field: string, raw: string): void {
+    const judgeId = this.selectedJudgeId();
+    if (!judgeId) return;
+    this.editedCells.update(cells => {
+      const next = new Set(cells);
+      next.add(`${judgeId}|${participantId}|${field}`);
+      return next;
+    });
+    this.judgeDrafts.update(drafts => ({
+      ...drafts,
+      [judgeId]: { ...(drafts[judgeId] ?? {}), [`${participantId}|${field}`]: raw },
+    }));
+  }
+
+  /** Inline rejection message for one cell; empty when the value is usable. */
+  judgeFieldError(participantId: string, field: string): string {
+    const result = validateJudgeScore(this.judgeScoreValue(participantId, field));
+    return 'error' in result ? result.error : '';
+  }
+
+  private judgeRowValues(participantId: string): ScoreValidation[] {
+    return this.judgeScoreFields().map(field => validateJudgeScore(this.judgeScoreValue(participantId, field)));
+  }
+
+  /** Per-participant total for the selected judge; incomplete rows say so. */
+  judgeRowTotal(participantId: string): { label: string; tone: 'complete' | 'draft' | 'invalid' } {
+    const values = this.judgeRowValues(participantId);
+    if (values.some(value => 'error' in value)) return { label: 'fix errors', tone: 'invalid' };
+    const total = values.reduce<number>((sum, value) => sum + ('value' in value ? value.value : 0), 0);
+    const complete = values.every(value => 'value' in value);
+    return { label: `${total} / ${this.maxJudgeOverall()}`, tone: complete ? 'complete' : 'draft' };
+  }
+
+  /** Per-criterion (column) totals for the selected judge. */
+  judgeColumnTotal(field: string): number {
+    return this.judgeRows().reduce((sum, row) => {
+      const result = validateJudgeScore(this.judgeScoreValue(row.id, field));
+      return sum + ('value' in result ? result.value : 0);
+    }, 0);
+  }
+
+  /** The selected judge's grand total across all present participants. */
+  judgeOverallTotal(): number {
+    return this.judgeRows().reduce((sum, row) => {
+      const values = this.judgeRowValues(row.id);
+      return sum + values.reduce<number>((rowSum, value) => rowSum + ('value' in value ? value.value : 0), 0);
+    }, 0);
+  }
+
+  formatTotal(value: number): string {
+    return formatScore(value);
+  }
+
+  /**
+   * One judge's total from a stored row: the criteria sum in CRITERIA mode,
+   * the overall score otherwise. An incomplete row yields null and is
+   * excluded from the official average — exactly like the backend.
+   */
+  private judgeTotalOf(row: JudgeScoreRow): number | null {
+    if (this.scoringMode() === 'CRITERIA') {
+      const criteria = row.criteria ?? [];
+      if (criteria.length !== this.judgeScoreFields().length) return null;
+      return criteria.reduce((sum, criterion) => sum + criterion.score, 0);
+    }
+    return typeof row.score === 'number' ? row.score : null;
+  }
+
+  /**
+   * OFFICIAL AGGREGATE for one participant: the arithmetic average of the
+   * valid SUBMITTED totals of the active judges. Drafts, removed judges and
+   * incomplete submissions are excluded — the same rule the backend applies
+   * when it writes the official Scores row. Displayed read-only; never edited.
+   */
+  officialAggregate(participantId: string): number | null {
+    const totals = this.activeJudges()
+      .map(judge => this.savedRows()[`${judge.id}|${participantId}`])
+      .filter((row): row is JudgeScoreRow => !!row && row.status === 'SUBMITTED')
+      .map(row => this.judgeTotalOf(row))
+      .filter((total): total is number => total !== null);
+    if (!totals.length) return null;
+    return totals.reduce((sum, total) => sum + total, 0) / totals.length;
+  }
+
+  /** Display form of the official aggregate ("13.8"), or "—" when unknown. */
+  officialAggregateLabel(participantId: string): string {
+    const aggregate = this.officialAggregate(participantId);
+    return aggregate === null ? '—' : formatScore(aggregate);
+  }
+
+  /** True when finalization must stay blocked (pending criteria or judge gaps). */
+  readonly finalizeBlocked = computed(() =>
+    this.scoringMode() === 'PENDING' || !this.allJudgesSubmitted());
+
+  /** Plain-English reason finalization is blocked; empty when it is not. */
+  readonly finalizeBlockedMessage = computed(() =>
+    this.scoringMode() === 'PENDING'
+      ? 'Official judging criteria pending — finalization opens once the criteria are supplied and verified.'
+      : JUDGES_INCOMPLETE_MESSAGE);
+
+  /* ------------------------------------------------------------------
+     Judge save draft / submit final (saveJudgeScores)
+     ------------------------------------------------------------------ */
+
+  /** Built entries for the selected judge; invalid values block the save. */
+  private buildJudgeEntries(): { entries: SaveJudgeScoreEntry[]; invalid: number; scored: number } {
+    const judgeId = this.selectedJudgeId();
+    const fields = this.judgeScoreFields();
+    const entries: SaveJudgeScoreEntry[] = [];
+    let invalid = 0;
+    let scored = 0;
+
+    for (const row of this.judgeRows()) {
+      const values = fields.map(field => ({ field, result: validateJudgeScore(this.judgeScoreValue(row.id, field)) }));
+      invalid += values.filter(value => 'error' in value.result).length;
+
+      const entered = values.filter(
+        (value): value is { field: string; result: { value: number } } => 'value' in value.result
+      );
+      if (!entered.length) continue;
+      scored++;
+
+      // Rows read back from listJudgeScores carry a version; sending it lets the
+      // backend reject a stale write with VERSION_CONFLICT.
+      const expectedVersion = this.savedRows()[`${judgeId}|${row.id}`]?.version;
+
+      if (this.scoringMode() === 'CRITERIA') {
+        entries.push({
+          participantId: row.id,
+          criteria: entered.map(value => ({ name: value.field, score: value.result.value })),
+          ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        });
+      } else {
+        entries.push({
+          participantId: row.id,
+          score: entered[0].result.value,
+          ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        });
+      }
+    }
+
+    return { entries, invalid, scored };
+  }
+
+  /** Draft: persists every entered (valid) score for the selected judge. */
+  async saveJudgeDraft(): Promise<void> {
+    await this.submitJudgeScores('DRAFT');
+  }
+
+  /** Final: requires every present participant fully scored before saving. */
+  async submitJudgeFinal(): Promise<void> {
+    await this.submitJudgeScores('SUBMITTED');
+  }
+
+  private async submitJudgeScores(action: 'DRAFT' | 'SUBMITTED'): Promise<void> {
+    const event = this.selectedEvent();
+    const judge = this.selectedJudge();
+    if (!event || !judge || this.judgeScoringBusy() || !this.canEdit()) return;
+
+    if (this.scoringMode() === 'PENDING') {
+      // Belt-and-braces: the grid renders no inputs in PENDING mode.
+      this.notify.warning('Scoring is closed for this event.', 'Official judging criteria pending — scoring opens once supplied.');
+      return;
+    }
+
+    if (this.eventFinalized()) {
+      this.notify.warning('Event is finalized.', this.finalizedMessage);
+      return;
+    }
+
+    const { entries, invalid, scored } = this.buildJudgeEntries();
+
+    if (invalid) {
+      this.notify.error('Fix invalid scores first.', `${invalid} value(s) — ${SCORE_VALIDATION_MESSAGE}`);
+      return;
+    }
+
+    const total = this.judgeRows().length;
+    if (!entries.length) {
+      this.notify.error('Enter at least one score.', `${judge.name} has no scores to save.`);
+      return;
+    }
+
+    if (action === 'SUBMITTED' && scored < total) {
+      this.notify.error(
+        'Every present participant needs a score before submitting.',
+        `${scored} of ${total} present participants fully scored.`
+      );
+      return;
+    }
+
+    this.judgeScoringBusy.set(true);
+    try {
+      // saveJudgeScores is an UPSERT keyed by judge + participant: retrying
+      // can never duplicate a row, so a failed save may simply be repeated.
+      const response = await this.apiClient.saveJudgeScores({
+        eventId: event.id,
+        judgeId: judge.id,
+        entries,
+        status: action,
+      });
+
+      if (!response.success) {
+        const code = response.error.code;
+        if (persistenceUnconfirmed(code)) {
+          // Whether anything was stored is unknown: re-read the stored rows
+          // so the grid shows exactly what the backend holds.
+          await this.loadJudgeScores(event.id);
+          this.notify.error(
+            action === 'SUBMITTED' ? 'Scores could not be submitted.' : 'Scores could not be saved.',
+            `We couldn’t confirm whether anything was saved — the stored scores were re-read. (code: ${code})`
+          );
+          return;
+        }
+        // A structured rejection changed nothing; the typed values stay put.
+        this.notify.error(
+          action === 'SUBMITTED' ? 'Scores could not be submitted.' : 'Scores could not be saved.',
+          `${response.error.message} Nothing was saved — your entries stay in the grid. (code: ${code})`
+        );
+        return;
+      }
+
+      this.notify.success(
+        action === 'SUBMITTED' ? 'Final scores submitted.' : 'Draft scores saved.',
+        `${scored} of ${total} present participants scored by ${judge.name}.`
+      );
+
+      // Everything entered for THIS judge is now stored: clear only its edit
+      // marks (other judges' unsaved edits survive) and re-read so the next
+      // save carries the fresh versions.
+      this.editedCells.update(cells => {
+        const next = new Set(cells);
+        for (const key of [...next]) {
+          if (key.startsWith(`${judge.id}|`)) next.delete(key);
+        }
+        return next;
+      });
+      await this.loadJudgeScores(event.id);
+    } finally {
+      this.judgeScoringBusy.set(false);
+    }
   }
 }

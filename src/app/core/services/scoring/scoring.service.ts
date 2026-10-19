@@ -1,39 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
 
-import { Score, SourceWriteBackResult } from '../../models';
+import { Score } from '../../models';
 import { ApiClientService } from '../api/api-client.service';
-import { EventService } from '../events/event.service';
-import { ParticipantEventService } from '../events/participant-event.service';
-import { ParticipantService } from '../participants/participant.service';
-import { TeamService } from '../teams/team.service';
 
 export interface ScoreLoadState {
   status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR';
   error: string;
-}
-
-export interface ScoreResult {
-  success: boolean;
-  score?: Score;
-  errors: string[];
-  errorCode?: string;
-  sourceWriteBack?: SourceWriteBackResult;
-}
-
-/** One score entry for the event-level batch save. */
-export interface EventScoreEntry {
-  participantId?: string;
-  teamId?: string;
-  score: number;
-  expectedVersion?: number;
-}
-
-export interface SaveEventScoresResult {
-  success: boolean;
-  failures: Array<{ index: number; message: string }>;
-  saved?: number;
-  errorCode?: string;
-  errorMessage?: string;
 }
 
 export interface FinalizeEventResult {
@@ -63,19 +35,18 @@ export interface ReopenEventResult {
 }
 
 /**
- * Scores.
+ * Scores (read cache + the one official finalization path).
  *
- * Drafts and finalization are persisted by the backend (`saveScore` /
- * `finalizeScore`). The local signal is only a read cache of what the backend
- * has confirmed; it is never the system of record and a save is never reported
- * as successful unless the backend accepted it.
+ * The only authoritative scoring workflow is judge-based: judges submit
+ * per-judge scores (`saveJudgeScores`) and the backend writes the official
+ * score (the average of submitted judge totals) into the Scores rows. This
+ * service reads those rows for display and drives `finalizeEvent` /
+ * `reopenEventScores` — the single official finalization path. The local
+ * signal is only a read cache of what the backend has confirmed; it is never
+ * the system of record and nothing here writes a score.
  */
 @Injectable({ providedIn: 'root' })
 export class ScoringService {
-  private readonly eventService = inject(EventService);
-  private readonly registrationService = inject(ParticipantEventService);
-  private readonly participantService = inject(ParticipantService);
-  private readonly teamService = inject(TeamService);
   private readonly apiClient = inject(ApiClientService);
 
   private readonly scores = signal<Score[]>([]);
@@ -146,131 +117,26 @@ export class ScoringService {
     return this.scores().filter(score => score.eventId === eventId);
   }
 
+  /**
+   * Presentation lock for a finalized event: every persisted score the backend
+   * holds for the event is FINALIZED. An event with no read scores is never
+   * treated as finalized, so the lock can only tighten as facts arrive.
+   */
+  isEventFinalized(eventId: string): boolean {
+    const scores = this.getByEvent(eventId);
+    return scores.length > 0 && scores.every(score => score.status === 'FINALIZED');
+  }
+
+  /** The persisted (official) score row for one participant of an event. */
   getParticipantScore(eventId: string, participantId: string): Score | undefined {
     return this.scores().find(
       score => score.eventId === eventId && score.participantId === participantId
     );
   }
 
+  /** The persisted (official) score row for one team of an event. */
   getTeamScore(eventId: string, teamId: string): Score | undefined {
     return this.scores().find(score => score.eventId === eventId && score.teamId === teamId);
-  }
-
-  /** Persists a draft score through the backend. */
-  async saveParticipantScore(
-    eventId: string,
-    participantId: string,
-    value: number
-  ): Promise<ScoreResult> {
-    return this.write('saveScore', eventId, { participantId }, value);
-  }
-
-  async saveTeamScore(eventId: string, teamId: string, value: number): Promise<ScoreResult> {
-    return this.write('saveScore', eventId, { teamId }, value);
-  }
-
-  /** Finalizes a score. A finalized score can no longer be edited. */
-  async finalizeParticipantScore(
-    eventId: string,
-    participantId: string,
-    value: number
-  ): Promise<ScoreResult> {
-    return this.write('finalizeScore', eventId, { participantId }, value);
-  }
-
-  async finalizeTeamScore(
-    eventId: string,
-    teamId: string,
-    value: number
-  ): Promise<ScoreResult> {
-    return this.write('finalizeScore', eventId, { teamId }, value);
-  }
-
-  private async write(
-    action: 'saveScore' | 'finalizeScore',
-    eventId: string,
-    target: { participantId: string } | { teamId: string },
-    value: number
-  ): Promise<ScoreResult> {
-    const errors = this.validateTarget(eventId, 'participantId' in target ? target.participantId : undefined, 'teamId' in target ? target.teamId : undefined);
-
-    if (errors.length) {
-      return { success: false, errors };
-    }
-
-    if (!Number.isFinite(value)) {
-      return { success: false, errors: ['Enter a valid numeric score.'] };
-    }
-
-    const existing = 'participantId' in target
-      ? this.getParticipantScore(eventId, target.participantId)
-      : this.getTeamScore(eventId, target.teamId);
-
-    if (existing?.status === 'FINALIZED') {
-      return {
-        success: false,
-        errors: ['This score is finalized and cannot be edited.'],
-        errorCode: 'SCORE_FINALIZED',
-      };
-    }
-
-    const payload = {
-      eventId,
-      ...target,
-      value,
-      ...(existing ? { expectedVersion: existing.version } : {}),
-    };
-
-    const response = action === 'saveScore'
-      ? await this.apiClient.saveScore(payload)
-      : await this.apiClient.finalizeScore(payload);
-
-    if (!response.success) {
-      return { success: false, errors: [response.error.message], errorCode: response.error.code };
-    }
-
-    const score = response.data.score;
-    const sourceWriteBack: SourceWriteBackResult | undefined =
-      'sourceWriteBack' in response.data
-        ? response.data.sourceWriteBack as SourceWriteBackResult | undefined
-        : undefined;
-
-    this.replaceScores(eventId, [
-      ...this.getByEvent(eventId).filter(item => item.id !== score.id),
-      score,
-    ]);
-
-    // Re-read the persisted set so other entries' versions are current too.
-    await this.loadScores(eventId, true);
-
-    return {
-      success: true,
-      score,
-      errors: [],
-      sourceWriteBack,
-    };
-  }
-
-  /**
-   * Event-level batch draft persistence (one Save for the whole event).
-   * Per-entry failures are returned; the caller keeps its drafts.
-   */
-  async saveEventDrafts(
-    eventId: string,
-    entries: Array<{ participantId?: string; teamId?: string; score: number; expectedVersion?: number }>,
-  ): Promise<SaveEventScoresResult> {
-    if (!entries.length) {
-      return { success: true, failures: [], saved: 0 };
-    }
-    const response = await this.apiClient.saveEventScores({ eventId, entries });
-    if (!response.success) {
-      return { success: false, failures: [], errorCode: response.error.code, errorMessage: response.error.message };
-    }
-    await this.loadScores(eventId, true);
-    const failures = response.data.outcomes
-      .filter(o => !o.ok)
-      .map(o => ({ index: o.index, message: o.message || o.code }));
-    return { success: failures.length === 0, failures, saved: response.data.saved };
   }
 
   /** Controlled event-level finalization (idempotent on the backend). */
@@ -291,71 +157,5 @@ export class ScoringService {
     }
     await this.loadScores(eventId, true);
     return { success: true, data: response.data };
-  }
-
-  /**
-   * Admissibility of a scoring target.
-   *
-   * A finalized score is immutable; every other check mirrors the registration
-   * and team rules so only valid, registered entries can be scored.
-   */
-  private validateTarget(
-    eventId: string,
-    participantId?: string,
-    teamId?: string
-  ): string[] {
-    const event = this.eventService.getById(eventId);
-
-    if (!event) {
-      return ['Event not found.'];
-    }
-
-    if (event.status !== 'ACTIVE') {
-      return ['Scoring is only available for an active event.'];
-    }
-
-    if (event.mode === 'SOLO') {
-      if (!participantId || teamId) {
-        return ['Individual events must be scored for a registered participant.'];
-      }
-
-      const participant = this.participantService.getParticipantById(participantId);
-
-      if (!participant) {
-        return ['Participant not found.'];
-      }
-
-      if (!this.registrationService.isAlreadyRegistered(participantId, eventId)) {
-        return ['Participant is not registered for this event.'];
-      }
-
-      if (participant.eligibilityStatus !== 'ELIGIBLE') {
-        return ['Participant is not eligible for this event.'];
-      }
-
-      if (participant.validationStatus === 'FAILED') {
-        return ['Participant validation has failed.'];
-      }
-
-      if (participant.level && !event.eligibleLevels.includes(participant.level)) {
-        return ['Participant level is not eligible for this event.'];
-      }
-
-      return [];
-    }
-
-    if (!teamId || participantId) {
-      return ['Group events must be scored for a valid team.'];
-    }
-
-    const team = this.teamService.getById(teamId);
-
-    if (!team || team.eventId !== eventId) {
-      return ['Team does not belong to this event.'];
-    }
-
-    const validation = this.teamService.validateTeam(teamId);
-
-    return validation.valid ? [] : validation.errors.map(error => error.message);
   }
 }

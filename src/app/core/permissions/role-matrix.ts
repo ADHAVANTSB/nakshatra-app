@@ -41,3 +41,12 @@ export function canEditModule(role: string | undefined | null, section: Permissi
   if (role === 'ADMIN' || role === 'SUPPORT') return true;
   return EDITABLE[role as Exclude<PermissionRole, 'ADMIN' | 'SUPPORT'>]?.includes(section) ?? false;
 }
+
+/**
+ * Whether the role may add, cancel or reactivate participant registrations.
+ * Everyone except the Events role keeps these controls; like everything here
+ * this is presentation-only and the backend still authorizes every write.
+ */
+export function canEditRegistrations(role: string | undefined | null): boolean {
+  return !!role && role !== 'EVENTS_TEAM';
+}

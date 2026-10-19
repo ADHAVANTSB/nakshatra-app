@@ -29,14 +29,21 @@ import {
   Event,
   EventRegistrationData,
   EventRegistrationPayload,
-  FinalizeScoreData,
   FinalizeEventData,
   FinalizeEventPayload,
   ReopenEventScoresData,
   ReopenEventScoresPayload,
-  SaveEventScoresData,
-  SaveEventScoresPayload,
-  FinalizeScorePayload,
+  ConfirmHomeSheetPayload,
+  HomeSheetData,
+  ListEventJudgesData,
+  ListEventJudgesPayload,
+  ListJudgeScoresData,
+  ListJudgeScoresPayload,
+  SaveEventJudgesData,
+  SaveEventJudgesPayload,
+  SaveJudgeScoresPayload,
+  SaveResultApprovalPayload,
+  UnlockHomeSheetPayload,
   GetParticipantData,
   GetReportsData,
   GetValidationResultsData,
@@ -74,9 +81,7 @@ import {
   RegistrationStatus,
   ReportScopePayload,
   RequestRegistrationPayload,
-  SaveScorePayload,
   Score,
-  ScoreData,
   SessionValidationData,
   SessionValidationResponse,
   SourceWriteBackResult,
@@ -124,7 +129,7 @@ export class ApiClientService {
   async post<TData, TPayload = undefined>(action: string, payload?: TPayload): Promise<ApiResponse<TData>> {
     const session = this.activeSession();
     if (!session) {
-      return { success: false, error: { code: 'SESSION_REQUIRED', message: 'Your application session has expired. Please sign in again.' } };
+      return this.synthesizedFailure('SESSION_REQUIRED', 'Your application session has expired. Please sign in again.');
     }
 
     const request: AuthenticatedApiRequest<TPayload> = { action, sessionId: session.id };
@@ -148,13 +153,11 @@ export class ApiClientService {
       try {
         result = await response.json();
       } catch {
-        return {
-          success: false,
-          error: {
-            code: 'SERVER_RESPONSE_MALFORMED',
-            message: `The server returned a non-JSON response (HTTP ${response.status}). This is usually an Apps Script error or quota page, not an application error.`,
-          },
-        };
+        return this.synthesizedFailure(
+          'SERVER_RESPONSE_MALFORMED',
+          `The server returned a non-JSON response (HTTP ${response.status}). This is usually an Apps Script error or quota page, not an application error.`,
+          { action, httpStatus: response.status },
+        );
       }
 
       if (this.isApiResponse<TData>(result)) {
@@ -162,33 +165,29 @@ export class ApiClientService {
           // Preserve the real backend error even over a non-200 status;
           // only the presented message is friendly (code stays intact).
           this.handleAuthenticationFailure(result.error.code);
-          const friendly = friendlyError(result.error.code, result.error.message);
+          const friendly = friendlyError(result.error.code, result.error.message, {
+            action,
+            httpStatus: response.status,
+            requestId: this.requestIdOf(result),
+          });
           return { success: false, error: { code: friendly.code, message: friendly.message } };
         }
         if (!response.ok) {
-          return { success: false, error: { code: 'API_REQUEST_FAILED', message: `The server reported HTTP ${response.status} for a successful payload.` } };
+          return this.synthesizedFailure('API_REQUEST_FAILED', `The server reported HTTP ${response.status} for a successful payload.`, { action, httpStatus: response.status });
         }
         return result;
       }
 
-      return {
-        success: false,
-        error: {
-          code: 'SERVER_RESPONSE_MALFORMED',
-          message: `The server returned an unrecognized response (HTTP ${response.status}).`,
-        },
-      };
+      return this.classifyUnrecognizedResponse(action, result, response.status);
     } catch (error) {
       if (controller.signal.aborted) {
-        return {
-          success: false,
-          error: {
-            code: 'REQUEST_TIMEOUT',
-            message: `The server did not answer within ${ApiClientService.REQUEST_TIMEOUT_MS / 1000} seconds. The request may still have been processed — refresh before retrying.`,
-          },
-        };
+        return this.synthesizedFailure(
+          'REQUEST_TIMEOUT',
+          `The server did not answer within ${ApiClientService.REQUEST_TIMEOUT_MS / 1000} seconds. The request may still have been processed — refresh before retrying.`,
+          { action },
+        );
       }
-      return { success: false, error: { code: 'NETWORK_ERROR', message: 'Unable to reach the server. Please try again.' } };
+      return this.synthesizedFailure('NETWORK_ERROR', 'Unable to reach the server. Please try again.', { action });
     } finally {
       clearTimeout(timeout);
     }
@@ -610,7 +609,7 @@ export class ApiClientService {
      SCORING
      ================================================================ */
 
-  /** Persisted scores for one event, drafts and finalized alike. */
+  /** Persisted scores for one event (official display; writes are judge-based). */
   async listScores(eventId: string): Promise<ApiResponse<ListScoresData>> {
     const response = await this.post<unknown, { eventId: string }>('listScores', { eventId });
     if (!response.success) return response;
@@ -621,22 +620,63 @@ export class ApiClientService {
     return { success: true, data: { scores: rows.filter((row): row is Score => this.isScore(row)) } };
   }
 
-  async saveScore(payload: SaveScorePayload): Promise<ApiResponse<ScoreData>> {
-    const response = await this.post<ScoreData, SaveScorePayload>('saveScore', payload);
-    if (!response.success) return response;
-    const data = this.readScoreData(response.data);
-    return data
-      ? { success: true, data: { score: data.score } }
-      : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
+  /* ================================================================
+     JUDGING — per-event judges and per-judge scoring
+     ================================================================ */
+
+  /** Judges configured for one event (entered by the event coordinator). */
+  listEventJudges(payload: ListEventJudgesPayload): Promise<ApiResponse<ListEventJudgesData>> {
+    return this.post<ListEventJudgesData, ListEventJudgesPayload>('listEventJudges', payload);
   }
 
-  async finalizeScore(payload: FinalizeScorePayload): Promise<ApiResponse<FinalizeScoreData>> {
-    const response = await this.post<FinalizeScoreData, FinalizeScorePayload>('finalizeScore', payload);
-    if (!response.success) return response;
-    const data = this.readScoreData(response.data);
-    return data
-      ? { success: true, data }
-      : { success: false, error: { code: 'INVALID_SCORE_RESPONSE', message: 'The server returned an invalid score response.' } };
+  /**
+   * Confirm & Save Judges for one event. The sent list replaces the stored one;
+   * the backend rejects removing judges that already have submitted scores
+   * (JUDGES_LOCKED_AFTER_SCORING).
+   */
+  saveEventJudges(payload: SaveEventJudgesPayload): Promise<ApiResponse<SaveEventJudgesData>> {
+    return this.post<SaveEventJudgesData, SaveEventJudgesPayload>('saveEventJudges', payload);
+  }
+
+  /**
+   * Persists one judge's scores for the present participants of an event.
+   * The backend rejects invalid values, scoring before criteria are supplied
+   * (CRITERIA_PENDING) and any non-PRESENT participant.
+   */
+  saveJudgeScores(payload: SaveJudgeScoresPayload): Promise<ApiResponse<unknown>> {
+    return this.post<unknown, SaveJudgeScoresPayload>('saveJudgeScores', payload);
+  }
+
+  /** Saved judge scores (drafts and submissions) for one judge of an event. */
+  listJudgeScores(payload: ListJudgeScoresPayload): Promise<ApiResponse<ListJudgeScoresData>> {
+    return this.post<ListJudgeScoresData, ListJudgeScoresPayload>('listJudgeScores', payload);
+  }
+
+  /* ================================================================
+     HOME SHEET CONFIRMATION & LOCKING
+     ================================================================ */
+
+  /** Confirms (and thereby locks) a home's sheet. */
+  confirmHomeSheet(payload: ConfirmHomeSheetPayload): Promise<ApiResponse<HomeSheetData>> {
+    return this.post<HomeSheetData, ConfirmHomeSheetPayload>('confirmHomeSheet', payload);
+  }
+
+  /** Unlocks a locked home sheet for correction; a reason is mandatory. */
+  unlockHomeSheet(payload: UnlockHomeSheetPayload): Promise<ApiResponse<HomeSheetData>> {
+    return this.post<HomeSheetData, UnlockHomeSheetPayload>('unlockHomeSheet', payload);
+  }
+
+  /* ================================================================
+     RESULTS APPROVAL
+     ================================================================ */
+
+  /**
+   * Records the reviewer's results decision. The backend rejects an accept
+   * with unresolved discrepancies (RECONCILIATION_INCOMPLETE) unless each is
+   * named in `acknowledgedDiscrepancyIds`.
+   */
+  saveResultApproval(payload: SaveResultApprovalPayload): Promise<ApiResponse<unknown>> {
+    return this.post<unknown, SaveResultApprovalPayload>('saveResultApproval', payload);
   }
 
   /* ================================================================
@@ -718,16 +758,9 @@ export class ApiClientService {
   }
 
   /**
-   * Backend-backed logout: invalidates the server session, then always clears
-   * the local session. The backend result is returned so the caller can report
-   * a failed server invalidation honestly — the local logout is never faked
-   * as a server-confirmed one.
+   * Event-level finalization: commits the official (judge-average) scores.
+   * Idempotent on the backend (alreadyFinalized on retry).
    */
-  async saveEventScores(payload: SaveEventScoresPayload): Promise<ApiResponse<SaveEventScoresData>> {
-    const response = await this.post<SaveEventScoresData, SaveEventScoresPayload>('saveEventScores', payload);
-    return response;
-  }
-
   async finalizeEvent(payload: FinalizeEventPayload): Promise<ApiResponse<FinalizeEventData>> {
     const response = await this.post<FinalizeEventData, FinalizeEventPayload>('finalizeEvent', payload);
     return response;
@@ -742,6 +775,12 @@ export class ApiClientService {
     return this.post<ListWinnersData, ListWinnersPayload>('listWinners');
   }
 
+  /**
+   * Backend-backed logout: invalidates the server session, then always clears
+   * the local session. The backend result is returned so the caller can report
+   * a failed server invalidation honestly — the local logout is never faked
+   * as a server-confirmed one.
+   */
   async invalidateApplicationSession(): Promise<ApiResponse<LogoutData>> {
     let result: ApiResponse<LogoutData> = { success: true, data: { loggedOut: false } };
 
@@ -777,6 +816,82 @@ export class ApiClientService {
       return null;
     }
     return session;
+  }
+
+  /**
+   * Synthesized transport/protocol failure: the technical detail is logged
+   * for debugging and the caller receives the plain-English presentation
+   * (the error code stays intact).
+   */
+  private synthesizedFailure(
+    code: string,
+    technicalMessage: string,
+    context?: Record<string, unknown>,
+  ): ApiResponse<never> {
+    const friendly = friendlyError(code, technicalMessage, context);
+    return { success: false, error: { code: friendly.code, message: friendly.message } };
+  }
+
+  /** Correlation id the backend echoes in every envelope (additive field). */
+  private requestIdOf(value: unknown): string | undefined {
+    const requestId = typeof value === 'object' && value !== null
+      ? (value as { requestId?: unknown }).requestId
+      : undefined;
+    return typeof requestId === 'string' && requestId ? requestId : undefined;
+  }
+
+  /**
+   * A JSON body the envelope contract does not recognise. Deployments older
+   * than this app are diagnosed honestly instead of being flattened into one
+   * generic failure:
+   *
+   * - `{ success: false, error: 'text' }` is the failure shape pre-envelope
+   *   backends use. Those routers fall unrouted actions through to their
+   *   login path, which answers exactly `Missing Google ID token` — i.e.
+   *   the action (feature) is not deployed at all. Redeploying the backend
+   *   (Code.gs) is the fix; the app can only diagnose it.
+   * - Any other JSON body means the endpoint answered something this app
+   *   cannot interpret (wrong endpoint or far older deployment).
+   *
+   * Network failures and authorization errors are separate categories and
+   * never land here.
+   */
+  private classifyUnrecognizedResponse(
+    action: string,
+    result: unknown,
+    httpStatus: number,
+  ): ApiResponse<never> {
+    const context = {
+      action,
+      httpStatus,
+      requestId: this.requestIdOf(result),
+      body: result,
+    };
+
+    const legacy = typeof result === 'object' && result !== null
+      ? result as { success?: unknown; error?: unknown }
+      : null;
+
+    if (legacy?.success === false && typeof legacy.error === 'string') {
+      if (legacy.error === 'Missing Google ID token') {
+        return this.synthesizedFailure(
+          'BACKEND_ACTION_UNKNOWN',
+          `The deployed backend did not recognise action "${action}" (HTTP ${httpStatus}) and fell through to its login path — it predates this feature. Redeploying the backend fixes this.`,
+          context,
+        );
+      }
+      return this.synthesizedFailure(
+        'BACKEND_UNSTRUCTURED_ERROR',
+        `The backend reported an unstructured error for "${action}" (HTTP ${httpStatus}): ${legacy.error}`,
+        context,
+      );
+    }
+
+    return this.synthesizedFailure(
+      'BACKEND_RESPONSE_UNRECOGNIZED',
+      `The server returned an unrecognized JSON response for "${action}" (HTTP ${httpStatus}).`,
+      context,
+    );
   }
 
   private handleAuthenticationFailure(code: string): void {
@@ -884,20 +999,6 @@ export class ApiClientService {
       && 'value' in value && typeof value.value === 'number'
       && 'status' in value && (value.status === 'DRAFT' || value.status === 'FINALIZED')
       && 'version' in value && typeof value.version === 'number';
-  }
-
-  private readScoreData(value: unknown): (ScoreData & FinalizeScoreData) | null {
-    if (typeof value !== 'object' || value === null || !('score' in value) || !this.isScore(value.score)) {
-      return null;
-    }
-
-    const sourceWriteBack = this.normalizeSourceWriteBack(
-      (value as Record<string, unknown>)['sourceWriteBack']
-    );
-
-    return sourceWriteBack
-      ? { score: value.score, sourceWriteBack }
-      : { score: value.score };
   }
 
   /**

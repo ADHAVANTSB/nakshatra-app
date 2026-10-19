@@ -86,6 +86,9 @@ const DEFAULT_DATA: Record<string, unknown> = {
   listAttendance: { attendance: [] },
   listTeams: { teams: [] },
   listScores: { scores: [] },
+  listJudgeScores: { scores: [] },
+  listEventJudges: { judges: [] },
+  listResults: { results: [] },
   getImportStatus: { imports: [] },
   getValidationResults: { validationResults: [] },
   getDashboardSummary: {
@@ -205,22 +208,65 @@ export class BackendStub {
     }
     this.requests.push({ action, payload: request['payload'] });
 
-    const override = this.overrides.get(action);
-    if (override) {
-      await respondWith(route, await override(request));
+    // The store's batched snapshot read: composed from the same per-action
+    // fixtures journeys install (listShelterHomes / listParticipants /
+    // getImportStatus / getValidationResults) so journeys keep working.
+    if (action === 'getPageData') {
+      await respondWith(route, await this.pageDataResponse(request));
       return;
     }
-    const sessionResponse = sessionActionResponse(action, adminUser);
-    if (sessionResponse) {
-      await respondWith(route, sessionResponse);
-      return;
-    }
-    if (action in DEFAULT_DATA) {
-      await respondWith(route, { body: { success: true, data: DEFAULT_DATA[action] } });
+
+    const resolved = await this.resolveAction(action, request);
+    if (resolved) {
+      await respondWith(route, resolved);
       return;
     }
     // Unmocked authenticated action: abort — never reach the real endpoint.
     await route.abort();
+  }
+
+  /** Resolves one action to its stub response (override, session or default). */
+  private async resolveAction(action: string, request: Record<string, unknown>): Promise<StubResponse | null> {
+    const override = this.overrides.get(action);
+    if (override) {
+      return await override(request);
+    }
+    const sessionResponse = sessionActionResponse(action, adminUser);
+    if (sessionResponse) {
+      return sessionResponse;
+    }
+    if (action in DEFAULT_DATA) {
+      return { body: { success: true, data: DEFAULT_DATA[action] } };
+    }
+    return null;
+  }
+
+  /** Composes the `getPageData` snapshot from the per-action fixtures. */
+  private async pageDataResponse(request: Record<string, unknown>): Promise<StubResponse> {
+    const [homes, participants, imports, validations] = await Promise.all([
+      this.resolveAction('listShelterHomes', request),
+      this.resolveAction('listParticipants', request),
+      this.resolveAction('getImportStatus', request),
+      this.resolveAction('getValidationResults', request),
+    ]);
+
+    const collection = (response: StubResponse | null, key: string): unknown[] => {
+      const body = response?.body as { success?: boolean; data?: Record<string, unknown> } | undefined;
+      const rows = body?.data?.[key];
+      return body?.success !== false && Array.isArray(rows) ? rows : [];
+    };
+
+    return {
+      body: {
+        success: true,
+        data: {
+          shelterHomes: collection(homes, 'shelterHomes'),
+          participants: collection(participants, 'participants'),
+          imports: collection(imports, 'imports'),
+          validationResults: collection(validations, 'validationResults'),
+        },
+      },
+    };
   }
 }
 

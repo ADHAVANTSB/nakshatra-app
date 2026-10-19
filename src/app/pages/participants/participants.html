@@ -539,22 +539,24 @@
                         </div>
                       </div>
                       <div class="detail-actions">
-                        @if (entry.registration.registrationStatus === 'CANCELLED') {
-                          <button
-                            class="secondary-button"
-                            type="button"
-                            (click)="reactivateEvent(entry.registration)"
-                            [disabled]="registrationBusy()">
-                            Reactivate
-                          </button>
-                        } @else {
-                          <button
-                            class="secondary-button"
-                            type="button"
-                            (click)="cancelEvent(entry.registration)"
-                            [disabled]="registrationBusy()">
-                            Cancel
-                          </button>
+                        @if (canManageRegistrations() && !lockedEvents().has(entry.registration.eventId)) {
+                          @if (entry.registration.registrationStatus === 'CANCELLED') {
+                            <button
+                              class="secondary-button"
+                              type="button"
+                              (click)="reactivateEvent(entry.registration)"
+                              [disabled]="registrationBusy()">
+                              Reactivate
+                            </button>
+                          } @else {
+                            <button
+                              class="secondary-button"
+                              type="button"
+                              (click)="cancelEvent(entry.registration)"
+                              [disabled]="registrationBusy()">
+                              Cancel
+                            </button>
+                          }
                         }
                       </div>
                     </li>
@@ -595,22 +597,24 @@
                         </div>
                       </div>
                       <div class="detail-actions">
-                        @if (entry.registration.registrationStatus === 'CANCELLED') {
-                          <button
-                            class="secondary-button"
-                            type="button"
-                            (click)="reactivateEvent(entry.registration)"
-                            [disabled]="registrationBusy()">
-                            Reactivate
-                          </button>
-                        } @else {
-                          <button
-                            class="secondary-button"
-                            type="button"
-                            (click)="cancelEvent(entry.registration)"
-                            [disabled]="registrationBusy()">
-                            Cancel
-                          </button>
+                        @if (canManageRegistrations() && !lockedEvents().has(entry.registration.eventId)) {
+                          @if (entry.registration.registrationStatus === 'CANCELLED') {
+                            <button
+                              class="secondary-button"
+                              type="button"
+                              (click)="reactivateEvent(entry.registration)"
+                              [disabled]="registrationBusy()">
+                              Reactivate
+                            </button>
+                          } @else {
+                            <button
+                              class="secondary-button"
+                              type="button"
+                              (click)="cancelEvent(entry.registration)"
+                              [disabled]="registrationBusy()">
+                              Cancel
+                            </button>
+                          }
                         }
                       </div>
                     </li>
@@ -623,6 +627,7 @@
 
           <!-- ADD EVENT -->
 
+          @if (canManageRegistrations()) {
           <div class="add-event">
             <div class="form-group">
               <label for="add-event">Add event</label>
@@ -649,8 +654,9 @@
               {{ registrationBusy() ? 'Working…' : 'Add event' }}
             </button>
           </div>
+          }
 
-          @if (availableEvents().length === 0) {
+          @if (canManageRegistrations() && availableEvents().length === 0) {
             <p class="panel-note">
               No active event is available to add for this participant.
             </p>

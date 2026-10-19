@@ -1,6 +1,6 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { vi, afterEach, describe, expect, it } from 'vitest';
+import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Participant, ParticipantEvent, Event } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
@@ -1001,5 +1001,131 @@ describe('Participants � load error recovery', () => {
     await component.retryEventsLoad();
 
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Registration mutation controls (Add event / Cancel / Reactivate) are hidden
+ * for the Events role and kept for ADMIN. Rendered through the real template
+ * so a hidden control is proven absent from the DOM, not disabled.
+ */
+describe('Participants — registration controls per role', () => {
+  let fixture: ComponentFixture<Participants>;
+  let component: Participants;
+
+  const PARTICIPANT = {
+    id: 'participant-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Test Participant',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    level: 'JUNIOR',
+    eligibilityStatus: 'ELIGIBLE',
+    validationStatus: 'PASSED',
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    version: 1,
+    createdAt: '',
+    createdBy: '',
+    updatedAt: '',
+    updatedBy: '',
+  };
+
+  const HOME = {
+    id: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    address: '',
+    contactName: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    version: 1,
+  };
+
+  function stubBackend(): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      if (request.action === 'getPageData') {
+        return ok({ shelterHomes: [HOME], participants: [PARTICIPANT], events: [], imports: [], validationResults: [] });
+      }
+      if (request.action === 'listEvents') return ok({ events: [] });
+      if (request.action === 'getParticipantEventSummaries') return ok({ summaries: [], issues: [] });
+      return ok({});
+    });
+  }
+
+  async function renderDetailWithRole(role: 'ADMIN' | 'EVENTS_TEAM'): Promise<void> {
+    stubBackend();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role,
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Participants);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(component.participants().length).toBe(1));
+
+    component.openParticipantId.set('participant-1');
+    component.registrations.set([
+      registration({ id: 'reg-1', eventId: 'event-1', registrationStatus: 'REGISTERED', category: 'ARTS' }),
+      registration({ id: 'reg-2', eventId: 'event-2', registrationStatus: 'CANCELLED', category: 'ARTS' }),
+    ]);
+    fixture.detectChanges();
+  }
+
+  function buttonLabels(): string[] {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .map(button => (button.textContent ?? '').trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('ADMIN keeps Add event, Cancel and Reactivate in the detail panel', async () => {
+    await renderDetailWithRole('ADMIN');
+
+    const labels = buttonLabels();
+    expect(labels).toContain('Cancel');
+    expect(labels).toContain('Reactivate');
+    expect(labels).toContain('Add event');
+  });
+
+  it('the Events role sees no Add event, Cancel or Reactivate controls', async () => {
+    await renderDetailWithRole('EVENTS_TEAM');
+
+    const labels = buttonLabels();
+    expect(labels).not.toContain('Cancel');
+    expect(labels).not.toContain('Reactivate');
+    expect(labels).not.toContain('Add event');
   });
 });

@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -383,5 +383,178 @@ describe('Attendance — persisted attendance display', () => {
 
     expect(component.attendanceError()).toBe('');
     expect(calls['listAttendance']).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * Finalization lock: an event whose persisted scores are all FINALIZED shows
+ * the locked message and renders no attendance mutation controls, while a
+ * non-finalized event keeps them.
+ */
+describe('Attendance — finalization lock', () => {
+  let fixture: ComponentFixture<Attendance>;
+  let component: Attendance;
+
+  const EVENT = {
+    id: 'event-1',
+    eventCode: 'E-01',
+    name: 'Vocal',
+    category: 'ARTS',
+    mode: 'SOLO',
+    status: 'ACTIVE',
+    eligibleLevels: ['JUNIOR'],
+  };
+
+  const PARTICIPANT = {
+    id: 'participant-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Test Participant',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    level: 'JUNIOR',
+    eligibilityStatus: 'ELIGIBLE',
+    validationStatus: 'PASSED',
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    version: 1,
+    createdAt: '',
+    createdBy: '',
+    updatedAt: '',
+    updatedBy: '',
+  } as never;
+
+  const HOME = {
+    id: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    address: '',
+    contactName: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    version: 1,
+  };
+
+  function score(status: 'DRAFT' | 'FINALIZED'): Record<string, unknown> {
+    return {
+      id: 'score-1',
+      eventId: 'event-1',
+      participantId: 'participant-1',
+      value: 10,
+      status,
+      version: 1,
+      createdAt: '',
+      createdBy: '',
+      updatedAt: '',
+      updatedBy: '',
+    };
+  }
+
+  function stubBackend(scoreStatus: 'DRAFT' | 'FINALIZED'): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      if (request.action === 'listEvents') return ok({ events: [EVENT] });
+      if (request.action === 'listParticipants') return ok({ participants: [PARTICIPANT] });
+      if (request.action === 'listShelterHomes') return ok({ shelterHomes: [HOME] });
+      if (request.action === 'listEventRegistrations') {
+        return ok({
+          participantEvents: [{
+            id: 'reg-1',
+            participantId: 'participant-1',
+            eventId: 'event-1',
+            registrationStatus: 'REGISTERED',
+            version: 1,
+          }],
+        });
+      }
+      if (request.action === 'listAttendance') return ok({ attendance: [] });
+      if (request.action === 'listScores') return ok({ scores: [score(scoreStatus)] });
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+  }
+
+  async function render(scoreStatus: 'DRAFT' | 'FINALIZED'): Promise<void> {
+    stubBackend(scoreStatus);
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadEvents();
+    await store.loadParticipants('home-1');
+    await store.loadEventRegistrations('event-1');
+
+    fixture = TestBed.createComponent(Attendance);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await component.setEvent('event-1');
+    fixture.detectChanges();
+  }
+
+  function buttonLabels(): string[] {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .map(button => (button.textContent ?? '').trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Attendance],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('a finalized event shows the locked message and no attendance mutation controls', async () => {
+    await render('FINALIZED');
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain('This event has been finalized. Attendance and scores are locked.');
+
+    const labels = buttonLabels();
+    expect(labels).not.toContain('Present');
+    expect(labels).not.toContain('Absent');
+    expect(labels).not.toContain('Save Attendance');
+    expect(labels).not.toContain('Reset Changes');
+  });
+
+  it('a non-finalized event keeps attendance mutation controls and no lock message', async () => {
+    await render('DRAFT');
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).not.toContain('This event has been finalized. Attendance and scores are locked.');
+
+    const labels = buttonLabels();
+    expect(labels).toContain('Present');
+    expect(labels).toContain('Absent');
+    expect(labels).toContain('Save Attendance');
+    expect(labels).toContain('Reset Changes');
   });
 });

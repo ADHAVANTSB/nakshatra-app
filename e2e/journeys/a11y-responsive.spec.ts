@@ -111,7 +111,7 @@ test.describe('responsive emulation sweep', () => {
     // Attendance becomes usable once an event is selected: rows must be
     // reachable (scrollable container is fine; the page must not overflow).
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await page.locator('button.event-card').first().click();
     await expect(page.getByText('Arun Kumar')).toBeVisible();
     await assertNoHorizontalOverflow(page);
     await expect(rowButtons(page, 'Present')).toBeEnabled();
@@ -182,7 +182,7 @@ test.describe('accessibility smoke (axe-core, desktop)', () => {
     installCatalogue(backend);
 
     await page.goto('/#/attendance');
-    await page.locator('#attendance-event').selectOption('event-1');
+    await page.locator('button.event-card').first().click();
     await expect(page.getByText('Arun Kumar')).toBeVisible();
 
     await page.addScriptTag({ content: axeSource });

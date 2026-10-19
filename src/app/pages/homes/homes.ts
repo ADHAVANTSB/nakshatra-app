@@ -408,6 +408,130 @@ export class Homes implements OnInit {
   }
 
   // ---------------------------------------------------------
+  // HOME SHEET CONFIRMATION & LOCKING
+  // ---------------------------------------------------------
+
+  readonly sheetBusyHomeId = signal<string | null>(null);
+  readonly unlockHomeId = signal<string | null>(null);
+  readonly unlockReason = signal('');
+  readonly unlockReasonError = signal(false);
+
+  /** Badge text for the sheet lifecycle; backend fields only. */
+  sheetStatusLabel(home: ConnectedShelterHome): string {
+    switch (home.sheetStatus) {
+      case 'LOCKED':
+        return 'Locked — editing prevented';
+      case 'CONFIRMED':
+        return 'Confirmed — unlocked for correction';
+      case 'NOT_CONFIRMED':
+        return 'Draft — editable';
+      default:
+        return 'Draft — editable';
+    }
+  }
+
+  sheetStatusTone(home: ConnectedShelterHome): string {
+    switch (home.sheetStatus) {
+      case 'LOCKED':
+        return 'sheet-pill sheet-pill--locked';
+      case 'CONFIRMED':
+        return 'sheet-pill sheet-pill--confirmed';
+      default:
+        return 'sheet-pill sheet-pill--draft';
+    }
+  }
+
+  isSheetLocked(home: ConnectedShelterHome): boolean {
+    return home.sheetStatus === 'LOCKED';
+  }
+
+  /**
+   * Audit line(s) for the home sheet, composed only from the backend fields
+   * (who/when/why). Nothing is invented: a missing field simply leaves its
+   * part out.
+   */
+  sheetAuditLines(home: ConnectedShelterHome): string[] {
+    const lines: string[] = [];
+    const who = home.sheetConfirmedBy ? ` by ${home.sheetConfirmedBy}` : '';
+
+    if (home.sheetConfirmedAt) {
+      lines.push(`Confirmed${who} — ${home.sheetConfirmedAt}`);
+    }
+    if (home.sheetLockedAt) {
+      lines.push(`Locked — confirmation without further changes (${home.sheetLockedAt})`);
+    }
+    if (home.sheetUnlockReason) {
+      const unlockWho = home.sheetUnlockedBy ? ` by ${home.sheetUnlockedBy}` : '';
+      const when = home.sheetUnlockedAt ? ` (${home.sheetUnlockedAt})` : '';
+      lines.push(`Unlocked for correction — reason: “${home.sheetUnlockReason}”${unlockWho}${when}`);
+    }
+    return lines;
+  }
+
+  /** Confirm Sheet: confirmation and locking in one action. */
+  async confirmSheet(home: ConnectedShelterHome): Promise<void> {
+    if (this.sheetBusyHomeId() || !this.canManageHomes()) return;
+
+    this.sheetBusyHomeId.set(home.id);
+    try {
+      const response = await this.apiClient.confirmHomeSheet({ shelterHomeId: home.id });
+
+      if (!response.success) {
+        this.notifications.error('The sheet could not be confirmed.', response.error.message);
+        return;
+      }
+
+      await this.shelterData.loadConnectedHomes();
+      this.notifications.success(`${home.homeName} confirmed and locked.`, 'The sheet is now locked against edits.');
+    } finally {
+      this.sheetBusyHomeId.set(null);
+    }
+  }
+
+  openUnlockSheet(home: ConnectedShelterHome): void {
+    this.unlockHomeId.set(home.id);
+    this.unlockReason.set('');
+    this.unlockReasonError.set(false);
+  }
+
+  cancelUnlockSheet(): void {
+    this.unlockHomeId.set(null);
+    this.unlockReason.set('');
+    this.unlockReasonError.set(false);
+  }
+
+  updateUnlockReason(raw: string): void {
+    this.unlockReason.set(raw);
+    if (raw.trim()) this.unlockReasonError.set(false);
+  }
+
+  /** Unlock for correction: a reason is mandatory and lands in the audit line. */
+  async confirmUnlockSheet(home: ConnectedShelterHome): Promise<void> {
+    const reason = this.unlockReason().trim();
+    if (!reason) {
+      this.unlockReasonError.set(true);
+      return;
+    }
+    if (this.sheetBusyHomeId() || !this.canManageHomes()) return;
+
+    this.sheetBusyHomeId.set(home.id);
+    try {
+      const response = await this.apiClient.unlockHomeSheet({ shelterHomeId: home.id, reason });
+
+      if (!response.success) {
+        this.notifications.error('The sheet could not be unlocked.', response.error.message);
+        return;
+      }
+
+      await this.shelterData.loadConnectedHomes();
+      this.cancelUnlockSheet();
+      this.notifications.success(`${home.homeName} unlocked for correction.`, 'Re-confirm the sheet to re-lock it.');
+    } finally {
+      this.sheetBusyHomeId.set(null);
+    }
+  }
+
+  // ---------------------------------------------------------
   // SOURCE SECTION
   // ---------------------------------------------------------
 
