@@ -35,6 +35,10 @@ import {
   ListEventDayRegistrationsPayload,
   MarkEventDayRegistrationData,
   MarkEventDayRegistrationPayload,
+  ListDistributionTrackingData,
+  ListDistributionTrackingPayload,
+  SaveDistributionStatusData,
+  SaveDistributionStatusPayload,
   FinalizeEventData,
   FinalizeEventPayload,
   ReopenEventScoresData,
@@ -835,6 +839,32 @@ export class ApiClientService {
 
   listWinners(): Promise<ApiResponse<ListWinnersData>> {
     return this.post<ListWinnersData, ListWinnersPayload>('listWinners');
+  }
+
+  /**
+   * Physical distribution state for the eligible finalized winners in
+   * scope. The response carries explicit storage health, so a missing or
+   * mismatched backend table can never read as "nothing recorded".
+   */
+  listDistributionTracking(
+    payload?: ListDistributionTrackingPayload
+  ): Promise<ApiResponse<ListDistributionTrackingData>> {
+    return this.post<ListDistributionTrackingData, ListDistributionTrackingPayload | undefined>(
+      'listDistributionTracking', payload
+    );
+  }
+
+  /**
+   * Records or corrects one physical hand-over (idempotent upsert on the
+   * backend; a retry never creates a duplicate). The timestamp and the
+   * recording user are always set server-side.
+   */
+  saveDistributionStatus(
+    payload: SaveDistributionStatusPayload
+  ): Promise<ApiResponse<SaveDistributionStatusData>> {
+    return this.post<SaveDistributionStatusData, SaveDistributionStatusPayload>(
+      'saveDistributionStatus', payload
+    );
   }
 
   /**

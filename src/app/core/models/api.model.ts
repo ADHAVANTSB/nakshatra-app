@@ -115,6 +115,8 @@ export interface WinnerEntry {
   level: string;
   shelterHomeName: string;
   score: number;
+  /** Stable id of the finalized score row (the distribution tracking reference). */
+  scoreId: string;
   participantId: string;
   teamId: string;
 }

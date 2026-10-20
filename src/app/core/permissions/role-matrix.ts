@@ -17,6 +17,7 @@ export type PermissionSection =
   | 'RESULTS'
   | 'RESULT_APPROVAL'
   | 'CERTIFICATES'
+  | 'DISTRIBUTION'
   | 'REPORTS'
   | 'SETTINGS';
 
@@ -26,7 +27,9 @@ export type PermissionRole = 'ADMIN' | 'SUPPORT' | 'EVENTS_TEAM' | 'LIAISON_TEAM
 const EDITABLE: Record<Exclude<PermissionRole, 'ADMIN' | 'SUPPORT'>, PermissionSection[]> = {
   LIAISON_TEAM: ['HOMES', 'PARTICIPANTS'],
   EVENTS_TEAM: ['ATTENDANCE', 'SCORING'],
-  CERTIFICATE_TEAM: ['RESULT_APPROVAL'],
+  // Physical distribution of medals/certificates is edited by the
+  // certificates role (plus Support/Admin) per the approved matrix.
+  CERTIFICATE_TEAM: ['RESULT_APPROVAL', 'DISTRIBUTION'],
 };
 
 /** The friendly banner shown on pages the role can view but not edit. */

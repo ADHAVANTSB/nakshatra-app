@@ -84,6 +84,18 @@ const DEFAULT_DATA: Record<string, unknown> = {
   listParticipantEvents: { participantEvents: [] },
   listEventRegistrations: { participantEvents: [] },
   listEventDayRegistrations: { eventDayRegistrations: [] },
+  listDistributionTracking: {
+    storage: {
+      available: true,
+      status: 'AVAILABLE',
+      table: 'DistributionTracking',
+      reason: '',
+      migrationStep: '',
+    },
+    distributions: [],
+    recordedCount: 0,
+    totalWinners: 0,
+  },
   listAttendance: { attendance: [] },
   listTeams: { teams: [] },
   listScores: { scores: [] },

@@ -147,9 +147,90 @@
   cursor: pointer;
 }
 
+.distribution-summary {
+  color: #60798f;
+  font-style: italic;
+}
+
+.distribution-cell {
+  min-width: 210px;
+  vertical-align: top;
+}
+
+.distribution-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.distribution-toggle input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+}
+
+.distribution-toggle input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.distribution-toggle-label {
+  font-weight: 600;
+  color: #17324d;
+}
+
+.distribution-state {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #60798f;
+}
+
+.distribution-state.pending {
+  color: #159ed0;
+}
+
+.distribution-saving {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #159ed0;
+}
+
+.distribution-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8c2f2f;
+}
+
+.distribution-retry {
+  margin-left: 8px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #159ed0;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media print {
   .certificates-summary .print,
   .print {
     display: none;
+  }
+
+  /* Print shows only the backend-confirmed status text - never the
+     interactive checkbox state of an unsaved toggle. */
+  .distribution-toggle,
+  .distribution-saving,
+  .distribution-error {
+    display: none;
+  }
+
+  .distribution-state {
+    color: #17324d;
   }
 }

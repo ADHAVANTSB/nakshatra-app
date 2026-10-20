@@ -95,6 +95,19 @@ const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
     retryable: false,
   },
 
+  // Distribution tracking storage is not migrated yet: an administrator
+  // must create the table (rule rejection — no Retry).
+  DISTRIBUTION_TRACKING_TABLE_MISSING: {
+    message:
+      'Medal and certificate distribution tracking is not set up in the database yet. An administrator must create the DistributionTracking sheet (see the distribution tracking migration proposal) before distribution statuses can be saved.',
+    retryable: false,
+  },
+  DISTRIBUTION_TRACKING_SCHEMA_INCOMPATIBLE: {
+    message:
+      'The DistributionTracking sheet does not match the expected layout. An administrator must fix its header (see the distribution tracking migration proposal) before distribution statuses can be saved.',
+    retryable: false,
+  },
+
   // Backend deployment older than the frontend: the action is not deployed yet.
   UNKNOWN_ACTION: {
     message: 'This feature isn’t available in the current backend deployment yet. Please ask your administrator to update the backend.',

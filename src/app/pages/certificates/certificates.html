@@ -1,5 +1,5 @@
 <div class="certificates-page">
-  <app-view-only-banner section="CERTIFICATES" />
+  <app-view-only-banner section="DISTRIBUTION" />
 
   <div class="certificates-head">
     <p class="certificates-kicker">CERTIFICATE WORKFLOW</p>
@@ -28,9 +28,24 @@
     </div>
   } @else {
 
+    @if (trackingNotice(); as notice) {
+      <div class="certificates-empty error" role="alert">
+        <strong>{{ notice.title }}</strong>
+        <span>{{ notice.message }}</span>
+        @if (notice.retryable) {
+          <button type="button" (click)="retryTracking()">Retry</button>
+        }
+      </div>
+    }
+
     <div class="certificates-summary">
       <span><strong>{{ events().length }}</strong> finalized event(s)</span>
       <span><strong>{{ totalWinners() }}</strong> winner entries</span>
+      @if (trackingLoading()) {
+        <span class="distribution-summary" role="status">Loading distribution statuses…</span>
+      } @else if (noDistributionsRecorded()) {
+        <span class="distribution-summary" role="status">No distributions recorded yet</span>
+      }
       <button type="button" class="print" (click)="print()">Print list</button>
     </div>
 
@@ -53,6 +68,8 @@
                 <th>Class</th>
                 <th>Level</th>
                 <th>Shelter home</th>
+                <th>Medal distributed</th>
+                <th>Certificate distributed</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -73,6 +90,43 @@
                   <td>{{ winner.className || '—' }}</td>
                   <td>{{ winner.level || '—' }}</td>
                   <td>{{ winner.shelterHomeName || '—' }}</td>
+                  @for (award of awards; track award) {
+                    <td class="distribution-cell">
+                      <label class="distribution-toggle">
+                        <input
+                          type="checkbox"
+                          data-testid="distribution-toggle"
+                          [checked]="stateFor(winner, award).checked"
+                          [disabled]="!canEditDistribution() || !trackingAvailable() || stateFor(winner, award).saving"
+                          [attr.aria-describedby]="'distribution-state-' + winner.scoreId + '-' + award"
+                          (change)="toggleDistribution(winner, award, $any($event.target))" />
+                        <span class="distribution-toggle-label">{{ awardLabel(award) }}</span>
+                      </label>
+                      <span
+                        class="distribution-state"
+                        [class.pending]="stateFor(winner, award).saving"
+                        [id]="'distribution-state-' + winner.scoreId + '-' + award">
+                        {{ distributionLabel(winner, award) }}
+                      </span>
+                      @if (stateFor(winner, award).saving) {
+                        <span class="distribution-saving" role="status">Saving…</span>
+                      }
+                      @if (stateFor(winner, award).error) {
+                        <span class="distribution-error" role="alert">
+                          {{ stateFor(winner, award).error }}
+                          @if (canRetry(winner, award)) {
+                            <button
+                              type="button"
+                              class="distribution-retry"
+                              data-testid="distribution-retry"
+                              (click)="retryDistribution(winner, award)">
+                              Retry
+                            </button>
+                          }
+                        </span>
+                      }
+                    </td>
+                  }
                   <td>{{ formatScore(winner.score) }}</td>
                 </tr>
               }

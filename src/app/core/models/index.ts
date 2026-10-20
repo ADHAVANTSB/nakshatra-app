@@ -9,6 +9,7 @@ export * from './participant-event.model';
 export * from './attendance.model';
 export * from './score.model';
 export * from './certificate.model';
+export * from './distribution.model';
 export * from './team.model';
 export * from './team-validation.model';
 export * from './sheet-source.model';
