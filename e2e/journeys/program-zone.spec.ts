@@ -142,7 +142,7 @@ test.describe('programme and zone selection flow', () => {
     await page.goto('/#/participants');
 
     await expect(page).toHaveURL(/#\/participants/);
-    await expect(page.getByRole('heading', { name: 'Participants' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Participants', exact: true })).toBeVisible();
     await expect(page.locator('.nk-scope-chip')).toContainText('Zone 1');
   });
 
@@ -152,7 +152,7 @@ test.describe('programme and zone selection flow', () => {
     await page.goto('/#/participants');
 
     await expect(page).toHaveURL(/#\/participants/);
-    await expect(page.getByRole('heading', { name: 'Participants' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Participants', exact: true })).toBeVisible();
     await expect(page.locator('.nk-scope-chip')).toContainText('Test');
   });
 

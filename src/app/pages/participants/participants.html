@@ -627,7 +627,7 @@
 
           <!-- ADD EVENT -->
 
-          @if (canManageRegistrations()) {
+          @if (canManageRegistrations() && eventDayRegistrable()) {
           <div class="add-event">
             <div class="form-group">
               <label for="add-event">Add event</label>
@@ -661,7 +661,146 @@
               No active event is available to add for this participant.
             </p>
           }
+
+          @if (canManageRegistrations() && !eventDayRegistrable() && detailParticipant()) {
+            <p class="panel-note" role="status">
+              {{ eventDayStatusLabel(detailParticipant()!) }}. Confirm and lock this
+              home’s sheet, then complete the event-day check-in, before adding
+              competition events.
+            </p>
+          }
         </div>
+      </div>
+    }
+
+    <!-- EVENT-DAY CHECK-IN -->
+
+    @if (eventDayLoading() && eventDayEntries().length === 0) {
+      <div class="section-card">
+        <p class="panel-note" role="status">Reading the event-day check-in list…</p>
+      </div>
+    } @else if (eventDayLoadError()) {
+      <div class="section-card">
+        <div class="alert error" role="alert">
+          <strong>The event-day check-in list could not be read.</strong>
+          <span>{{ eventDayLoadError() }}</span>
+          <button type="button" class="link-button" (click)="retryEventDayQueue()">Retry</button>
+        </div>
+      </div>
+    } @else if (eventDayEntries().length) {
+      <div class="section-card">
+        <div class="section-card-header">
+          <div>
+            <span class="eyebrow">EVENT DAY</span>
+            <h3>Event Day Check-In</h3>
+            <p class="panel-note">
+              One check-in for the overall event day — not per competition.
+              Only participants whose home sheet is confirmed and locked
+              appear here. A check-in never registers anyone for a
+              competition and never marks attendance.
+            </p>
+          </div>
+          <span class="filter-summary">
+            {{ eventDayRows().length }} of {{ eventDayEntries().length }} shown
+          </span>
+        </div>
+
+        @if (eventDaySuccess()) {
+          <p class="alert success" role="status">{{ eventDaySuccess() }}</p>
+        }
+        @if (eventDayError()) {
+          <div class="alert error" role="alert">
+            <strong>The check-in could not be saved.</strong>
+            <span>{{ eventDayError() }}</span>
+          </div>
+        }
+
+        <div class="filter-grid">
+          <div class="form-group">
+            <label for="event-day-home">Shelter home</label>
+            <select
+              id="event-day-home"
+              class="form-control"
+              name="eventDayHome"
+              [ngModel]="eventDayHomeFilter()"
+              (ngModelChange)="setEventDayHomeFilter($event)">
+              <option value="">All homes</option>
+              @for (home of eventDayHomes(); track home.id) {
+                <option [value]="home.id">{{ home.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="event-day-status">Check-in status</label>
+            <select
+              id="event-day-status"
+              class="form-control"
+              name="eventDayStatus"
+              [ngModel]="eventDayStatusFilter()"
+              (ngModelChange)="setEventDayStatusFilter($event)">
+              <option value="">All</option>
+              <option value="NOT_REGISTERED">Not registered</option>
+              <option value="CHECKED_IN">Checked in</option>
+            </select>
+          </div>
+        </div>
+
+        @if (eventDayRows().length) {
+          <div class="table-wrapper">
+            <table class="participant-table">
+              <thead>
+                <tr>
+                  <th>Participant</th>
+                  <th>Shelter home</th>
+                  <th>Eligibility</th>
+                  <th>Status</th>
+                  @if (canManageRegistrations()) {
+                    <th>Actions</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (entry of eventDayRows(); track entry.participantId) {
+                  <tr>
+                    <td class="cell-identity">
+                      <strong class="participant-name">{{ entry.fullName }}</strong>
+                      <small>{{ entry.participantCode }}</small>
+                    </td>
+                    <td class="cell-home">
+                      <strong>{{ entry.homeName }}</strong>
+                    </td>
+                    <td>
+                      {{ entry.level }}
+                      <small>Home sheet confirmed and locked</small>
+                    </td>
+                    <td>
+                      <strong>{{ eventDayCheckInLabel(entry) }}</strong>
+                    </td>
+                    @if (canManageRegistrations()) {
+                      <td class="cell-actions">
+                        @if (entry.checkInStatus === 'CHECKED_IN') {
+                          <small>Done</small>
+                        } @else {
+                          <button
+                            type="button"
+                            class="secondary-button"
+                            (click)="checkInEventDay(entry)"
+                            [disabled]="eventDayBusy() !== ''">
+                            {{ eventDayBusy() === entry.participantId ? 'Working…' : 'Check in' }}
+                          </button>
+                        }
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="empty-state">
+            <p>No participant matches these filters.</p>
+          </div>
+        }
       </div>
     }
 
@@ -691,6 +830,7 @@
                 (keydown.enter)="openParticipant(participant)">
                 <td class="cell-identity">
                   <strong class="participant-name">{{ participant.fullName }}</strong>
+                  <small class="event-day-status">{{ eventDayStatusLabel(participant) }}</small>
                 </td>
                 <td class="cell-home">
                   <strong>{{ homeName(participant.shelterHomeId) }}</strong>

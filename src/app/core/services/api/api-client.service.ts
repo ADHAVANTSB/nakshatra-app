@@ -27,8 +27,14 @@ import {
   DashboardSummaryData,
   DatasetRefreshPreviewData,
   Event,
+  EventDayRegistrationEntry,
+  EventDayRegistrationRecord,
   EventRegistrationData,
   EventRegistrationPayload,
+  ListEventDayRegistrationsData,
+  ListEventDayRegistrationsPayload,
+  MarkEventDayRegistrationData,
+  MarkEventDayRegistrationPayload,
   FinalizeEventData,
   FinalizeEventPayload,
   ReopenEventScoresData,
@@ -507,6 +513,62 @@ export class ApiClientService {
 
   async reactivateRegistration(payload: EventRegistrationPayload): Promise<ApiResponse<EventRegistrationData>> {
     return this.readEventRegistration('reactivateRegistration', payload);
+  }
+
+  /**
+   * The event-day check-in queue: eligible participants of LOCKED home
+   * sheets in scope, with their check-in state. The backend excludes
+   * non-locked homes, so this list never offers an ineligible row.
+   */
+  async listEventDayRegistrations(
+    payload?: ListEventDayRegistrationsPayload
+  ): Promise<ApiResponse<ListEventDayRegistrationsData>> {
+    const response = await this.post<ListEventDayRegistrationsData, ListEventDayRegistrationsPayload | undefined>(
+      'listEventDayRegistrations', payload
+    );
+    if (!response.success) return response;
+
+    const entries = response.data && (response.data as { eventDayRegistrations?: unknown }).eventDayRegistrations;
+    return Array.isArray(entries) && entries.every(entry => this.isEventDayRegistrationEntry(entry))
+      ? response
+      : { success: false, error: { code: 'INVALID_EVENT_DAY_REGISTRATIONS_RESPONSE', message: 'The server returned an invalid event-day check-in response.' } };
+  }
+
+  /**
+   * Upserts one participant's event-day check-in (idempotent on the
+   * backend; a retry never creates a duplicate).
+   */
+  async markEventDayRegistration(
+    payload: MarkEventDayRegistrationPayload
+  ): Promise<ApiResponse<MarkEventDayRegistrationData>> {
+    const response = await this.post<MarkEventDayRegistrationData, MarkEventDayRegistrationPayload>(
+      'markEventDayRegistration', payload
+    );
+    if (!response.success) return response;
+
+    const record = response.data && (response.data as { eventDayRegistration?: unknown }).eventDayRegistration;
+    return this.isEventDayRegistrationRecord(record)
+      ? { success: true, data: { eventDayRegistration: record } }
+      : { success: false, error: { code: 'INVALID_EVENT_DAY_REGISTRATION_RESPONSE', message: 'The server returned an invalid event-day check-in response.' } };
+  }
+
+  private isEventDayRegistrationEntry(value: unknown): value is EventDayRegistrationEntry {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Partial<EventDayRegistrationEntry>;
+    return typeof candidate.participantId === 'string'
+      && typeof candidate.shelterHomeId === 'string'
+      && typeof candidate.checkInStatus === 'string'
+      && (candidate.checkInStatus === 'CHECKED_IN' || candidate.checkInStatus === 'NOT_REGISTERED');
+  }
+
+  private isEventDayRegistrationRecord(value: unknown): value is EventDayRegistrationRecord {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Partial<EventDayRegistrationRecord>;
+    return typeof candidate.id === 'string'
+      && typeof candidate.participantId === 'string'
+      && typeof candidate.shelterHomeId === 'string'
+      && candidate.status === 'CHECKED_IN'
+      && typeof candidate.version === 'number';
   }
 
   /**

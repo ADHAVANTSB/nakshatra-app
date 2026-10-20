@@ -1042,6 +1042,23 @@ describe('Participants — registration controls per role', () => {
     contactPhone: '',
     status: 'ACTIVE',
     version: 1,
+    // The event-day gate reads the authoritative home-sheet state: with a
+    // LOCKED sheet and a CHECKED_IN row the add-event action is offered.
+    sheetStatus: 'LOCKED',
+  };
+
+  const EVENT_DAY_ENTRY = {
+    participantId: 'participant-1',
+    participantCode: 'NK26-001',
+    fullName: 'Asha',
+    level: 'SUB_JUNIOR',
+    shelterHomeId: 'home-1',
+    homeName: 'Sunrise Home',
+    homeSheetStatus: 'LOCKED',
+    checkInStatus: 'CHECKED_IN',
+    checkedInAt: '2026-01-01T00:00:00.000Z',
+    checkedInBy: 'spec-user',
+    version: 1,
   };
 
   function stubBackend(): void {
@@ -1057,6 +1074,9 @@ describe('Participants — registration controls per role', () => {
       }
       if (request.action === 'listEvents') return ok({ events: [] });
       if (request.action === 'getParticipantEventSummaries') return ok({ summaries: [], issues: [] });
+      if (request.action === 'listEventDayRegistrations') {
+        return ok({ eventDayRegistrations: [EVENT_DAY_ENTRY] });
+      }
       return ok({});
     });
   }
@@ -1127,5 +1147,336 @@ describe('Participants — registration controls per role', () => {
     expect(labels).not.toContain('Cancel');
     expect(labels).not.toContain('Reactivate');
     expect(labels).not.toContain('Add event');
+  });
+});
+
+/**
+ * Event-day check-in: the queue lists eligible participants of LOCKED home
+ * sheets (the backend excludes every other home), the check-in is saved
+ * through the backend, and the distinct four-state status is shown wherever
+ * the UI shows a participant's status.
+ */
+describe('Participants — event-day check-in', () => {
+  let fixture: ComponentFixture<Participants>;
+  let component: Participants;
+
+  const PARTICIPANT = {
+    id: 'participant-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Test Participant',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    level: 'JUNIOR',
+    eligibilityStatus: 'ELIGIBLE',
+    validationStatus: 'PASSED',
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    version: 1,
+    createdAt: '',
+    createdBy: '',
+    updatedAt: '',
+    updatedBy: '',
+  };
+
+  const HOME_LOCKED = {
+    id: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    address: '',
+    contactName: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    version: 1,
+    sheetStatus: 'LOCKED',
+  };
+
+  const HOME_NOT_CONFIRMED = { ...HOME_LOCKED, sheetStatus: 'NOT_CONFIRMED' };
+
+  const ENTRY = {
+    participantId: 'participant-1',
+    participantCode: 'P-0001',
+    fullName: 'Test Participant',
+    level: 'JUNIOR',
+    shelterHomeId: 'home-1',
+    homeName: 'Sunrise Home',
+    homeSheetStatus: 'LOCKED',
+    checkInStatus: 'NOT_REGISTERED',
+    checkedInAt: '',
+    checkedInBy: '',
+    version: 0,
+  };
+
+  const ENTRY_CHECKED_IN = { ...ENTRY, checkInStatus: 'CHECKED_IN', version: 1 };
+
+  const ENTRY_OTHER_HOME = {
+    ...ENTRY,
+    participantId: 'participant-2',
+    participantCode: 'P-0002',
+    fullName: 'Second Participant',
+    shelterHomeId: 'home-2',
+    homeName: 'Second Home',
+    checkInStatus: 'CHECKED_IN',
+    version: 1,
+  };
+
+  interface QueueStubOptions {
+    homes: unknown[];
+    entries: unknown[];
+    markError?: { code: string; message: string };
+  }
+
+  function stubQueueBackend(
+    options: QueueStubOptions
+  ): { payloads: Record<string, unknown>[]; markCalls: () => number } {
+    const payloads: Record<string, unknown>[] = [];
+    let marks = 0;
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
+      if (request.payload) payloads.push(request.payload);
+
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      switch (request.action) {
+        case 'getPageData':
+          return ok({
+            shelterHomes: options.homes,
+            participants: [PARTICIPANT],
+            events: [],
+            imports: [],
+            validationResults: [],
+          });
+        case 'listEvents':
+          return ok({ events: [] });
+        case 'getParticipantEventSummaries':
+          return ok({ summaries: [], issues: [] });
+        case 'listEventDayRegistrations':
+          return ok({ eventDayRegistrations: options.entries });
+        case 'markEventDayRegistration':
+          marks++;
+          if (options.markError) {
+            return Promise.resolve(new Response(
+              JSON.stringify({ success: false, error: options.markError }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ));
+          }
+          options.entries = options.entries.map(entry =>
+            (entry as { participantId: string }).participantId === (request.payload?.['participantId'])
+              ? { ...ENTRY_CHECKED_IN }
+              : entry
+          );
+          return ok({
+            eventDayRegistration: {
+              id: 'EDR-1',
+              participantId: request.payload?.['participantId'],
+              shelterHomeId: request.payload?.['shelterHomeId'],
+              status: 'CHECKED_IN',
+              checkedInAt: '2026-01-02T00:00:00.000Z',
+              checkedInBy: 'spec-user',
+              version: 1,
+            },
+          });
+        default:
+          return ok({});
+      }
+    });
+
+    return { payloads, markCalls: () => marks };
+  }
+
+  async function renderQueue(
+    options: QueueStubOptions
+  ): Promise<{ payloads: Record<string, unknown>[]; markCalls: () => number }> {
+    const captured = stubQueueBackend(options);
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Participants);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(component.eventDayEntries().length).toBeGreaterThan(0));
+    fixture.detectChanges();
+
+    return captured;
+  }
+
+  function pageText(): string {
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  function buttonLabels(): string[] {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .map(button => (button.textContent ?? '').trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Participants],
+      providers: [provideRouter([])],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('shows the check-in queue with distinct Not registered / Checked in statuses', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    expect(component.eventDayRows().length).toBe(2);
+    expect(component.eventDayCheckInLabel(component.eventDayRows()[0])).toBe('Not registered');
+    expect(component.eventDayCheckInLabel(component.eventDayRows()[1])).toBe('Checked in');
+    expect(pageText()).toContain('Event Day Check-In');
+    expect(pageText()).toContain('Not registered');
+    expect(pageText()).toContain('Checked in');
+  });
+
+  it('filters the queue by home and by check-in status', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    component.setEventDayStatusFilter('CHECKED_IN');
+    fixture.detectChanges();
+    expect(component.eventDayRows().map(row => row.participantId)).toEqual(['participant-2']);
+
+    component.setEventDayStatusFilter('');
+    component.setEventDayHomeFilter('home-1');
+    fixture.detectChanges();
+    expect(component.eventDayRows().map(row => row.participantId)).toEqual(['participant-1']);
+  });
+
+  it('checks a participant in through the backend and shows the persisted state', async () => {
+    const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    const checkInButton = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button')
+    ).find(button => (button.textContent ?? '').trim() === 'Check in');
+
+    expect(checkInButton).toBeDefined();
+    checkInButton!.click();
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(component.eventDaySuccess()).toContain('checked in for the event day'));
+    fixture.detectChanges();
+
+    expect(captured.markCalls()).toBe(1);
+    expect(captured.payloads.some(payload =>
+      payload['participantId'] === 'participant-1' &&
+      payload['shelterHomeId'] === 'home-1' &&
+      payload['status'] === 'CHECKED_IN'
+    )).toBe(true);
+    const row = component.eventDayRows().find(entry => entry.participantId === 'participant-1');
+    expect(row?.checkInStatus).toBe('CHECKED_IN');
+    expect(pageText()).toContain('Checked in');
+  });
+
+  it('reports a failed check-in accurately and keeps the row Not registered', async () => {
+    await renderQueue({
+      homes: [HOME_LOCKED],
+      entries: [ENTRY],
+      markError: {
+        code: 'HOME_SHEET_NOT_LOCKED',
+        message: 'Confirm and lock this home’s sheet before registering its participants for the event day.',
+      },
+    });
+
+    const checkInButton = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button')
+    ).find(button => (button.textContent ?? '').trim() === 'Check in');
+
+    checkInButton!.click();
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(component.eventDayError()).toContain('Confirm and lock'));
+    fixture.detectChanges();
+
+    expect(component.eventDaySuccess()).toBe('');
+    const row = component.eventDayRows().find(entry => entry.participantId === 'participant-1');
+    expect(row?.checkInStatus).toBe('NOT_REGISTERED');
+  });
+
+  it('hides the add-event action until the home sheet is locked and the check-in is done', async () => {
+    await renderQueue({ homes: [HOME_NOT_CONFIRMED], entries: [ENTRY_OTHER_HOME] });
+
+    component.openParticipantId.set('participant-1');
+    component.registrations.set([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(buttonLabels()).not.toContain('Add event');
+    expect(pageText()).toContain('Participant record exists');
+  });
+
+  it('offers add-event once the sheet is locked and the participant is checked in', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY_CHECKED_IN] });
+
+    component.openParticipantId.set('participant-1');
+    component.registrations.set([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(buttonLabels()).toContain('Add event');
+    expect(pageText()).toContain('Event-day check-in completed');
+  });
+
+  it('shows the distinct four-state participant status', async () => {
+    await renderQueue({ homes: [HOME_NOT_CONFIRMED], entries: [ENTRY_OTHER_HOME] });
+
+    expect(component.eventDayStatusLabel(PARTICIPANT as unknown as Participant))
+      .toBe('Participant record exists');
+
+    // Locked home, no check-in yet.
+    stubQueueBackend({ homes: [HOME_LOCKED], entries: [] });
+    await TestBed.inject(ShelterDataService).refresh();
+    expect(component.eventDayStatusLabel(PARTICIPANT as unknown as Participant))
+      .toBe('Home sheet confirmed');
+
+    // Locked home + event-day check-in completed.
+    stubQueueBackend({ homes: [HOME_LOCKED], entries: [ENTRY_CHECKED_IN] });
+    await TestBed.inject(ParticipantEventService).loadEventDayRegistrations(undefined, true);
+    expect(component.eventDayStatusLabel(PARTICIPANT as unknown as Participant))
+      .toBe('Event-day check-in completed');
+
+    // A real competition registration outranks the earlier states.
+    const store = TestBed.inject(ShelterDataService);
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+      return request.action === 'listParticipantEvents'
+        ? ok({
+            participantEvents: [
+              registration({ id: 'reg-1', eventId: 'event-1', registrationStatus: 'REGISTERED', category: 'ARTS' }),
+            ],
+          })
+        : ok({});
+    });
+    await store.loadParticipantEvents('participant-1', true);
+    expect(component.eventDayStatusLabel(PARTICIPANT as unknown as Participant))
+      .toBe('Registered for competition');
   });
 });

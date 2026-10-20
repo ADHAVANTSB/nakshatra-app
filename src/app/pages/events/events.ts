@@ -147,6 +147,10 @@ export class Events implements OnInit {
 
     void this.shelterData.ensureLoaded();
 
+    // Event-day check-in state gates the registration candidates below;
+    // without this read the gate would see an empty queue and offer nobody.
+    void this.participantEventService.loadEventDayRegistrations();
+
     void this.loadEventMaster(deepLinkEventId);
   }
 
@@ -778,9 +782,16 @@ export class Events implements OnInit {
                 event.id
               );
 
+          // Event-day eligibility: only participants of LOCKED home
+          // sheets that completed the event-day check-in are registrable.
+          const eventDayEligible =
+            this.participantEventService
+              .isRegistrableForEvents(participant.id);
+
           return (
             matchesSearch &&
             matchesHome &&
+            eventDayEligible &&
             !alreadyRegistered
           );
         });
@@ -1234,7 +1245,12 @@ export class Events implements OnInit {
         const matchesHome =
           homeId === 'ALL' || participant.shelterHomeId === homeId;
 
-        return matchesSearch && matchesHome;
+        // Event-day eligibility gate (LOCKED home sheet + check-in);
+        // the backend enforces the same rule for every write.
+        const eventDayEligible =
+          this.participantEventService.isRegistrableForEvents(participant.id);
+
+        return matchesSearch && matchesHome && eventDayEligible;
       })
       .map(participant => ({
         participant,

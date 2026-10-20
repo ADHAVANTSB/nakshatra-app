@@ -4,6 +4,7 @@ import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Event, ParticipantEvent } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { Events } from './events';
 
@@ -353,5 +354,203 @@ describe('Events — registration controls per role', () => {
     expect(labels.some(label => label.includes('Add Participant'))).toBe(false);
     expect(labels).not.toContain('Cancel');
     expect(labels).not.toContain('Reactivate');
+  });
+});
+
+/**
+ * Registration candidates require BOTH a LOCKED home sheet and the
+ * event-day check-in. Participants outside that gate never appear in the
+ * add-participant candidate list (the backend enforces the same rule on
+ * every write).
+ */
+describe('Events — registration candidates require home lock + event-day check-in', () => {
+  let component: Events;
+
+  const PARTICIPANT_LOCKED_CHECKED = {
+    id: 'p-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Checked In',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    level: 'JUNIOR',
+    eligibilityStatus: 'ELIGIBLE',
+    validationStatus: 'PASSED',
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    version: 1,
+  };
+
+  const PARTICIPANT_LOCKED_UNCHECKED = {
+    ...PARTICIPANT_LOCKED_CHECKED,
+    id: 'p-2',
+    participantCode: 'P-0002',
+    fullName: 'Not Checked In',
+  };
+
+  const PARTICIPANT_UNLOCKED_HOME = {
+    ...PARTICIPANT_LOCKED_CHECKED,
+    id: 'p-3',
+    participantCode: 'P-0003',
+    shelterHomeId: 'home-2',
+    fullName: 'Unlocked Home',
+  };
+
+  function stubBackend(entries: unknown[]): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      switch (request.action) {
+        case 'listShelterHomes':
+          return ok({
+            shelterHomes: [
+              { id: 'home-1', homeCode: 'H-01', homeName: 'Sunrise Home', status: 'ACTIVE', version: 1, sheetStatus: 'LOCKED' },
+              { id: 'home-2', homeCode: 'H-02', homeName: 'Second Home', status: 'ACTIVE', version: 1, sheetStatus: 'NOT_CONFIRMED' },
+            ],
+          });
+        case 'listParticipants': {
+          const payload = JSON.parse(init.body) as { payload?: { shelterHomeId?: string } };
+          const homeId = payload.payload?.shelterHomeId;
+          return ok({
+            participants: [PARTICIPANT_LOCKED_CHECKED, PARTICIPANT_LOCKED_UNCHECKED, PARTICIPANT_UNLOCKED_HOME]
+              .filter(participant => !homeId || participant.shelterHomeId === homeId),
+          });
+        }
+        case 'listEventDayRegistrations':
+          return ok({ eventDayRegistrations: entries });
+        case 'getPageData':
+          return ok({ shelterHomes: [], participants: [], imports: [], validationResults: [] });
+        case 'listEvents':
+          return ok({ events: [] });
+        default:
+          return ok({});
+      }
+    });
+  }
+
+  async function seedCandidates(entries: unknown[]): Promise<void> {
+    stubBackend(entries);
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadConnectedHomes();
+    await store.loadParticipants('home-1');
+    await store.loadParticipants('home-2');
+    await TestBed.inject(ParticipantEventService).loadEventDayRegistrations(undefined, true);
+
+    component.selectedEvent.set(event({ id: 'event-1' }));
+    component.participantSearch.set('');
+    component.participantHomeFilter.set('ALL');
+    component.selectedParticipantId.set('');
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Events],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    component = TestBed.createComponent(Events).componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('hides participants of unlocked homes and unchecked-in participants from the candidate list', async () => {
+    await seedCandidates([
+      {
+        participantId: 'p-1',
+        participantCode: 'P-0001',
+        fullName: 'Checked In',
+        level: 'JUNIOR',
+        shelterHomeId: 'home-1',
+        homeName: 'Sunrise Home',
+        homeSheetStatus: 'LOCKED',
+        checkInStatus: 'CHECKED_IN',
+        checkedInAt: '2026-01-01T00:00:00.000Z',
+        checkedInBy: 'spec-user',
+        version: 1,
+      },
+    ]);
+
+    expect(component.availableParticipants().map(participant => participant.id)).toEqual(['p-1']);
+  });
+
+  it('offers nobody while no home has completed the event-day gate', async () => {
+    await seedCandidates([]);
+
+    expect(component.availableParticipants()).toEqual([]);
+  });
+
+  it('reads the event-day check-in queue when the events page initialises', async () => {
+    // Regression: without this read the candidate gate saw an empty queue
+    // and the events page offered nobody until the participants page was
+    // visited first.
+    stubBackend([{
+      participantId: 'p-1',
+      participantCode: 'P-0001',
+      fullName: 'Checked In',
+      level: 'JUNIOR',
+      shelterHomeId: 'home-1',
+      homeName: 'Sunrise Home',
+      homeSheetStatus: 'LOCKED',
+      checkInStatus: 'CHECKED_IN',
+      checkedInAt: '2026-01-01T00:00:00.000Z',
+      checkedInBy: 'spec-user',
+      version: 1,
+    }]);
+
+    component.ngOnInit();
+
+    await vi.waitFor(() => {
+      expect(TestBed.inject(ParticipantEventService).eventDayEntries()).toHaveLength(1);
+    });
+  });
+
+  it('keeps listing checked-in participants of locked homes after a refresh re-read', async () => {
+    await seedCandidates([
+      {
+        participantId: 'p-1',
+        participantCode: 'P-0001',
+        fullName: 'Checked In',
+        level: 'JUNIOR',
+        shelterHomeId: 'home-1',
+        homeName: 'Sunrise Home',
+        homeSheetStatus: 'LOCKED',
+        checkInStatus: 'CHECKED_IN',
+        checkedInAt: '2026-01-01T00:00:00.000Z',
+        checkedInBy: 'spec-user',
+        version: 1,
+      },
+    ]);
+
+    const before = component.availableParticipants().map(participant => participant.id);
+
+    // A forced queue re-read restores exactly the persisted state.
+    await TestBed.inject(ParticipantEventService).loadEventDayRegistrations(undefined, true);
+
+    expect(component.availableParticipants().map(participant => participant.id)).toEqual(before);
   });
 });

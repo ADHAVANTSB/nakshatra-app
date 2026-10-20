@@ -9,6 +9,8 @@ import {
 import {
   Participant,
   Event,
+  EventDayCheckInStatus,
+  EventDayRegistrationEntry,
   ParticipantEvent,
   ParticipantEventSummaryEntry,
   ParticipantEventSummaryIssue,
@@ -236,6 +238,124 @@ export class ParticipantEventService {
   }
 
   // ==========================================
+  // EVENT-DAY REGISTRATION (check-in)
+  // ==========================================
+
+  /**
+   * The event-day check-in queue as last read from the backend. Rows only
+   * ever exist for LOCKED home sheets (the backend excludes every other
+   * home), so a row here IS the backend's confirmation that the home is
+   * locked and the participant may be checked in.
+   */
+  private readonly eventDayEntriesState = signal<EventDayRegistrationEntry[]>([]);
+
+  /** True while the event-day queue is being read. */
+  private readonly eventDayLoadingState = signal(false);
+
+  readonly eventDayEntries = this.eventDayEntriesState.asReadonly();
+  readonly eventDayLoading = this.eventDayLoadingState.asReadonly();
+
+  /**
+   * Reads the event-day check-in queue. `shelterHomeId` narrows the read;
+   * without it the whole scope is returned. State is re-read from the
+   * backend so a page refresh restores exactly what is persisted.
+   */
+  async loadEventDayRegistrations(
+    shelterHomeId?: string,
+    force = false
+  ): Promise<EventDayRegistrationEntry[] | null> {
+    if (!force && this.eventDayEntriesState().length && !shelterHomeId) {
+      return this.eventDayEntriesState();
+    }
+
+    this.eventDayLoadingState.set(true);
+
+    try {
+      const response = await this.apiClient.listEventDayRegistrations(
+        shelterHomeId ? { shelterHomeId } : undefined
+      );
+
+      if (!response.success) {
+        return null;
+      }
+
+      const entries = response.data.eventDayRegistrations;
+
+      this.eventDayEntriesState.update(current => {
+        if (shelterHomeId) {
+          const next = current.filter(entry => entry.shelterHomeId !== shelterHomeId);
+          return [...next, ...entries];
+        }
+        return entries;
+      });
+
+      return entries;
+    } finally {
+      this.eventDayLoadingState.set(false);
+    }
+  }
+
+  /** The persisted event-day check-in row for a participant (or null). */
+  eventDayEntryFor(participantId: string): EventDayRegistrationEntry | null {
+    return this.eventDayEntriesState().find(
+      entry => entry.participantId === participantId
+    ) ?? null;
+  }
+
+  /** Whether the participant has completed the event-day check-in. */
+  isCheckedInForEventDay(participantId: string): boolean {
+    return this.eventDayEntryFor(participantId)?.checkInStatus === 'CHECKED_IN';
+  }
+
+  /**
+   * Whether the participant's home sheet is confirmed and LOCKED, read
+   * from the authoritative home-sheet state the backend returned.
+   */
+  isHomeSheetLocked(shelterHomeId: string): boolean {
+    return this.shelterData.getHomeById(shelterHomeId)?.sheetStatus === 'LOCKED';
+  }
+
+  /**
+   * Competition-registration eligibility on top of every existing rule:
+   * the home sheet must be LOCKED and the participant checked in for the
+   * event day. The backend enforces the same gate and stays authoritative.
+   */
+  isRegistrableForEvents(participantId: string): boolean {
+    const participant = this.participantService.getParticipantById(participantId);
+    if (!participant) return false;
+    return this.isHomeSheetLocked(participant.shelterHomeId)
+      && this.isCheckedInForEventDay(participantId);
+  }
+
+  /**
+   * Upserts one participant's event-day check-in through the backend and
+   * refreshes the queue from the persisted state. The backend upsert is
+   * idempotent, so a retry can never create a duplicate row.
+   */
+  async markEventDayRegistration(
+    participantId: string,
+    shelterHomeId: string,
+    status: EventDayCheckInStatus = 'CHECKED_IN'
+  ): Promise<{ success: boolean; errors: string[] }> {
+    const entry = this.eventDayEntryFor(participantId);
+
+    const response = await this.apiClient.markEventDayRegistration({
+      participantId,
+      shelterHomeId,
+      status,
+      expectedVersion: entry ? entry.version : 0,
+    });
+
+    if (!response.success) {
+      return { success: false, errors: [response.error.message] };
+    }
+
+    await this.loadEventDayRegistrations(shelterHomeId, true);
+
+    return { success: true, errors: [] };
+  }
+
+  // ==========================================
   // LOCAL RULE VALIDATION
   // ==========================================
 
@@ -268,6 +388,18 @@ export class ParticipantEventService {
 
     if (participant.validationStatus === 'FAILED') {
       errors.push('Participant validation has failed.');
+    }
+
+    // Event-day eligibility (the backend enforces the same gate):
+    // home sheet confirmed + LOCKED first, then the event-day check-in.
+    if (!this.isHomeSheetLocked(participant.shelterHomeId)) {
+      errors.push(
+        'Confirm and lock this home’s sheet before registering its participants for the event day.'
+      );
+    } else if (!this.isCheckedInForEventDay(participantId)) {
+      errors.push(
+        'Check this participant in for the event day before registering them for a competition.'
+      );
     }
 
     if (participant.level && !event.eligibleLevels.includes(participant.level)) {

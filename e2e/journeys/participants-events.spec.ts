@@ -63,7 +63,7 @@ test.describe('participants and events reads', () => {
     installCatalogue(backend);
 
     await page.goto('/#/participants');
-    await expect(page.getByRole('heading', { name: 'Participants' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Participants', exact: true })).toBeVisible();
     await expect(page.locator('body')).toContainText('Arun Kumar');
     await expect(page.locator('body')).toContainText('Sunshine Childrens Home');
     expect(pageErrors).toEqual([]);

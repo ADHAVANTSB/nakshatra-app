@@ -6,6 +6,8 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   Event,
   EventCategory,
+  EventDayCheckInStatus,
+  EventDayRegistrationEntry,
   EventMode,
   Gender,
   Participant,
@@ -182,6 +184,132 @@ export class Participants implements OnInit {
   readonly pendingEventId = signal('');
 
   // ---------------------------------------------------------
+  // EVENT-DAY REGISTRATION (check-in for the overall event day)
+  // ---------------------------------------------------------
+
+  /** Queue filters; both narrow the backend-returned queue client-side. */
+  readonly eventDayHomeFilter = signal('');
+  readonly eventDayStatusFilter = signal<EventDayCheckInStatus | ''>('');
+
+  readonly eventDayBusy = signal('');
+  readonly eventDayError = signal('');
+  readonly eventDaySuccess = signal('');
+  readonly eventDayLoadError = signal('');
+
+  readonly eventDayEntries = this.participantEventService.eventDayEntries;
+  readonly eventDayLoading = this.participantEventService.eventDayLoading;
+
+  /**
+   * The event-day check-in queue as the backend returned it (LOCKED homes
+   * only), narrowed by the home and status filters.
+   */
+  readonly eventDayRows = computed<EventDayRegistrationEntry[]>(() => {
+    const homeId = this.eventDayHomeFilter();
+    const status = this.eventDayStatusFilter();
+
+    return this.eventDayEntries().filter(entry =>
+      (!homeId || entry.shelterHomeId === homeId) &&
+      (!status || entry.checkInStatus === status)
+    );
+  });
+
+  /** Homes present in the queue, for the home filter. */
+  readonly eventDayHomes = computed(() => {
+    const seen = new Map<string, string>();
+
+    for (const entry of this.eventDayEntries()) {
+      seen.set(entry.shelterHomeId, entry.homeName);
+    }
+
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  });
+
+  /**
+   * The distinct four-state event-day status shown wherever the UI shows a
+   * participant's status. Each label is a real backend-backed state.
+   */
+  eventDayStatusLabel(participant: Participant): string {
+    const summary = this.participantEventService.summaryFor(participant.id);
+
+    const registered = summary
+      ? summary.activeEventCount > 0
+      : this.participantEventService.getParticipantEventCount(participant.id) > 0;
+
+    if (registered) {
+      return 'Registered for competition';
+    }
+
+    if (this.participantEventService.isCheckedInForEventDay(participant.id)) {
+      return 'Event-day check-in completed';
+    }
+
+    if (this.participantEventService.isHomeSheetLocked(participant.shelterHomeId)) {
+      return 'Home sheet confirmed';
+    }
+
+    return 'Participant record exists';
+  }
+
+  /** Queue row status: Not registered -> Checked in. */
+  eventDayCheckInLabel(entry: EventDayRegistrationEntry): string {
+    return entry.checkInStatus === 'CHECKED_IN' ? 'Checked in' : 'Not registered';
+  }
+
+  setEventDayHomeFilter(value: string): void {
+    this.eventDayHomeFilter.set(value);
+  }
+
+  setEventDayStatusFilter(value: EventDayCheckInStatus | ''): void {
+    this.eventDayStatusFilter.set(value);
+  }
+
+  /** Reads the persisted check-in queue; a refresh restores exactly this. */
+  private async loadEventDayQueue(): Promise<void> {
+    this.eventDayLoadError.set('');
+
+    const entries = await this.participantEventService.loadEventDayRegistrations(undefined, true);
+
+    if (entries === null) {
+      this.eventDayLoadError.set('The event-day check-in list could not be read.');
+    }
+  }
+
+  /** Retries the queue read after a failure. */
+  retryEventDayQueue(): void {
+    void this.loadEventDayQueue();
+  }
+
+  /**
+   * Checks one participant in for the event day through the backend (an
+   * idempotent upsert, so a double click or retry never duplicates).
+   */
+  async checkInEventDay(entry: EventDayRegistrationEntry): Promise<void> {
+    if (this.eventDayBusy()) {
+      return;
+    }
+
+    this.eventDayBusy.set(entry.participantId);
+    this.eventDayError.set('');
+    this.eventDaySuccess.set('');
+
+    try {
+      const result = await this.participantEventService.markEventDayRegistration(
+        entry.participantId,
+        entry.shelterHomeId
+      );
+
+      if (!result.success) {
+        this.eventDayError.set(result.errors[0] || 'The check-in could not be saved.');
+        return;
+      }
+
+      this.eventDaySuccess.set(`${entry.fullName} is checked in for the event day.`);
+    } finally {
+      this.eventDayBusy.set('');
+    }
+  }
+
+  // ---------------------------------------------------------
   // DATA
   // ---------------------------------------------------------
 
@@ -351,6 +479,17 @@ export class Participants implements OnInit {
    */
   readonly canManageRegistrations = computed(() =>
     canEditRegistrations(this.auth.currentUser()?.role));
+
+  /**
+   * Competition registration for the open participant requires BOTH a
+   * LOCKED home sheet and the event-day check-in (the backend enforces the
+   * same gate on every write). The add-event action is only shown when a
+   * checked-in, locked-home participant is open.
+   */
+  readonly eventDayRegistrable = computed(() => {
+    const participant = this.detailParticipant();
+    return !!participant && this.participantEventService.isRegistrableForEvents(participant.id);
+  });
 
   /** Events whose scores are finalized lock every registration row on them. */
   readonly lockedEvents = computed(() => {
@@ -726,6 +865,9 @@ export class Participants implements OnInit {
     // reusing the store's dedupe so a summary read and the Events page never
     // fetch the same event twice.
     void this.shelterData.ensureLoaded().then(() => this.loadRegistrationSummary());
+
+    // Event-day check-in queue (LOCKED homes only, per the backend).
+    this.loadEventDayQueue();
 
     // The Homes module navigates here with shelterHomeId; keep that filter.
     // A participantId query param deep-links straight into the detail panel.

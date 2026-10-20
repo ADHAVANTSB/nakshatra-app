@@ -431,6 +431,59 @@ export interface EventRegistrationData {
 }
 
 /* ================================================================
+   EVENT-DAY REGISTRATION (check-in for the overall event day)
+   ================================================================ */
+
+export type EventDayCheckInStatus = 'NOT_REGISTERED' | 'CHECKED_IN';
+
+/** The persisted EventDayRegistrations record (write response). */
+export interface EventDayRegistrationRecord {
+  id: string;
+  participantId: string;
+  shelterHomeId: string;
+  status: EventDayCheckInStatus;
+  checkedInAt: string;
+  checkedInBy: string;
+  version: number;
+}
+
+/** One row of the event-day check-in queue (read response). */
+export interface EventDayRegistrationEntry {
+  participantId: string;
+  participantCode: string;
+  fullName: string;
+  level: string;
+  shelterHomeId: string;
+  homeName: string;
+  /** Authoritative home-sheet state from the backend (LOCKED only). */
+  homeSheetStatus: HomeSheetStatus;
+  checkInStatus: EventDayCheckInStatus;
+  checkedInAt: string;
+  checkedInBy: string;
+  version: number;
+}
+
+export interface ListEventDayRegistrationsPayload {
+  shelterHomeId?: string;
+  status?: EventDayCheckInStatus;
+}
+
+export interface ListEventDayRegistrationsData {
+  eventDayRegistrations: EventDayRegistrationEntry[];
+}
+
+export interface MarkEventDayRegistrationPayload {
+  participantId: string;
+  shelterHomeId: string;
+  status: EventDayCheckInStatus;
+  expectedVersion?: number;
+}
+
+export interface MarkEventDayRegistrationData {
+  eventDayRegistration: EventDayRegistrationRecord;
+}
+
+/* ================================================================
    TEAMS
    ================================================================ */
 

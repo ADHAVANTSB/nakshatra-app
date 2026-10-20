@@ -483,4 +483,126 @@ describe('ApiClientService — response contract alignment', () => {
       }
     });
   });
+
+  describe('event-day registration (check-in)', () => {
+    const ENTRY = {
+      participantId: 'participant-1',
+      participantCode: 'NK26-001',
+      fullName: 'Asha',
+      level: 'SUB_JUNIOR',
+      shelterHomeId: 'home-1',
+      homeName: 'Sunrise Home',
+      homeSheetStatus: 'LOCKED',
+      checkInStatus: 'CHECKED_IN',
+      checkedInAt: '2026-01-01T00:00:00.000Z',
+      checkedInBy: 'spec-user',
+      version: 1,
+    };
+
+    const RECORD = {
+      id: 'EDR-1',
+      participantId: 'participant-1',
+      shelterHomeId: 'home-1',
+      status: 'CHECKED_IN',
+      checkedInAt: '2026-01-01T00:00:00.000Z',
+      checkedInBy: 'spec-user',
+      version: 1,
+    };
+
+    it('reads the event-day queue and accepts the backend entries', async () => {
+      stubFetchOnce(jsonResponse({
+        success: true,
+        data: { eventDayRegistrations: [ENTRY] },
+      }));
+
+      const result = await client.listEventDayRegistrations({ shelterHomeId: 'home-1' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.eventDayRegistrations).toHaveLength(1);
+        expect(result.data.eventDayRegistrations[0].checkInStatus).toBe('CHECKED_IN');
+      }
+    });
+
+    it('rejects a malformed event-day queue response instead of trusting it', async () => {
+      stubFetchOnce(jsonResponse({ success: true, data: { eventDayRegistrations: 'nope' } }));
+
+      const result = await client.listEventDayRegistrations();
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_EVENT_DAY_REGISTRATIONS_RESPONSE');
+      }
+    });
+
+    it('sends the check-in payload and accepts the persisted record', async () => {
+      let sentBody = '';
+      vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+        sentBody = init.body;
+        return Promise.resolve(jsonResponse({
+          success: true,
+          data: { eventDayRegistration: RECORD },
+        }));
+      });
+
+      const result = await client.markEventDayRegistration({
+        participantId: 'participant-1',
+        shelterHomeId: 'home-1',
+        status: 'CHECKED_IN',
+        expectedVersion: 0,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.eventDayRegistration.id).toBe('EDR-1');
+        expect(result.data.eventDayRegistration.version).toBe(1);
+      }
+
+      const request = JSON.parse(sentBody) as { action: string; payload: Record<string, unknown> };
+      expect(request.action).toBe('markEventDayRegistration');
+      expect(request.payload).toMatchObject({
+        ['participantId']: 'participant-1',
+        ['shelterHomeId']: 'home-1',
+        ['status']: 'CHECKED_IN',
+        ['expectedVersion']: 0,
+      });
+    });
+
+    it('rejects a malformed check-in response instead of trusting it', async () => {
+      stubFetchOnce(jsonResponse({ success: true, data: { eventDayRegistration: { id: 7 } } }));
+
+      const result = await client.markEventDayRegistration({
+        participantId: 'participant-1',
+        shelterHomeId: 'home-1',
+        status: 'CHECKED_IN',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_EVENT_DAY_REGISTRATION_RESPONSE');
+      }
+    });
+
+    it('keeps the HOME_SHEET_NOT_LOCKED rejection and its friendly message', async () => {
+      stubFetchOnce(jsonResponse({
+        success: false,
+        error: {
+          code: 'HOME_SHEET_NOT_LOCKED',
+          message: 'Confirm and lock this home’s sheet before registering its participants for the event day.',
+        },
+      }));
+
+      const result = await client.markEventDayRegistration({
+        participantId: 'participant-1',
+        shelterHomeId: 'home-1',
+        status: 'CHECKED_IN',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HOME_SHEET_NOT_LOCKED');
+        expect(result.error.message).toContain('Confirm and lock');
+      }
+    });
+  });
 });

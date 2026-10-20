@@ -83,6 +83,7 @@ const DEFAULT_DATA: Record<string, unknown> = {
   listParticipants: { participants: [] },
   listParticipantEvents: { participantEvents: [] },
   listEventRegistrations: { participantEvents: [] },
+  listEventDayRegistrations: { eventDayRegistrations: [] },
   listAttendance: { attendance: [] },
   listTeams: { teams: [] },
   listScores: { scores: [] },

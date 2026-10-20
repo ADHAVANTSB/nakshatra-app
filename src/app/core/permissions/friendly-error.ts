@@ -78,6 +78,14 @@ const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
     message: 'A reason is required to unlock a locked home sheet. Explain why the sheet needs correction, then unlock again.',
     retryable: false,
   },
+  HOME_SHEET_NOT_LOCKED: {
+    message: 'Confirm and lock this home’s sheet before registering its participants for the event day.',
+    retryable: false,
+  },
+  EVENT_DAY_CHECK_IN_REQUIRED: {
+    message: 'Check this participant in for the event day before registering them for a competition.',
+    retryable: false,
+  },
   RECONCILIATION_INCOMPLETE: {
     message: 'Some participants are still missing registration, attendance or scoring for this event. Review the reconciliation table, resolve each item or acknowledge it explicitly, then accept again.',
     retryable: false,
