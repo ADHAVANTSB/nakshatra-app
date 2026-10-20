@@ -76,7 +76,13 @@
     <div class="summary">
       <strong>{{ event.name }}</strong>
       <span>{{ event.category }} · {{ modeLabel(event) }}</span>
-      <small>Only participants marked PRESENT in Attendance are scored here.</small>
+      <small>
+        @if (isGroupEvent()) {
+          Group event — one entry per judge per team. Every registered roster member needs an explicit attendance mark.
+        } @else {
+          Only participants marked PRESENT in Attendance are scored here.
+        }
+      </small>
     </div>
 
     <!-- ===== Official judging criteria ===== -->
@@ -94,7 +100,7 @@
           }
         </div>
         <div class="note">
-          The judge's overall score per participant is the sum of the criteria (max {{ maxJudgeOverall() }}).
+          The judge's overall score per {{ isGroupEvent() ? 'team' : 'participant' }} is the sum of the criteria (max {{ maxJudgeOverall() }}).
         </div>
       } @else if (scoringMode() === 'SINGLE') {
         <div class="placeholder purple">
@@ -171,19 +177,159 @@
           }
 
           <div class="note warn">
-            <strong>Present participants only — attendance confirmed.</strong>
-            @if (judgeExcludedCount() > 0) {
-              {{ judgeExcludedCount() }} registered participant(s) are absent or unmarked and cannot be scored.
+            @if (isGroupEvent()) {
+              <strong>Team scoring — attendance confirmed.</strong>
+              One entry per judge per team. A team is scoreable only when every registered member has an explicit
+              attendance record (PRESENT or ABSENT) and at least one member is PRESENT.
+            } @else {
+              <strong>Present participants only — attendance confirmed.</strong>
+              @if (judgeExcludedCount() > 0) {
+                {{ judgeExcludedCount() }} registered participant(s) are absent or unmarked and cannot be scored.
+              }
             }
           </div>
 
           @if (scoringMode() === 'SINGLE') {
             <div class="note purple">
-              Rounds are one event-level entry — one overall score per judge per participant (0–10 in 0.5 steps).
+              Rounds are one event-level entry — one overall score per judge per
+              {{ isGroupEvent() ? 'team' : 'participant' }} (0–10 in 0.5 steps).
             </div>
           }
 
-          @if (judgeRows().length === 0) {
+          @if (isGroupEvent()) {
+            @if (teamRows().length === 0) {
+              <div class="empty">No teams are registered for this event yet.</div>
+            } @else {
+              @if (pendingAttendanceCount() > 0) {
+                <div class="attendance-save-bar" role="group" aria-label="Pending attendance marks">
+                  <span>{{ pendingAttendanceCount() }} attendance mark(s) not saved yet.</span>
+                  <button
+                    type="button"
+                    class="primary-action"
+                    data-testid="save-attendance-batch"
+                    [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                    (click)="saveAttendanceBatch()">
+                    {{ attendanceBusy() ? 'Saving…' : 'Save attendance' }}
+                  </button>
+                </div>
+              }
+
+              @for (row of teamRows(); track row.teamId) {
+                <div class="team-score-row" [class.blocked]="!row.scoreable" [attr.data-testid]="'team-score-row-' + row.teamId">
+                  <div class="team-row-head">
+                    <strong>{{ row.teamName }}</strong>
+                    @if (row.homeName) {
+                      <span class="team-home">{{ row.homeName }}</span>
+                    }
+                    <span class="team-counts">
+                      {{ row.registeredCount }} registered · {{ row.presentCount }} present ·
+                      {{ row.absentCount }} absent
+                    </span>
+                  </div>
+
+                  @if (!row.scoreable) {
+                    <div class="alert error" role="alert" data-testid="team-attendance-incomplete">
+                      <strong>Team scoring is disabled — attendance incomplete.</strong>
+                      <span>{{ row.blockedReason }}</span>
+                    </div>
+                  }
+
+                  <details class="team-roster">
+                    <summary>
+                      Roster ({{ row.presentCount }} present / {{ row.absentCount }} absent /
+                      {{ row.unmarkedCount }} unmarked)
+                    </summary>
+                    <table class="roster-table">
+                      <thead>
+                        <tr>
+                          <th>Member</th>
+                          <th>Attendance</th>
+                          <th>Mark</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (entry of row.roster; track entry.participantId) {
+                          <tr>
+                            <td>{{ entry.name }}</td>
+                            <td>
+                              <span
+                                class="att-badge"
+                                [class.present]="rosterAttendanceStatus(entry) === 'PRESENT'"
+                                [class.absent]="rosterAttendanceStatus(entry) === 'ABSENT'"
+                                [class.unmarked]="!rosterAttendanceStatus(entry)">
+                                {{ rosterAttendanceStatus(entry) || 'Not marked' }}
+                              </span>
+                            </td>
+                            <td class="roster-mark">
+                              <button
+                                type="button"
+                                class="link-button"
+                                [class.selected]="rosterAttendanceStatus(entry) === 'PRESENT'"
+                                [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                                (click)="queueAttendance(entry.participantId, 'PRESENT')">
+                                Present
+                              </button>
+                              <button
+                                type="button"
+                                class="link-button"
+                                [class.selected]="rosterAttendanceStatus(entry) === 'ABSENT'"
+                                [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                                (click)="queueAttendance(entry.participantId, 'ABSENT')">
+                                Absent
+                              </button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                    <div class="roster-bulk">
+                      <button
+                        type="button"
+                        class="secondary-action"
+                        [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                        (click)="queueTeamAttendance(row.teamId, 'PRESENT')">
+                        Mark all present
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary-action"
+                        [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                        (click)="queueTeamAttendance(row.teamId, 'ABSENT')">
+                        Mark all absent
+                      </button>
+                    </div>
+                  </details>
+
+                  <div class="team-score-fields">
+                    @for (field of judgeScoreFields(); track field) {
+                      <label class="num">
+                        <span>{{ field }} (0–10)</span>
+                        <input
+                          class="score-input"
+                          [class.invalid]="!!judgeFieldError(row.teamId, field)"
+                          type="text"
+                          inputmode="decimal"
+                          [value]="judgeScoreValue(row.teamId, field)"
+                          [attr.aria-label]="field + ' score for team ' + row.teamName"
+                          [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized() || !row.scoreable"
+                          (input)="setJudgeScore(row.teamId, field, $any($event.target).value)" />
+                        @if (judgeFieldError(row.teamId, field); as error) {
+                          <div class="err-msg" role="alert">{{ error }}</div>
+                        }
+                      </label>
+                    }
+                    <div class="num team-total">
+                      <span class="total-pill" [class.complete]="judgeRowTotal(row.teamId).tone === 'complete'"
+                        [class.invalid]="judgeRowTotal(row.teamId).tone === 'invalid'">
+                        {{ judgeRowTotal(row.teamId).label }}
+                      </span>
+                      <span class="total-pill aggregate">{{ officialAggregateLabel(row.teamId) }}</span>
+                    </div>
+                  </div>
+                </div>
+              }
+            }
+          } @else if (judgeRows().length === 0) {
             <div class="empty">No participants are marked present for this event.</div>
           } @else {
             <div class="grid-wrap">
@@ -250,31 +396,32 @@
                 }
               </table>
             </div>
-
-            <div class="judge-actions">
-              <button
-                type="button"
-                class="secondary-action"
-                [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized()"
-                (click)="saveJudgeDraft()">
-                Save draft
-              </button>
-              <button
-                type="button"
-                class="primary-action"
-                [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized()"
-                (click)="submitJudgeFinal()">
-                Submit final scores
-              </button>
-            </div>
-
-            <div class="note">
-              <strong>Judge total vs official aggregate.</strong>
-              The judge total is {{ selectedJudge()?.name || 'this judge' }}'s own score for the participant. The
-              official aggregate is the arithmetic average of the submitted totals of all active judges — drafts and
-              removed judges are excluded — and is never edited here.
-            </div>
           }
+
+          <div class="judge-actions">
+            <button
+              type="button"
+              class="secondary-action"
+              [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized() || eligibleRowKeys().length === 0"
+              (click)="saveJudgeDraft()">
+              Save draft
+            </button>
+            <button
+              type="button"
+              class="primary-action"
+              [disabled]="!canEdit() || judgeScoringBusy() || eventFinalized() || eligibleRowKeys().length === 0"
+              (click)="submitJudgeFinal()">
+              Submit final scores
+            </button>
+          </div>
+
+          <div class="note">
+            <strong>Judge total vs official aggregate.</strong>
+            The judge total is {{ selectedJudge()?.name || 'this judge' }}'s own score for the
+            {{ isGroupEvent() ? 'team' : 'participant' }}. The
+            official aggregate is the arithmetic average of the submitted totals of all active judges — drafts and
+            removed judges are excluded — and is never edited here.
+          </div>
         }
       }
     </section>

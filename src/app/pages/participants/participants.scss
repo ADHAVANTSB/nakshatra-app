@@ -538,3 +538,63 @@ tr:focus-visible {
     }
   }
 }
+
+/* Event-day bulk check-in controls (mirrors the attendance page). */
+.event-day-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.event-day-totals {
+  font-size: 12px;
+}
+
+.event-day-actions button,
+.event-day-toggle button {
+  margin-right: 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.event-day-actions .present,
+.event-day-toggle .present {
+  background: #e5f1e6;
+  color: #46614c;
+}
+
+.event-day-actions .absent,
+.event-day-toggle .absent {
+  background: #f6e7e7;
+  color: #7d4d4d;
+}
+
+.event-day-actions .save {
+  background: #2f5d50;
+  color: #fff;
+}
+
+.event-day-actions .reset {
+  background: #eee7e0;
+  color: #5b4a3f;
+}
+
+.event-day-toggle .present.staged {
+  outline: 2px solid #46614c;
+}
+
+.event-day-toggle .absent.staged {
+  outline: 2px solid #7d4d4d;
+}
+
+.event-day-actions button:disabled,
+.event-day-toggle button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

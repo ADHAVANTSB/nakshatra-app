@@ -697,7 +697,11 @@
               One check-in for the overall event day — not per competition.
               Only participants whose home sheet is confirmed and locked
               appear here. A check-in never registers anyone for a
-              competition and never marks attendance.
+              competition and never marks attendance. Mark rows
+              <strong>Present</strong> (checked in) or <strong>Absent</strong>
+              (not checked in), then save them all at once. Nothing is sent
+              until you press Save Attendance; updates from other users
+              appear when the list is refreshed or saved.
             </p>
           </div>
           <span class="filter-summary">
@@ -710,7 +714,7 @@
         }
         @if (eventDayError()) {
           <div class="alert error" role="alert">
-            <strong>The check-in could not be saved.</strong>
+            <strong>Attendance was not fully saved.</strong>
             <span>{{ eventDayError() }}</span>
           </div>
         }
@@ -746,6 +750,46 @@
         </div>
 
         @if (eventDayRows().length) {
+          @if (canManageRegistrations()) {
+            <div class="event-day-toolbar">
+              <strong class="event-day-totals" role="status">
+                {{ eventDayTotals().participants }} participants ·
+                {{ eventDayTotals().present }} present ·
+                {{ eventDayTotals().absent }} absent ·
+                {{ eventDayTotals().unsaved }} unsaved
+              </strong>
+              <div class="event-day-actions">
+                <button
+                  type="button"
+                  class="present"
+                  (click)="selectAllPresent()"
+                  [disabled]="eventDaySaving()">
+                  Select All Present
+                </button>
+                <button
+                  type="button"
+                  class="absent"
+                  (click)="markAllAbsent()"
+                  [disabled]="eventDaySaving()">
+                  Mark All Absent
+                </button>
+                <button
+                  type="button"
+                  class="reset"
+                  (click)="resetEventDayChanges()"
+                  [disabled]="eventDaySaving() || !eventDayHasUnsaved()">
+                  Reset Unsaved Changes
+                </button>
+                <button
+                  type="button"
+                  class="save"
+                  (click)="saveEventDayAttendance()"
+                  [disabled]="eventDaySaving() || !eventDayHasUnsaved()">
+                  {{ eventDaySaving() ? 'Saving…' : 'Save Attendance' }}
+                </button>
+              </div>
+            </div>
+          }
           <div class="table-wrapper">
             <table class="participant-table">
               <thead>
@@ -755,7 +799,7 @@
                   <th>Eligibility</th>
                   <th>Status</th>
                   @if (canManageRegistrations()) {
-                    <th>Actions</th>
+                    <th>Attendance</th>
                   }
                 </tr>
               </thead>
@@ -774,20 +818,38 @@
                       <small>Home sheet confirmed and locked</small>
                     </td>
                     <td>
-                      <strong>{{ eventDayCheckInLabel(entry) }}</strong>
+                      <strong>{{ eventDayEffectiveLabel(entry) }}</strong>
                     </td>
                     @if (canManageRegistrations()) {
                       <td class="cell-actions">
-                        @if (entry.checkInStatus === 'CHECKED_IN') {
-                          <small>Done</small>
-                        } @else {
+                        <div
+                          class="event-day-toggle"
+                          role="group"
+                          [attr.aria-label]="'Event-day attendance for ' + entry.fullName">
                           <button
                             type="button"
-                            class="secondary-button"
-                            (click)="checkInEventDay(entry)"
-                            [disabled]="eventDayBusy() !== ''">
-                            {{ eventDayBusy() === entry.participantId ? 'Working…' : 'Check in' }}
+                            class="present"
+                            [class.staged]="eventDayStatusFor(entry) === 'CHECKED_IN'"
+                            [attr.aria-pressed]="eventDayStatusFor(entry) === 'CHECKED_IN'"
+                            (click)="stageEventDay(entry, 'CHECKED_IN')"
+                            [disabled]="eventDaySaving()">
+                            Present
                           </button>
+                          <button
+                            type="button"
+                            class="absent"
+                            [class.staged]="eventDayStatusFor(entry) === 'NOT_REGISTERED'"
+                            [attr.aria-pressed]="eventDayStatusFor(entry) === 'NOT_REGISTERED'"
+                            (click)="stageEventDay(entry, 'NOT_REGISTERED')"
+                            [disabled]="eventDaySaving()">
+                            Absent
+                          </button>
+                        </div>
+                        @if (eventDayHasPending(entry)) {
+                          <small role="status">Unsaved</small>
+                        }
+                        @if (eventDayFailureFor(entry)) {
+                          <small class="alert error" role="alert">{{ eventDayFailureFor(entry) }}</small>
                         }
                       </td>
                     }

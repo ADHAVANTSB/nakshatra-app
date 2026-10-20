@@ -239,3 +239,27 @@
 .secondary-action { background: #fff; border: 1px solid #dfebf1; color: #17324d; padding: 9px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .secondary-action:hover:not(:disabled) { border-color: #b9cede; background: #f7fbff; }
 .secondary-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- GROUP workspace: one scoring row per home/team ---- */
+.team-score-row { border: 1px solid #e5dfda; border-radius: 10px; background: #fff; padding: 14px; margin-bottom: 12px; }
+.team-score-row.blocked { border-color: #e2b7b7; background: #fdf7f7; }
+.team-row-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.team-row-head strong { font-size: 15px; }
+.team-home { color: #6e6158; font-size: 12px; }
+.team-counts { margin-left: auto; color: #6e6158; font-size: 12px; }
+.team-roster { margin: 10px 0; }
+.team-roster summary { cursor: pointer; color: #5f4d7c; font-weight: 700; font-size: 12px; }
+.roster-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.roster-table th, .roster-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #efeae6; font-size: 12px; }
+.att-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: #efeae6; color: #6e6158; }
+.att-badge.present { background: #e5f1e6; color: #54745a; }
+.att-badge.absent { background: #f5e6e6; color: #8a5a5a; }
+.att-badge.unmarked { background: #f7efe2; color: #8a6f45; }
+.roster-mark .link-button { margin-right: 6px; }
+.roster-mark .link-button.selected { text-decoration: underline; }
+.roster-bulk { display: flex; gap: 8px; margin-bottom: 6px; }
+.team-score-fields { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.team-score-fields label.num { display: flex; flex-direction: column; gap: 4px; }
+.team-score-fields .score-input { width: 90px; padding: 8px; border: 1px solid #ded8d3; border-radius: 8px; }
+.team-total { display: flex; gap: 8px; align-items: center; }
+.attendance-save-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #d9d0e8; border-radius: 10px; background: #f6f2fb; }

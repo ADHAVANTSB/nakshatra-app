@@ -453,15 +453,23 @@ export class Results implements OnInit {
     }
     const rows: Record<string, JudgeScoreRow> = {};
     for (const row of response.data.scores ?? []) {
-      rows[`${row.judgeId}|${row.participantId}`] = row;
+      rows[`${row.judgeId}|${row.teamId || row.participantId}`] = row;
     }
     this.judgeRows.set(rows);
     this.judgeScoresState.set('LOADED');
   }
 
-  /** Whether this judge has a SUBMITTED score for that participant. */
-  judgeSubmittedFor(judgeId: string, participantId: string): boolean {
-    return this.judgeRows()[`${judgeId}|${participantId}`]?.status === 'SUBMITTED';
+  /** GROUP events are scored per team; SOLO events per participant. */
+  private isGroupEvent(): boolean {
+    return this.selectedEvent()?.mode === 'GROUP';
+  }
+
+  /**
+   * Whether this judge has a SUBMITTED score for that target: a participant
+   * id on individual events, a team id on group events.
+   */
+  judgeSubmittedFor(judgeId: string, targetId: string): boolean {
+    return this.judgeRows()[`${judgeId}|${targetId}`]?.status === 'SUBMITTED';
   }
 
   /* ------------------------------------------------------------------
@@ -511,14 +519,27 @@ export class Results implements OnInit {
         );
 
       // Scoring completeness includes judge submissions: where judges are
-      // configured, every active judge must have submitted for the participant.
+      // configured, every active judge must have submitted for the target —
+      // the participant on individual events, the TEAM on group events (a
+      // team is never "scored" because individual rows exist).
       let scored: boolean;
       let judgeNote = '';
       if (activeJudges.length) {
-        const submitted = activeJudges.filter(judge =>
-          this.judgeSubmittedFor(judge.id, participant.id)).length;
-        scored = submitted === activeJudges.length;
-        judgeNote = `${submitted} of ${activeJudges.length} judge submission(s) complete`;
+        if (this.isGroupEvent()) {
+          const team = this.teamService.getParticipantTeam(participant.id, event.id);
+          const submitted = team
+            ? activeJudges.filter(judge => this.judgeSubmittedFor(judge.id, team.id)).length
+            : 0;
+          scored = !!team && submitted === activeJudges.length;
+          judgeNote = team
+            ? `${submitted} of ${activeJudges.length} judge submission(s) complete for team ${team.name}`
+            : 'not on any team roster';
+        } else {
+          const submitted = activeJudges.filter(judge =>
+            this.judgeSubmittedFor(judge.id, participant.id)).length;
+          scored = submitted === activeJudges.length;
+          judgeNote = `${submitted} of ${activeJudges.length} judge submission(s) complete`;
+        }
       } else {
         scored = hasScoreRow;
       }
@@ -563,23 +584,53 @@ export class Results implements OnInit {
 
   /**
    * Unresolved discrepancies: one item per participant per missing step,
-   * carrying the backend-shaped discrepancy id.
+   * carrying the backend-shaped discrepancy id. On GROUP events judge
+   * scoring reconciles at TEAM level (`MISSING_JUDGE_SCORE:<teamId>`,
+   * exactly the backend's id), while attendance stays per participant.
    */
-  readonly discrepancies = computed<DiscrepancyItem[]>(() =>
-    this.rows().flatMap(row => {
-      const items: DiscrepancyItem[] = [];
+  readonly discrepancies = computed<DiscrepancyItem[]>(() => {
+    const items: DiscrepancyItem[] = this.rows().flatMap(row => {
+      const rowItems: DiscrepancyItem[] = [];
       if (!row.registered) {
-        items.push({ id: `MISSING_REGISTRATION:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'registration missing' });
+        rowItems.push({ id: `MISSING_REGISTRATION:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'registration missing' });
       }
       if (!row.attended) {
-        items.push({ id: `MISSING_ATTENDANCE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'attendance not recorded' });
+        rowItems.push({ id: `MISSING_ATTENDANCE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'attendance not recorded' });
       }
-      if (!row.scored) {
-        items.push({ id: `MISSING_JUDGE_SCORE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'scoring not completed' });
+      if (!row.scored && !this.isGroupEvent()) {
+        rowItems.push({ id: `MISSING_JUDGE_SCORE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'scoring not completed' });
       }
-      return items;
-    })
-  );
+      return rowItems;
+    });
+
+    const event = this.selectedEvent();
+
+    if (event && this.isGroupEvent()) {
+      // Team-level judge scoring gaps mirror the backend rule: every team
+      // with at least one PRESENT member needs one submission per judge.
+      for (const team of this.teamService.getTeamsByEvent(event.id)) {
+        const members = this.teamService.getMembers(team.id);
+        const hasPresentMember = members.some(member =>
+          this.attendanceService.getByParticipantEvent(member.participantId, event.id)?.status === 'PRESENT');
+
+        if (!hasPresentMember) continue;
+
+        const missingJudges = this.activeJudges().filter(
+          judge => !this.judgeSubmittedFor(judge.id, team.id));
+
+        if (missingJudges.length) {
+          items.push({
+            id: `MISSING_JUDGE_SCORE:${team.id}`,
+            participantId: team.id,
+            name: team.name,
+            label: `team scoring not completed (${missingJudges.length} of ${this.activeJudges().length} judge(s))`,
+          });
+        }
+      }
+    }
+
+    return items;
+  });
 
   /* ------------------------------------------------------------------
      Reviewer decision

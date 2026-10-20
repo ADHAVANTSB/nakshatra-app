@@ -6,6 +6,7 @@ import { Participant, ParticipantEvent, Event } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { Participants, RegistrationEntry } from './participants';
@@ -1225,17 +1226,34 @@ describe('Participants — event-day check-in', () => {
     homes: unknown[];
     entries: unknown[];
     markError?: { code: string; message: string };
+    /** A batch-level failure: nothing is written, everything stays staged. */
+    batchError?: { code: string; message: string };
+    /**
+     * Per-record outcome for saveEventDayAttendanceBatch; default marks
+     * every record UPDATED (CREATED when expectedVersion is 0).
+     */
+    onBatchSave?: (items: Record<string, unknown>[]) => { results: Record<string, unknown>[] };
   }
 
   function stubQueueBackend(
     options: QueueStubOptions
-  ): { payloads: Record<string, unknown>[]; markCalls: () => number } {
+  ): {
+    payloads: Record<string, unknown>[];
+    actions: string[];
+    batchPayloads: Record<string, unknown>[];
+    batchCalls: () => number;
+    markCalls: () => number;
+  } {
     const payloads: Record<string, unknown>[] = [];
+    const actions: string[] = [];
+    const batchPayloads: Record<string, unknown>[] = [];
     let marks = 0;
+    let batches = 0;
 
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
       if (request.payload) payloads.push(request.payload);
+      actions.push(request.action);
 
       const ok = (data: unknown) => Promise.resolve(new Response(
         JSON.stringify({ success: true, data }),
@@ -1257,6 +1275,50 @@ describe('Participants — event-day check-in', () => {
           return ok({ summaries: [], issues: [] });
         case 'listEventDayRegistrations':
           return ok({ eventDayRegistrations: options.entries });
+        case 'saveEventDayAttendanceBatch': {
+          batches++;
+          batchPayloads.push(request.payload as Record<string, unknown>);
+          if (options.batchError) {
+            return Promise.resolve(new Response(
+              JSON.stringify({ success: false, error: options.batchError }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ));
+          }
+          const items = (request.payload?.['items'] ?? []) as Record<string, unknown>[];
+          const outcome = options.onBatchSave
+            ? options.onBatchSave(items)
+            : {
+                results: items.map(item => ({
+                  participantId: item['participantId'],
+                  outcome: item['expectedVersion'] === 0 ? 'CREATED' : 'UPDATED',
+                  status: item['status'],
+                  version: (item['expectedVersion'] as number) + 1,
+                })),
+              };
+          // The stub workbook converges exactly like the real backend
+          // (idempotent upsert keyed on participantId), so the post-save
+          // list refresh sees the saved state.
+          options.entries = options.entries.map(entry => {
+            const result = (outcome.results as Record<string, unknown>[]).find(candidate =>
+              candidate['participantId'] === (entry as { participantId: string }).participantId);
+            const settled = result && (result['outcome'] === 'CREATED'
+              || result['outcome'] === 'UPDATED' || result['outcome'] === 'UNCHANGED');
+            return settled
+              ? { ...(entry as object), checkInStatus: result['status'], version: result['version'] }
+              : entry;
+          });
+          return ok({
+            results: outcome.results,
+            summary: {
+              total: outcome.results.length,
+              created: outcome.results.filter(r => r['outcome'] === 'CREATED').length,
+              updated: outcome.results.filter(r => r['outcome'] === 'UPDATED').length,
+              unchanged: outcome.results.filter(r => r['outcome'] === 'UNCHANGED').length,
+              versionConflicts: outcome.results.filter(r => r['outcome'] === 'VERSION_CONFLICT').length,
+              invalid: outcome.results.filter(r => r['outcome'] === 'INVALID').length,
+            },
+          });
+        }
         case 'markEventDayRegistration':
           marks++;
           if (options.markError) {
@@ -1286,12 +1348,18 @@ describe('Participants — event-day check-in', () => {
       }
     });
 
-    return { payloads, markCalls: () => marks };
+    return {
+      payloads,
+      actions,
+      batchPayloads,
+      batchCalls: () => batches,
+      markCalls: () => marks,
+    };
   }
 
-  async function renderQueue(
-    options: QueueStubOptions
-  ): Promise<{ payloads: Record<string, unknown>[]; markCalls: () => number }> {
+  type QueueStub = ReturnType<typeof stubQueueBackend>;
+
+  async function renderQueue(options: QueueStubOptions): Promise<QueueStub> {
     const captured = stubQueueBackend(options);
 
     const auth = TestBed.inject(AuthService);
@@ -1365,54 +1433,238 @@ describe('Participants — event-day check-in', () => {
     expect(component.eventDayRows().map(row => row.participantId)).toEqual(['participant-1']);
   });
 
-  it('checks a participant in through the backend and shows the persisted state', async () => {
+  function eventDaySection(): HTMLElement {
+    const section = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-card'))
+      .find(card => (card.textContent ?? '').includes('Event Day Check-In'));
+    if (!section) throw new Error('event-day section not found');
+    return section as HTMLElement;
+  }
+
+  function rowForName(name: string): HTMLElement {
+    const row = Array.from(eventDaySection().querySelectorAll('tbody tr'))
+      .find(tr => (tr.textContent ?? '').includes(name));
+    if (!row) throw new Error('row not found: ' + name);
+    return row as HTMLElement;
+  }
+
+  function clickIn(row: HTMLElement, label: string): void {
+    const button = Array.from(row.querySelectorAll('button'))
+      .find(candidate => (candidate.textContent ?? '').trim() === label);
+    if (!button) throw new Error('button not found: ' + label);
+    button.click();
+    fixture.detectChanges();
+  }
+
+  function clickToolbar(label: string): void {
+    const button = Array.from(eventDaySection().querySelectorAll('button'))
+      .find(candidate => (candidate.textContent ?? '').trim() === label);
+    if (!button) throw new Error('toolbar button not found: ' + label);
+    button.click();
+    fixture.detectChanges();
+  }
+
+  it('stages Present/Absent locally with NO network call and never auto-marks anyone', async () => {
     const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
 
-    const checkInButton = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('button')
-    ).find(button => (button.textContent ?? '').trim() === 'Check in');
+    // Nothing is auto-marked: no write request exists until the user saves.
+    expect(captured.actions.filter(action =>
+      action === 'saveEventDayAttendanceBatch' || action === 'markEventDayRegistration')).toHaveLength(0);
 
-    expect(checkInButton).toBeDefined();
-    checkInButton!.click();
-    fixture.detectChanges();
-    await vi.waitFor(() =>
-      expect(component.eventDaySuccess()).toContain('checked in for the event day'));
-    fixture.detectChanges();
+    const requestsBefore = captured.actions.length;
 
-    expect(captured.markCalls()).toBe(1);
-    expect(captured.payloads.some(payload =>
-      payload['participantId'] === 'participant-1' &&
-      payload['shelterHomeId'] === 'home-1' &&
-      payload['status'] === 'CHECKED_IN'
-    )).toBe(true);
-    const row = component.eventDayRows().find(entry => entry.participantId === 'participant-1');
-    expect(row?.checkInStatus).toBe('CHECKED_IN');
-    expect(pageText()).toContain('Checked in');
+    clickIn(rowForName('Test Participant'), 'Present');
+    expect(captured.actions.length).toBe(requestsBefore);
+    expect(captured.batchCalls()).toBe(0);
+
+    // Present on an already checked-in row is the saved state: no change.
+    clickIn(rowForName('Second Participant'), 'Present');
+    expect(captured.actions.length).toBe(requestsBefore);
+    expect(component.eventDayUnsavedCount()).toBe(1);
+
+    // Staging the saved state cancels the pending change again.
+    clickIn(rowForName('Test Participant'), 'Absent');
+    expect(component.eventDayUnsavedCount()).toBe(0);
+    expect(captured.batchCalls()).toBe(0);
+
+    clickIn(rowForName('Test Participant'), 'Present');
+    expect(component.eventDayTotals()).toEqual({ participants: 2, present: 2, absent: 0, unsaved: 1 });
+    expect(pageText()).toContain('Unsaved');
   });
 
-  it('reports a failed check-in accurately and keeps the row Not registered', async () => {
-    await renderQueue({
+  it('saves every pending change in ONE batch request and settles the saved state', async () => {
+    const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    clickIn(rowForName('Test Participant'), 'Present');
+    clickIn(rowForName('Second Participant'), 'Absent');
+    expect(component.eventDayUnsavedCount()).toBe(2);
+
+    clickToolbar('Save Attendance');
+    await vi.waitFor(() => expect(component.eventDaySaving()).toBe(false));
+    await vi.waitFor(() => expect(component.eventDaySuccess()).toContain('Attendance saved for 2 participants'));
+    fixture.detectChanges();
+
+    expect(captured.batchCalls()).toBe(1);
+    const items = captured.batchPayloads[0]['items'] as Record<string, unknown>[];
+    expect(items).toHaveLength(2);
+    expect(items).toContainEqual({
+      participantId: 'participant-1', shelterHomeId: 'home-1', status: 'CHECKED_IN', expectedVersion: 0,
+    });
+    expect(items).toContainEqual({
+      participantId: 'participant-2', shelterHomeId: 'home-2', status: 'NOT_REGISTERED', expectedVersion: 1,
+    });
+    // The legacy one-by-one action is never used by this UI any more.
+    expect(captured.markCalls()).toBe(0);
+
+    expect(component.eventDayUnsavedCount()).toBe(0);
+    const savedRow = rowForName('Test Participant');
+    expect(savedRow.textContent).toContain('Checked in');
+    expect(rowForName('Second Participant').textContent).toContain('Not registered');
+  });
+
+  it('keeps successful records, shows per-record failures and retries ONLY the failed ones', async () => {
+    let attempts = 0;
+    const captured = await renderQueue({
       homes: [HOME_LOCKED],
-      entries: [ENTRY],
-      markError: {
-        code: 'HOME_SHEET_NOT_LOCKED',
-        message: 'Confirm and lock this home’s sheet before registering its participants for the event day.',
+      entries: [ENTRY, ENTRY_OTHER_HOME],
+      onBatchSave: (items) => {
+        attempts++;
+        return {
+          results: items.map(item => (item['participantId'] === 'participant-2' && attempts === 1)
+            ? {
+                participantId: item['participantId'],
+                outcome: 'INVALID',
+                code: 'HOME_SHEET_NOT_LOCKED',
+                message: 'Confirm and lock this home’s sheet before recording the event-day check-in.',
+                status: 'NOT_REGISTERED',
+                version: 1,
+              }
+            : {
+                participantId: item['participantId'],
+                outcome: item['expectedVersion'] === 0 ? 'CREATED' : 'UPDATED',
+                status: item['status'],
+                version: (item['expectedVersion'] as number) + 1,
+              }),
+        };
       },
     });
 
-    const checkInButton = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('button')
-    ).find(button => (button.textContent ?? '').trim() === 'Check in');
-
-    checkInButton!.click();
-    fixture.detectChanges();
-    await vi.waitFor(() =>
-      expect(component.eventDayError()).toContain('Confirm and lock'));
+    clickIn(rowForName('Test Participant'), 'Present');
+    clickIn(rowForName('Second Participant'), 'Absent');
+    clickToolbar('Save Attendance');
+    await vi.waitFor(() => expect(component.eventDaySaving()).toBe(false));
     fixture.detectChanges();
 
+    // The successful record is settled and preserved; the failed one is
+    // reported per record and stays staged.
+    expect(component.eventDaySuccess()).toContain('1 failed');
+    expect(component.eventDayFailureCount()).toBe(1);
+    expect(rowForName('Second Participant').textContent).toContain('Confirm and lock');
+    expect(rowForName('Second Participant').textContent).toContain('Unsaved');
+    expect(component.eventDayUnsavedCount()).toBe(1);
+
+    // Retry submits ONLY the failed record.
+    clickToolbar('Save Attendance');
+    await vi.waitFor(() => expect(component.eventDaySuccess()).toContain('1 participant'));
+    fixture.detectChanges();
+
+    expect(captured.batchCalls()).toBe(2);
+    const retryItems = captured.batchPayloads[1]['items'] as Record<string, unknown>[];
+    expect(retryItems).toHaveLength(1);
+    expect(retryItems[0]['participantId']).toBe('participant-2');
+    expect(component.eventDayFailureCount()).toBe(0);
+    expect(component.eventDayUnsavedCount()).toBe(0);
+  });
+
+  it('keeps every change staged when the whole batch fails', async () => {
+    const captured = await renderQueue({
+      homes: [HOME_LOCKED],
+      entries: [ENTRY, ENTRY_OTHER_HOME],
+      batchError: {
+        code: 'BATCH_WRITE_FAILED',
+        message: 'The batch could not be written completely. Retrying the batch is safe.',
+      },
+    });
+
+    clickIn(rowForName('Test Participant'), 'Present');
+    clickIn(rowForName('Second Participant'), 'Absent');
+    clickToolbar('Save Attendance');
+    await vi.waitFor(() => expect(component.eventDayError()).toContain('Retrying the batch is safe'));
+    fixture.detectChanges();
+
+    expect(captured.batchCalls()).toBe(1);
+    expect(component.eventDayUnsavedCount()).toBe(2);
+    expect(component.eventDayFailureCount()).toBe(0);
     expect(component.eventDaySuccess()).toBe('');
-    const row = component.eventDayRows().find(entry => entry.participantId === 'participant-1');
-    expect(row?.checkInStatus).toBe('NOT_REGISTERED');
+  });
+
+  it('preserves unsaved edits when the list refreshes in the background', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    clickIn(rowForName('Test Participant'), 'Present');
+    expect(component.eventDayUnsavedCount()).toBe(1);
+
+    // Another user's change arrives through a list refresh; the staged
+    // local edit must survive it untouched.
+    stubQueueBackend({
+      homes: [HOME_LOCKED],
+      entries: [ENTRY, { ...ENTRY_OTHER_HOME, checkInStatus: 'NOT_REGISTERED', version: 2 }],
+    });
+    await TestBed.inject(ParticipantEventService).loadEventDayRegistrations(undefined, true);
+    fixture.detectChanges();
+
+    expect(component.eventDayUnsavedCount()).toBe(1);
+    expect(rowForName('Test Participant').textContent).toContain('Checked in (unsaved)');
+    // The refreshed (other-user) state is visible on the untouched row.
+    expect(rowForName('Second Participant').textContent).toContain('Not registered');
+  });
+
+  it('a scope switch clears and reloads the queue instead of leaking it', async () => {
+    const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+    expect(component.eventDayEntries().length).toBe(2);
+
+    const listReadsBefore = captured.actions.filter(action => action === 'listEventDayRegistrations').length;
+
+    TestBed.inject(ProgramContextService).selectProgram('SPORTS');
+
+    // A NON-forced read after the switch must not serve the old scope's
+    // cache: the queue is dropped and re-read.
+    await TestBed.inject(ParticipantEventService).loadEventDayRegistrations();
+
+    const listReadsAfter = captured.actions.filter(action => action === 'listEventDayRegistrations').length;
+    expect(listReadsAfter).toBeGreaterThan(listReadsBefore);
+    expect(component.eventDayUnsavedCount()).toBe(0);
+  });
+
+  it('Reset Unsaved Changes restores the last backend-confirmed state', async () => {
+    const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    clickIn(rowForName('Test Participant'), 'Present');
+    clickIn(rowForName('Second Participant'), 'Absent');
+    clickToolbar('Reset Unsaved Changes');
+    fixture.detectChanges();
+
+    expect(component.eventDayUnsavedCount()).toBe(0);
+    expect(rowForName('Test Participant').textContent).toContain('Not registered');
+    expect(rowForName('Second Participant').textContent).toContain('Checked in');
+    expect(captured.batchCalls()).toBe(0);
+  });
+
+  it('Select All Present / Mark All Absent stage the filtered rows in bulk', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY, ENTRY_OTHER_HOME] });
+
+    clickToolbar('Select All Present');
+    expect(component.eventDayTotals()).toEqual({ participants: 2, present: 2, absent: 0, unsaved: 1 });
+
+    clickToolbar('Mark All Absent');
+    expect(component.eventDayTotals()).toEqual({ participants: 2, present: 0, absent: 2, unsaved: 1 });
+
+    component.setEventDayHomeFilter('home-1');
+    fixture.detectChanges();
+    clickToolbar('Mark All Absent');
+    // The bulk action touches only the filtered row; the hidden row's
+    // earlier staged change is preserved, not silently dropped.
+    expect(component.eventDayTotals().participants).toBe(1);
+    expect(component.eventDayUnsavedCount()).toBe(1);
   });
 
   it('hides the add-event action until the home sheet is locked and the check-in is done', async () => {

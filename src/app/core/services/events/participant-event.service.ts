@@ -14,11 +14,15 @@ import {
   ParticipantEvent,
   ParticipantEventSummaryEntry,
   ParticipantEventSummaryIssue,
+  SaveEventDayAttendanceBatchItem,
+  SaveEventDayAttendanceBatchResult,
+  SaveEventDayAttendanceBatchSummary,
   SourceWriteBackResult,
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
 import { ParticipantService } from '../participants/participant.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { ShelterDataService } from '../shelter-homes/shelter-data.service';
 import { EventService } from './event.service';
 
@@ -34,6 +38,14 @@ export interface RegistrationResult {
   errors: string[];
   /** Present when the backend reported whether the Event wise sheet was written. */
   sourceWriteBack?: SourceWriteBackResult;
+}
+
+export interface EventDayBatchSaveResult {
+  success: boolean;
+  errors: string[];
+  /** Per-record backend results (empty on a batch-level failure). */
+  results: SaveEventDayAttendanceBatchResult[];
+  summary: SaveEventDayAttendanceBatchSummary | null;
 }
 
 /**
@@ -52,6 +64,7 @@ export class ParticipantEventService {
   private readonly participantService = inject(ParticipantService);
   private readonly eventService = inject(EventService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
 
   /** Every registration the store currently holds. */
   readonly registrations$ = this.shelterData.registrations;
@@ -252,6 +265,13 @@ export class ParticipantEventService {
   /** True while the event-day queue is being read. */
   private readonly eventDayLoadingState = signal(false);
 
+  /**
+   * The scopeVersion the event-day queue was read under. A scope switch
+   * bumps it, so a cached queue from TEST/ZONE_1/ZONE_2 is dropped and
+   * re-read instead of leaking across the switch.
+   */
+  private eventDayScopeVersion = -1;
+
   readonly eventDayEntries = this.eventDayEntriesState.asReadonly();
   readonly eventDayLoading = this.eventDayLoadingState.asReadonly();
 
@@ -264,6 +284,15 @@ export class ParticipantEventService {
     shelterHomeId?: string,
     force = false
   ): Promise<EventDayRegistrationEntry[] | null> {
+    const scopeVersion = this.programContext.scopeVersion();
+
+    if (this.eventDayScopeVersion !== scopeVersion) {
+      // Cross-scope guard: never serve the previous scope's queue.
+      this.eventDayEntriesState.set([]);
+      this.eventDayScopeVersion = scopeVersion;
+      force = true;
+    }
+
     if (!force && this.eventDayEntriesState().length && !shelterHomeId) {
       return this.eventDayEntriesState();
     }
@@ -288,6 +317,8 @@ export class ParticipantEventService {
         }
         return entries;
       });
+
+      this.eventDayScopeVersion = scopeVersion;
 
       return entries;
     } finally {
@@ -353,6 +384,57 @@ export class ParticipantEventService {
     await this.loadEventDayRegistrations(shelterHomeId, true);
 
     return { success: true, errors: [] };
+  }
+
+  /**
+   * Saves MANY event-day check-in states in ONE batch request.
+   *
+   * The persisted state is updated ONLY from the backend-confirmed
+   * per-record results; afterwards ONLY the event-day list is re-read in
+   * the background (never the app shell, session, homes or events). A
+   * failed record leaves no state change here — the caller keeps its
+   * staged choice and may retry just the failed records. The backend
+   * upsert is keyed on participantId, so a retry never duplicates.
+   */
+  async saveEventDayAttendanceBatch(
+    items: SaveEventDayAttendanceBatchItem[]
+  ): Promise<EventDayBatchSaveResult> {
+    const response = await this.apiClient.saveEventDayAttendanceBatch({ items });
+
+    if (!response.success) {
+      // Batch-level failure: nothing was written, every staged record
+      // is still unsaved and stays retryable.
+      return { success: false, errors: [response.error.message], results: [], summary: null };
+    }
+
+    const results = response.data.results;
+    const summary = response.data.summary;
+
+    // Server-confirmed state only: a record is settled (and its state
+    // applied) when the backend CONFIRMED the write (created/updated/
+    // unchanged). A VERSION_CONFLICT result reports the real current
+    // state, so the entry is rebased and a retry can re-submit the
+    // staged choice against the fresh version. INVALID results change
+    // nothing.
+    this.eventDayEntriesState.update(current => current.map(entry => {
+      const result = results.find(candidate => candidate.participantId === entry.participantId);
+
+      if (!result || result.outcome === 'INVALID') {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        checkInStatus: result.status,
+        version: result.version,
+      };
+    }));
+
+    // Background refresh of ONLY this list. Unsaved local edits are
+    // staged outside this state, so they survive the refresh untouched.
+    void this.loadEventDayRegistrations(undefined, true);
+
+    return { success: true, errors: [], results, summary };
   }
 
   // ==========================================

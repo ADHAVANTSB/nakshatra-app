@@ -35,6 +35,11 @@ import {
   ListEventDayRegistrationsPayload,
   MarkEventDayRegistrationData,
   MarkEventDayRegistrationPayload,
+  SaveAttendanceBatchData,
+  SaveAttendanceBatchPayload,
+  SaveEventDayAttendanceBatchData,
+  SaveEventDayAttendanceBatchPayload,
+  SaveEventDayAttendanceBatchResult,
   ListDistributionTrackingData,
   ListDistributionTrackingPayload,
   SaveDistributionStatusData,
@@ -556,8 +561,38 @@ export class ApiClientService {
       : { success: false, error: { code: 'INVALID_EVENT_DAY_REGISTRATION_RESPONSE', message: 'The server returned an invalid event-day check-in response.' } };
   }
 
-  private isEventDayRegistrationEntry(value: unknown): value is EventDayRegistrationEntry {
+  /**
+   * Bulk event-day check-in save: ONE request for many records. Each
+   * record reports CREATED / UPDATED / UNCHANGED / VERSION_CONFLICT /
+   * INVALID; a batch-level failure is a normal error response and
+   * nothing was written.
+   */
+  async saveEventDayAttendanceBatch(
+    payload: SaveEventDayAttendanceBatchPayload
+  ): Promise<ApiResponse<SaveEventDayAttendanceBatchData>> {
+    const response = await this.post<SaveEventDayAttendanceBatchData, SaveEventDayAttendanceBatchPayload>(
+      'saveEventDayAttendanceBatch', payload
+    );
+    if (!response.success) return response;
+
+    const results = response.data && (response.data as { results?: unknown }).results;
+    return Array.isArray(results) && results.every(result => this.isEventDayAttendanceResult(result))
+      ? response
+      : { success: false, error: { code: 'INVALID_EVENT_DAY_BATCH_RESPONSE', message: 'The server returned an invalid event-day attendance response.' } };
+  }
+
+  private isEventDayAttendanceResult(value: unknown): value is SaveEventDayAttendanceBatchResult {
     if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Partial<SaveEventDayAttendanceBatchResult>;
+    return typeof candidate.participantId === 'string'
+      && typeof candidate.outcome === 'string'
+      && (candidate.outcome === 'CREATED' || candidate.outcome === 'UPDATED'
+        || candidate.outcome === 'UNCHANGED' || candidate.outcome === 'VERSION_CONFLICT'
+        || candidate.outcome === 'INVALID')
+      && typeof candidate.version === 'number';
+  }
+
+  private isEventDayRegistrationEntry(value: unknown): value is EventDayRegistrationEntry {    if (typeof value !== 'object' || value === null) return false;
     const candidate = value as Partial<EventDayRegistrationEntry>;
     return typeof candidate.participantId === 'string'
       && typeof candidate.shelterHomeId === 'string'
@@ -654,6 +689,26 @@ export class ApiClientService {
   }
 
   /**
+   * Bulk PER-EVENT attendance (the group team rosters): ONE request for many
+   * records. Each record reports CREATED / UPDATED / UNCHANGED /
+   * VERSION_CONFLICT / INVALID; a batch-level failure is a normal error
+   * response and nothing was written. Nothing is ever auto-marked PRESENT.
+   */
+  async saveAttendanceBatch(
+    payload: SaveAttendanceBatchPayload
+  ): Promise<ApiResponse<SaveAttendanceBatchData>> {
+    const response = await this.post<SaveAttendanceBatchData, SaveAttendanceBatchPayload>(
+      'saveAttendanceBatch', payload
+    );
+    if (!response.success) return response;
+
+    const results = response.data && (response.data as { results?: unknown }).results;
+    return Array.isArray(results)
+      ? response
+      : { success: false, error: { code: 'INVALID_ATTENDANCE_BATCH_RESPONSE', message: 'The server returned an invalid attendance batch response.' } };
+  }
+
+  /**
    * Read path for persisted attendance (backend `listAttendance`). Rows arrive
    * enriched with event/participant/home names; the normalized core record is
    * kept. The operational read never requests archived rows.
@@ -705,9 +760,12 @@ export class ApiClientService {
   }
 
   /**
-   * Persists one judge's scores for the present participants of an event.
-   * The backend rejects invalid values, scoring before criteria are supplied
-   * (CRITERIA_PENDING) and any non-PRESENT participant.
+   * Persists one judge's scores for the event's scoreable targets: the
+   * PRESENT participants of a SOLO event, or ONE entry per team of a GROUP
+   * event (never per-member rows). The backend rejects invalid values,
+   * scoring before criteria are supplied (CRITERIA_PENDING), any non-PRESENT
+   * participant and any team whose roster attendance is incomplete
+   * (TEAM_ATTENDANCE_INCOMPLETE).
    */
   saveJudgeScores(payload: SaveJudgeScoresPayload): Promise<ApiResponse<unknown>> {
     return this.post<unknown, SaveJudgeScoresPayload>('saveJudgeScores', payload);
@@ -1565,6 +1623,7 @@ export class ApiClientService {
         ? validationStatus
         : 'NOT_VALIDATED',
       version: typeof value['version'] === 'number' ? value['version'] : 1,
+      shelterHomeId: this.readString(value, 'shelterHomeId') ?? '',
       createdAt: this.readString(value, 'createdAt') ?? '',
       createdBy: this.readString(value, 'createdBy') ?? '',
       updatedAt: this.readString(value, 'updatedAt') ?? '',

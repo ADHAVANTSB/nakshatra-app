@@ -8,6 +8,7 @@ import {
   EventCategory,
   EventDayCheckInStatus,
   EventDayRegistrationEntry,
+  SaveEventDayAttendanceBatchItem,
   EventMode,
   Gender,
   Participant,
@@ -191,10 +192,23 @@ export class Participants implements OnInit {
   readonly eventDayHomeFilter = signal('');
   readonly eventDayStatusFilter = signal<EventDayCheckInStatus | ''>('');
 
-  readonly eventDayBusy = signal('');
   readonly eventDayError = signal('');
   readonly eventDaySuccess = signal('');
   readonly eventDayLoadError = signal('');
+
+  /**
+   * Staged (unsaved) Present/Absent choices keyed by participantId.
+   * Present maps to CHECKED_IN ("checked in"); Absent maps to
+   * NOT_REGISTERED ("not checked in" — the existing vocabulary, which
+   * also corrects an accidental check-in). Every toggle is LOCAL: no
+   * network call happens until Save Attendance submits ONE batch.
+   */
+  readonly eventDayPending = signal<Record<string, EventDayCheckInStatus>>({});
+
+  /** Backend reason per participant whose staged record failed to save. */
+  readonly eventDayFailures = signal<Record<string, string>>({});
+
+  readonly eventDaySaving = signal(false);
 
   readonly eventDayEntries = this.participantEventService.eventDayEntries;
   readonly eventDayLoading = this.participantEventService.eventDayLoading;
@@ -255,6 +269,58 @@ export class Participants implements OnInit {
     return entry.checkInStatus === 'CHECKED_IN' ? 'Checked in' : 'Not registered';
   }
 
+  /** Effective status: a staged (unsaved) choice wins over the saved one. */
+  eventDayStatusFor(entry: EventDayRegistrationEntry): EventDayCheckInStatus {
+    return this.eventDayPending()[entry.participantId] ?? entry.checkInStatus;
+  }
+
+  /** Row status label including the staged choice. */
+  eventDayEffectiveLabel(entry: EventDayRegistrationEntry): string {
+    const pending = this.eventDayPending()[entry.participantId];
+    const label = (pending ?? entry.checkInStatus) === 'CHECKED_IN' ? 'Checked in' : 'Not registered';
+    return pending !== undefined ? `${label} (unsaved)` : label;
+  }
+
+  eventDayHasPending(entry: EventDayRegistrationEntry): boolean {
+    return this.eventDayPending()[entry.participantId] !== undefined;
+  }
+
+  eventDayFailureFor(entry: EventDayRegistrationEntry): string {
+    return this.eventDayFailures()[entry.participantId] ?? '';
+  }
+
+  /**
+   * Totals over the rows the bulk actions apply to (the filtered rows).
+   */
+  readonly eventDayTotals = computed(() => {
+    const rows = this.eventDayRows();
+    const pending = this.eventDayPending();
+    let present = 0;
+    let absent = 0;
+    let unsaved = 0;
+
+    for (const entry of rows) {
+      const status = pending[entry.participantId] ?? entry.checkInStatus;
+      if (status === 'CHECKED_IN') {
+        present++;
+      } else {
+        absent++;
+      }
+      if (pending[entry.participantId] !== undefined) {
+        unsaved++;
+      }
+    }
+
+    return { participants: rows.length, present, absent, unsaved };
+  });
+
+  /** All staged records anywhere in the queue (not only the filtered rows). */
+  readonly eventDayUnsavedCount = computed(() => Object.keys(this.eventDayPending()).length);
+
+  readonly eventDayHasUnsaved = computed(() => this.eventDayUnsavedCount() > 0);
+
+  readonly eventDayFailureCount = computed(() => Object.keys(this.eventDayFailures()).length);
+
   setEventDayHomeFilter(value: string): void {
     this.eventDayHomeFilter.set(value);
   }
@@ -280,32 +346,178 @@ export class Participants implements OnInit {
   }
 
   /**
-   * Checks one participant in for the event day through the backend (an
-   * idempotent upsert, so a double click or retry never duplicates).
+   * Stages one Present/Absent choice. LOCAL ONLY — nothing is sent to
+   * the backend until Save Attendance. Staging the already-saved state
+   * cancels the pending change for that row. Never auto-marks anyone.
    */
-  async checkInEventDay(entry: EventDayRegistrationEntry): Promise<void> {
-    if (this.eventDayBusy()) {
+  stageEventDay(entry: EventDayRegistrationEntry, status: EventDayCheckInStatus): void {
+    if (this.eventDaySaving()) {
       return;
     }
 
-    this.eventDayBusy.set(entry.participantId);
+    this.eventDayPending.update(current => {
+      const next = { ...current };
+      if (status === entry.checkInStatus) {
+        delete next[entry.participantId];
+      } else {
+        next[entry.participantId] = status;
+      }
+      return next;
+    });
+
+    this.eventDayFailures.update(current => {
+      const next = { ...current };
+      delete next[entry.participantId];
+      return next;
+    });
+
+    this.eventDaySuccess.set('');
+    this.eventDayError.set('');
+  }
+
+  /** Explicit bulk action over the filtered rows. */
+  selectAllPresent(): void {
+    this.stageAllEventDay('CHECKED_IN');
+  }
+
+  /** Explicit bulk action over the filtered rows. */
+  markAllAbsent(): void {
+    this.stageAllEventDay('NOT_REGISTERED');
+  }
+
+  private stageAllEventDay(status: EventDayCheckInStatus): void {
+    if (this.eventDaySaving()) {
+      return;
+    }
+
+    this.eventDayPending.update(current => {
+      const next = { ...current };
+      for (const entry of this.eventDayRows()) {
+        if (status === entry.checkInStatus) {
+          delete next[entry.participantId];
+        } else {
+          next[entry.participantId] = status;
+        }
+      }
+      return next;
+    });
+
+    this.eventDayFailures.set({});
+    this.eventDaySuccess.set('');
+    this.eventDayError.set('');
+  }
+
+  /**
+   * Discards every unsaved choice; the last backend-confirmed state is
+   * restored (it is what the queue already holds).
+   */
+  resetEventDayChanges(): void {
+    if (this.eventDaySaving()) {
+      return;
+    }
+
+    this.eventDayPending.set({});
+    this.eventDayFailures.set({});
+    this.eventDaySuccess.set('');
+    this.eventDayError.set('');
+  }
+
+  /**
+   * Saves EVERY staged Present/Absent choice in ONE batch request.
+   * Successful records are settled from the backend-confirmed results
+   * and leave the staged state; failed records stay staged so a retry
+   * re-submits ONLY the failed ones.
+   */
+  async saveEventDayAttendance(): Promise<void> {
+    if (this.eventDaySaving() || !this.eventDayHasUnsaved()) {
+      return;
+    }
+
+    const entries = this.eventDayEntries();
+    const items: SaveEventDayAttendanceBatchItem[] = [];
+
+    for (const [participantId, status] of Object.entries(this.eventDayPending())) {
+      const entry = entries.find(candidate => candidate.participantId === participantId);
+
+      if (!entry) {
+        // The row left the queue (e.g. its home was unlocked); its staged
+        // choice is meaningless now and is discarded rather than sent.
+        this.eventDayPending.update(current => {
+          const next = { ...current };
+          delete next[participantId];
+          return next;
+        });
+        continue;
+      }
+
+      items.push({
+        participantId: entry.participantId,
+        shelterHomeId: entry.shelterHomeId,
+        status,
+        expectedVersion: entry.version,
+      });
+    }
+
+    if (!items.length) {
+      return;
+    }
+
+    this.eventDaySaving.set(true);
     this.eventDayError.set('');
     this.eventDaySuccess.set('');
 
     try {
-      const result = await this.participantEventService.markEventDayRegistration(
-        entry.participantId,
-        entry.shelterHomeId
-      );
+      const result = await this.participantEventService.saveEventDayAttendanceBatch(items);
 
       if (!result.success) {
-        this.eventDayError.set(result.errors[0] || 'The check-in could not be saved.');
+        // Batch-level failure: nothing was written, everything stays staged.
+        this.eventDayError.set(
+          result.errors[0] || 'The attendance could not be saved. Nothing was written.'
+        );
         return;
       }
 
-      this.eventDaySuccess.set(`${entry.fullName} is checked in for the event day.`);
+      const failures: Record<string, string> = {};
+      let savedCount = 0;
+
+      for (const record of result.results) {
+        const settled = record.outcome === 'CREATED'
+          || record.outcome === 'UPDATED'
+          || record.outcome === 'UNCHANGED';
+
+        if (settled) {
+          savedCount++;
+          this.eventDayPending.update(current => {
+            const next = { ...current };
+            delete next[record.participantId];
+            return next;
+          });
+          continue;
+        }
+
+        failures[record.participantId] = record.message
+          || (record.outcome === 'VERSION_CONFLICT'
+            ? 'Changed by someone else. Save again to overwrite with your choice.'
+            : 'This record could not be saved.');
+      }
+
+      this.eventDayFailures.set(failures);
+
+      const failureCount = Object.keys(failures).length;
+
+      this.eventDaySuccess.set(
+        `Attendance saved for ${savedCount} participant${savedCount === 1 ? '' : 's'} · ` +
+        `${failureCount} failed · ${this.eventDayUnsavedCount()} unsaved.`
+      );
+
+      if (failureCount > 0) {
+        this.eventDayError.set(
+          `${failureCount} record${failureCount === 1 ? '' : 's'} could not be saved. ` +
+          'Only those stay staged below — Save again retries just them.'
+        );
+      }
     } finally {
-      this.eventDayBusy.set('');
+      this.eventDaySaving.set(false);
     }
   }
 

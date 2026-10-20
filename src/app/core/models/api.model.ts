@@ -486,6 +486,99 @@ export interface MarkEventDayRegistrationData {
 }
 
 /* ================================================================
+   EVENT-DAY ATTENDANCE BULK SAVE (one request, many records)
+   ================================================================ */
+
+/** Per-record outcome of a bulk save. */
+export type EventDayAttendanceOutcome =
+  | 'CREATED'
+  | 'UPDATED'
+  | 'UNCHANGED'
+  | 'VERSION_CONFLICT'
+  | 'INVALID';
+
+export interface SaveEventDayAttendanceBatchItem {
+  participantId: string;
+  shelterHomeId: string;
+  /** Present = CHECKED_IN; Absent = NOT_REGISTERED (not checked in). */
+  status: EventDayCheckInStatus;
+  expectedVersion?: number;
+}
+
+export interface SaveEventDayAttendanceBatchPayload {
+  items: SaveEventDayAttendanceBatchItem[];
+}
+
+/** One per-record result. `status` is the persisted state after the batch. */
+export interface SaveEventDayAttendanceBatchResult {
+  participantId: string;
+  outcome: EventDayAttendanceOutcome;
+  code?: string;
+  message?: string;
+  status: EventDayCheckInStatus;
+  version: number;
+}
+
+export interface SaveEventDayAttendanceBatchSummary {
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  versionConflicts: number;
+  invalid: number;
+}
+
+export interface SaveEventDayAttendanceBatchData {
+  results: SaveEventDayAttendanceBatchResult[];
+  summary: SaveEventDayAttendanceBatchSummary;
+}
+
+export type AttendanceBatchOutcome =
+  | 'CREATED'
+  | 'UPDATED'
+  | 'UNCHANGED'
+  | 'VERSION_CONFLICT'
+  | 'INVALID';
+
+/**
+ * Bulk PER-EVENT attendance (the group team rosters): ONE request for many
+ * records. `status` is always explicit - unmarked is never assumed PRESENT.
+ */
+export interface SaveAttendanceBatchItem {
+  participantId: string;
+  status: AttendanceStatus;
+  expectedVersion?: number;
+}
+
+export interface SaveAttendanceBatchPayload {
+  eventId: string;
+  items: SaveAttendanceBatchItem[];
+}
+
+export interface SaveAttendanceBatchResult {
+  participantId: string;
+  outcome: AttendanceBatchOutcome;
+  code?: string;
+  message?: string;
+  status: string;
+  version: number;
+}
+
+export interface SaveAttendanceBatchSummary {
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  versionConflicts: number;
+  invalid: number;
+}
+
+export interface SaveAttendanceBatchData {
+  results: SaveAttendanceBatchResult[];
+  summary: SaveAttendanceBatchSummary;
+}
+
+/* ================================================================
    TEAMS
    ================================================================ */
 
@@ -628,6 +721,8 @@ export interface ListResultRow {
   eventName: string;
   category: string;
   mode: string;
+  /** PARTICIPANT (individual) or TEAM (group) result entity. */
+  scoringEntity?: string;
   participantId?: string;
   teamId?: string;
   participantCode?: string;
@@ -743,8 +838,13 @@ export interface JudgeCriterionScore {
   score: number;
 }
 
+export type ScoringEntity = 'PARTICIPANT' | 'TEAM';
+
 export interface SaveJudgeScoreEntry {
-  participantId: string;
+  /** SOLO events: the scored participant. */
+  participantId?: string;
+  /** GROUP events: the scored team (ONE entry per judge + team). */
+  teamId?: string;
   /** CRITERIA mode: one score per official criterion. */
   criteria?: JudgeCriterionScore[];
   /** SINGLE mode: one event-level overall score (rounds are one entry). */
@@ -766,7 +866,12 @@ export interface JudgeScoreRow {
   id: string;
   eventId: string;
   judgeId: string;
+  /** Empty on TEAM rows: a team id is never smuggled into participantId. */
   participantId: string;
+  /** Explicit scoring entity (legacy rows read back as PARTICIPANT). */
+  scoringEntity: ScoringEntity;
+  /** Set on TEAM rows (GROUP events); empty on PARTICIPANT rows. */
+  teamId: string;
   /** CRITERIA mode: one score per official criterion. */
   criteria: JudgeCriterionScore[];
   /** SINGLE mode: the event-level overall score (the criteria sum in CRITERIA mode). */

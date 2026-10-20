@@ -8,7 +8,10 @@ import {
   EventScoringMode,
   JudgeScoreRow,
   Participant,
+  SaveAttendanceBatchItem,
   SaveJudgeScoreEntry,
+  Team,
+  TeamMember,
 } from '../../core/models';
 import { EVENT_FINALIZED_MESSAGE, persistenceUnconfirmed } from '../../core/permissions/friendly-error';
 import { canEditModule } from '../../core/permissions/role-matrix';
@@ -24,6 +27,7 @@ import {
   ScoringService,
 } from '../../core/services/scoring/scoring.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
+import { TeamService } from '../../core/services/teams/team.service';
 import { formatScore } from '../../shared/score-format';
 
 /** The exact inline rejection text for any value outside 0–10 in 0.5 steps. */
@@ -34,6 +38,29 @@ export const JUDGES_INCOMPLETE_MESSAGE =
   'Every judge must submit final scores before this event can be finalized.';
 
 export type ScoreValidation = { empty: true } | { value: number } | { error: string };
+
+/** One roster member of a group team with its explicit attendance status. */
+export interface TeamRosterEntry {
+  participantId: string;
+  name: string;
+  /** PRESENT, ABSENT, or '' = unmarked (never assumed PRESENT). */
+  attendanceStatus: string;
+}
+
+/** One GROUP scoring row: the team, its roster state and its scoreability. */
+export interface TeamScoringRow {
+  teamId: string;
+  teamName: string;
+  homeName: string;
+  roster: TeamRosterEntry[];
+  registeredCount: number;
+  presentCount: number;
+  absentCount: number;
+  unmarkedCount: number;
+  missingAttendance: Array<{ participantId: string; name: string }>;
+  scoreable: boolean;
+  blockedReason: string;
+}
 
 /**
  * Validates one raw score input: empty, a 0–10 value in 0.5 steps, or the
@@ -93,6 +120,7 @@ export class Scoring implements OnInit {
   private readonly registrationService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
   private readonly attendanceService = inject(AttendanceService);
+  private readonly teamService = inject(TeamService);
   private readonly scoringService = inject(ScoringService);
   private readonly shelterData = inject(ShelterDataService);
   /** Re-runs the full store load after a failed page load (Retry button). */
@@ -260,8 +288,10 @@ export class Scoring implements OnInit {
     this.registrationError.set('');
 
     // PRESENT attendees are the scoring targets — the persisted attendance
-    // must be read alongside the registrations.
+    // must be read alongside the registrations. GROUP events score their
+    // team rosters, so the teams load with the event too.
     void this.attendanceService.loadEventAttendance(eventId);
+    void this.teamService.loadTeams(eventId);
 
     const result = await this.registrationService.loadEventRegistrations(eventId);
 
@@ -451,7 +481,7 @@ export class Scoring implements OnInit {
     const rows = (response.data.scores ?? []).filter(row => row.eventId === eventId);
     this.savedRows.update(saved => {
       const next = { ...saved };
-      for (const row of rows) next[`${row.judgeId}|${row.participantId}`] = row;
+      for (const row of rows) next[`${row.judgeId}|${row.teamId || row.participantId}`] = row;
       return next;
     });
     this.mergeSavedJudgeScores(rows);
@@ -471,8 +501,9 @@ export class Scoring implements OnInit {
           saved.set('Overall', String(row.score));
         }
         const merged = { ...(next[row.judgeId] ?? {}) };
+        const rowKey = row.teamId || row.participantId;
         for (const field of fields) {
-          const key = `${row.participantId}|${field}`;
+          const key = `${rowKey}|${field}`;
           if (this.editedCells().has(`${row.judgeId}|${key}`)) continue;
           merged[key] = saved.get(field) ?? '';
         }
@@ -505,7 +536,8 @@ export class Scoring implements OnInit {
 
   /**
    * True when the judging record is complete: every active judge has a
-   * SUBMITTED row for every scoreable (PRESENT) participant. Unknown reads
+   * SUBMITTED row for every scoreable row (PRESENT participant on
+   * individual events, eligible team on group events). Unknown reads
    * never block here — the backend stays the authority and rejects an
    * incomplete finalize with JUDGE_SCORES_INCOMPLETE.
    */
@@ -513,18 +545,18 @@ export class Scoring implements OnInit {
     if (this.judgesState() !== 'LOADED' || this.judgeScoresState() !== 'LOADED') return true;
     const active = this.activeJudges();
     if (!active.length) return true;
-    return this.judgeRows().every(row =>
-      active.every(judge => this.savedRows()[`${judge.id}|${row.id}`]?.status === 'SUBMITTED'));
+    return this.workspaceRowKeys().every(rowKey =>
+      active.every(judge => this.savedRows()[`${judge.id}|${rowKey}`]?.status === 'SUBMITTED'));
   });
 
-  /** Judge → participant pairs still missing a submission, in plain words. */
+  /** Judge → target pairs still missing a submission, in plain words. */
   readonly missingJudgeSubmissions = computed(() => {
     const missing: string[] = [];
     if (this.judgesState() !== 'LOADED' || this.judgeScoresState() !== 'LOADED') return missing;
-    for (const row of this.judgeRows()) {
+    for (const rowKey of this.workspaceRowKeys()) {
       for (const judge of this.activeJudges()) {
-        if (this.savedRows()[`${judge.id}|${row.id}`]?.status !== 'SUBMITTED') {
-          missing.push(`${judge.name || `Judge ${judge.judgeNumber}`} → ${row.fullName}`);
+        if (this.savedRows()[`${judge.id}|${rowKey}`]?.status !== 'SUBMITTED') {
+          missing.push(`${judge.name || `Judge ${judge.judgeNumber}`} → ${this.rowLabel(rowKey)}`);
         }
       }
     }
@@ -564,6 +596,95 @@ export class Scoring implements OnInit {
 
   /** Registered participants excluded from judge scoring (absent or unmarked). */
   readonly judgeExcludedCount = computed(() => this.registeredParticipants().length - this.judgeRows().length);
+
+  /* ------------------------------------------------------------------
+     GROUP workspace: ONE scoring row per eligible home/team
+     ------------------------------------------------------------------ */
+
+  /** GROUP events are scored at team level; SOLO events per participant. */
+  readonly isGroupEvent = computed(() => this.selectedEvent()?.mode === 'GROUP');
+
+  /**
+   * One scoring row per team of the event with its full roster state:
+   * registered / present / absent counts and the exact members whose
+   * attendance record is missing. A team is scoreable only with complete
+   * explicit attendance and at least one PRESENT member — unmarked is
+   * never assumed PRESENT.
+   */
+  readonly teamRows = computed<TeamScoringRow[]>(() => {
+    const event = this.selectedEvent();
+    if (!event) return [];
+
+    return this.teamService.getTeamsByEvent(event.id).map(team => {
+      const roster = this.teamService.getMembers(team.id).map(member => {
+        const participant = this.participantService.getParticipantById(member.participantId);
+        return {
+          participantId: member.participantId,
+          name: participant?.fullName ?? member.participantId,
+          attendanceStatus:
+            this.attendanceService.getByParticipantEvent(member.participantId, event.id)?.status ?? '',
+        };
+      });
+
+      const missingAttendance = roster
+        .filter(entry => !entry.attendanceStatus)
+        .map(entry => ({ participantId: entry.participantId, name: entry.name }));
+      const presentCount = roster.filter(entry => entry.attendanceStatus === 'PRESENT').length;
+      const absentCount = roster.filter(entry => entry.attendanceStatus === 'ABSENT').length;
+
+      const blockedReason = !roster.length
+        ? 'This team has no active members to score.'
+        : missingAttendance.length
+          ? `Attendance is not marked for: ${missingAttendance.map(entry => entry.name).join(', ')}.`
+          : presentCount === 0
+            ? 'No member is marked PRESENT — there is nothing to score.'
+            : '';
+
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        homeName: this.shelterData.getHomeById(
+          team.shelterHomeId ?? this.rosterHomeId(team.id)
+        )?.homeName ?? '',
+        roster,
+        registeredCount: roster.length,
+        presentCount,
+        absentCount,
+        unmarkedCount: roster.length - presentCount - absentCount,
+        missingAttendance,
+        scoreable: !blockedReason,
+        blockedReason,
+      };
+    });
+  });
+
+  /** Legacy teams carry no home id: fall back to the roster's home. */
+  private rosterHomeId(teamId: string): string {
+    const first = this.teamService.getMembers(teamId)[0];
+    return first
+      ? (this.participantService.getParticipantById(first.participantId)?.shelterHomeId ?? '')
+      : '';
+  }
+
+  /** Every scoring row of the workspace: participants (SOLO) or teams (GROUP). */
+  readonly workspaceRowKeys = computed<string[]>(() =>
+    this.isGroupEvent()
+      ? this.teamRows().map(row => row.teamId)
+      : this.judgeRows().map(row => row.id));
+
+  /** Rows the selected judge may actually score (blocked teams are excluded). */
+  readonly eligibleRowKeys = computed<string[]>(() =>
+    this.isGroupEvent()
+      ? this.teamRows().filter(row => row.scoreable).map(row => row.teamId)
+      : this.judgeRows().map(row => row.id));
+
+  /** Display label of one scoring row (participant name or team name). */
+  rowLabel(rowKey: string): string {
+    if (!this.isGroupEvent()) {
+      return this.judgeRows().find(row => row.id === rowKey)?.fullName ?? rowKey;
+    }
+    return this.teamRows().find(row => row.teamId === rowKey)?.teamName ?? rowKey;
+  }
 
   /** Raw judge score inputs, keyed judgeId → `${participantId}|${field}`. */
   readonly judgeDrafts = signal<Record<string, Record<string, string>>>({});
@@ -630,16 +751,16 @@ export class Scoring implements OnInit {
 
   /** Per-criterion (column) totals for the selected judge. */
   judgeColumnTotal(field: string): number {
-    return this.judgeRows().reduce((sum, row) => {
-      const result = validateJudgeScore(this.judgeScoreValue(row.id, field));
+    return this.eligibleRowKeys().reduce((sum, rowKey) => {
+      const result = validateJudgeScore(this.judgeScoreValue(rowKey, field));
       return sum + ('value' in result ? result.value : 0);
     }, 0);
   }
 
-  /** The selected judge's grand total across all present participants. */
+  /** The selected judge's grand total across all scoreable rows. */
   judgeOverallTotal(): number {
-    return this.judgeRows().reduce((sum, row) => {
-      const values = this.judgeRowValues(row.id);
+    return this.eligibleRowKeys().reduce((sum, rowKey) => {
+      const values = this.judgeRowValues(rowKey);
       return sum + values.reduce<number>((rowSum, value) => rowSum + ('value' in value ? value.value : 0), 0);
     }, 0);
   }
@@ -698,16 +819,21 @@ export class Scoring implements OnInit {
      Judge save draft / submit final (saveJudgeScores)
      ------------------------------------------------------------------ */
 
-  /** Built entries for the selected judge; invalid values block the save. */
+  /**
+   * Built entries for the selected judge; invalid values block the save.
+   * SOLO events build per-participant entries; GROUP events build ONE
+   * team entry per eligible team (never per-member rows).
+   */
   private buildJudgeEntries(): { entries: SaveJudgeScoreEntry[]; invalid: number; scored: number } {
     const judgeId = this.selectedJudgeId();
     const fields = this.judgeScoreFields();
     const entries: SaveJudgeScoreEntry[] = [];
     let invalid = 0;
     let scored = 0;
+    const group = this.isGroupEvent();
 
-    for (const row of this.judgeRows()) {
-      const values = fields.map(field => ({ field, result: validateJudgeScore(this.judgeScoreValue(row.id, field)) }));
+    for (const rowKey of this.eligibleRowKeys()) {
+      const values = fields.map(field => ({ field, result: validateJudgeScore(this.judgeScoreValue(rowKey, field)) }));
       invalid += values.filter(value => 'error' in value.result).length;
 
       const entered = values.filter(
@@ -718,17 +844,18 @@ export class Scoring implements OnInit {
 
       // Rows read back from listJudgeScores carry a version; sending it lets the
       // backend reject a stale write with VERSION_CONFLICT.
-      const expectedVersion = this.savedRows()[`${judgeId}|${row.id}`]?.version;
+      const expectedVersion = this.savedRows()[`${judgeId}|${rowKey}`]?.version;
+      const target = group ? { teamId: rowKey } : { participantId: rowKey };
 
       if (this.scoringMode() === 'CRITERIA') {
         entries.push({
-          participantId: row.id,
+          ...target,
           criteria: entered.map(value => ({ name: value.field, score: value.result.value })),
           ...(expectedVersion !== undefined ? { expectedVersion } : {}),
         });
       } else {
         entries.push({
-          participantId: row.id,
+          ...target,
           score: entered[0].result.value,
           ...(expectedVersion !== undefined ? { expectedVersion } : {}),
         });
@@ -771,7 +898,8 @@ export class Scoring implements OnInit {
       return;
     }
 
-    const total = this.judgeRows().length;
+    const total = this.eligibleRowKeys().length;
+    const targets = this.isGroupEvent() ? 'eligible teams' : 'present participants';
     if (!entries.length) {
       this.notify.error('Enter at least one score.', `${judge.name} has no scores to save.`);
       return;
@@ -779,8 +907,8 @@ export class Scoring implements OnInit {
 
     if (action === 'SUBMITTED' && scored < total) {
       this.notify.error(
-        'Every present participant needs a score before submitting.',
-        `${scored} of ${total} present participants fully scored.`
+        `Every ${this.isGroupEvent() ? 'eligible team' : 'present participant'} needs a score before submitting.`,
+        `${scored} of ${total} ${targets} fully scored.`
       );
       return;
     }
@@ -818,7 +946,7 @@ export class Scoring implements OnInit {
 
       this.notify.success(
         action === 'SUBMITTED' ? 'Final scores submitted.' : 'Draft scores saved.',
-        `${scored} of ${total} present participants scored by ${judge.name}.`
+        `${scored} of ${total} ${targets} scored by ${judge.name}.`
       );
 
       // Everything entered for THIS judge is now stored: clear only its edit
@@ -834,6 +962,94 @@ export class Scoring implements OnInit {
       await this.loadJudgeScores(event.id);
     } finally {
       this.judgeScoringBusy.set(false);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     Bulk per-event attendance for the group rosters (saveAttendanceBatch)
+     ------------------------------------------------------------------ */
+
+  /** Queued (unsaved) attendance marks, keyed participantId. */
+  readonly pendingAttendance = signal<Record<string, 'PRESENT' | 'ABSENT'>>({});
+
+  /** True while the bulk attendance save is in flight. */
+  readonly attendanceBusy = signal(false);
+
+  readonly pendingAttendanceCount = computed(() => Object.keys(this.pendingAttendance()).length);
+
+  /** Queues one member's explicit mark (never auto-PRESENT). */
+  queueAttendance(participantId: string, status: 'PRESENT' | 'ABSENT'): void {
+    this.pendingAttendance.update(pending => ({ ...pending, [participantId]: status }));
+  }
+
+  /** Queues the same explicit mark for every roster member of one team. */
+  queueTeamAttendance(teamId: string, status: 'PRESENT' | 'ABSENT'): void {
+    const row = this.teamRows().find(item => item.teamId === teamId);
+    if (!row) return;
+    this.pendingAttendance.update(pending => {
+      const next = { ...pending };
+      for (const entry of row.roster) next[entry.participantId] = status;
+      return next;
+    });
+  }
+
+  /** The mark shown for a member: the queued one, else the persisted one. */
+  rosterAttendanceStatus(entry: TeamRosterEntry): string {
+    return this.pendingAttendance()[entry.participantId] ?? entry.attendanceStatus;
+  }
+
+  /**
+   * Saves every queued mark in ONE batch request. The eligible-team list
+   * refreshes from the backend after the save, so a team's scoreability
+   * always reflects what was actually persisted.
+   */
+  async saveAttendanceBatch(): Promise<void> {
+    const event = this.selectedEvent();
+    if (!event || this.attendanceBusy()) return;
+
+    const items: SaveAttendanceBatchItem[] = Object.entries(this.pendingAttendance()).map(
+      ([participantId, status]) => ({ participantId, status })
+    );
+
+    if (!items.length) return;
+
+    this.attendanceBusy.set(true);
+    try {
+      const response = await this.apiClient.saveAttendanceBatch({ eventId: event.id, items });
+
+      if (!response.success) {
+        this.notify.error(
+          'Attendance could not be saved.',
+          `${response.error.message} Nothing was written. (code: ${response.error.code})`
+        );
+        return;
+      }
+
+      const { results, summary } = response.data;
+      const failed = results.filter(result =>
+        result.outcome === 'INVALID' || result.outcome === 'VERSION_CONFLICT');
+
+      // Re-read what the backend actually holds so the team rows and their
+      // scoreability are exactly the persisted state.
+      this.pendingAttendance.set({});
+      await this.attendanceService.loadEventAttendance(event.id, true);
+      await this.teamService.loadTeams(event.id, true);
+
+      if (failed.length) {
+        this.notify.error(
+          'Some attendance marks were not saved.',
+          `${summary.created + summary.updated} saved, ${failed.length} rejected — ` +
+            failed.map(result => `${result.participantId}: ${result.message ?? result.outcome}`).join('; ')
+        );
+        return;
+      }
+
+      this.notify.success(
+        'Attendance saved.',
+        `${summary.created} created, ${summary.updated} updated, ${summary.unchanged} unchanged.`
+      );
+    } finally {
+      this.attendanceBusy.set(false);
     }
   }
 }

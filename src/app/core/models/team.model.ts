@@ -21,6 +21,9 @@ export interface Team {
 
   validationStatus: ValidationStatus;
 
+  /** The home this team represents (blank on legacy rows: inferred from the roster). */
+  shelterHomeId?: string;
+
   version: number;
 
   createdAt: string;
