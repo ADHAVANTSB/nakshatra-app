@@ -322,6 +322,8 @@ test.describe('group team-scoring journey', () => {
     await expect(teamBRow.locator('input.score-input')).toBeDisabled();
 
     // ---- the scoreable team's input is enabled and saves ONE team entry ----
+    // LIT-005 Quiz (SJ + J) is SINGLE: exactly one overall input per team.
+    await expect(teamARow.locator('input.score-input')).toHaveCount(1);
     await expect(teamARow.locator('input.score-input')).toBeEnabled();
     await teamARow.locator('input.score-input').fill('8');
     await page.getByRole('button', { name: 'Save draft' }).click();

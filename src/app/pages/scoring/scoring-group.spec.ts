@@ -15,7 +15,19 @@ import { Scoring } from './scoring';
  * drafts after refresh and saves roster attendance in one batch.
  */
 
-const EVENT = {
+interface ScoringEventFixture {
+  id: string;
+  eventCode: string;
+  name: string;
+  category: string;
+  mode: string;
+  status: string;
+  eligibleLevels: string[];
+  scoringMode: 'CRITERIA' | 'SINGLE' | 'PENDING';
+  criteria: Array<{ name: string; max: number }>;
+}
+
+const EVENT_DEFAULTS: ScoringEventFixture = {
   id: 'event-g1',
   eventCode: 'LIT-005',
   name: 'Quiz (SJ + J)',
@@ -26,6 +38,9 @@ const EVENT = {
   scoringMode: 'SINGLE',
   criteria: [],
 };
+
+/** Swapped per test (the GROUP+CRITERIA test installs ART-002 Rangoli). */
+let EVENT: ScoringEventFixture = { ...EVENT_DEFAULTS };
 
 const HOME = {
   id: 'home-1',
@@ -218,6 +233,7 @@ describe('Scoring — GROUP events score at team level', () => {
     calls = [];
     unmarkedIds = [];
     judgeScores = [];
+    EVENT = { ...EVENT_DEFAULTS };
 
     await TestBed.configureTestingModule({
       imports: [Scoring],
@@ -364,5 +380,51 @@ describe('Scoring — GROUP events score at team level', () => {
     // The team state is re-read from the backend after the save.
     expect(calls.filter(call => call.action === 'listAttendance').length).toBeGreaterThanOrEqual(2);
     expect(calls.filter(call => call.action === 'listTeams').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a GROUP event on CRITERIA rules builds ONE team entry with the exact official criteria (ART-002 Rangoli)', async () => {
+    EVENT = {
+      ...EVENT_DEFAULTS,
+      eventCode: 'ART-002',
+      name: 'Rangoli',
+      scoringMode: 'CRITERIA',
+      criteria: [
+        { name: 'Creativity', max: 10 },
+        { name: 'Relevancy to topic', max: 10 },
+        { name: 'Usage of colours', max: 10 },
+        { name: 'Perfection', max: 10 },
+      ],
+    };
+    await loadWorkspace();
+
+    component.selectedJudgeId.set('judge-1');
+    expect(component.judgeScoreFields()).toEqual([
+      'Creativity', 'Relevancy to topic', 'Usage of colours', 'Perfection',
+    ]);
+
+    component.setJudgeScore(TEAM.id, 'Creativity', '5');
+    component.setJudgeScore(TEAM.id, 'Relevancy to topic', '5.5');
+    component.setJudgeScore(TEAM.id, 'Usage of colours', '6');
+    component.setJudgeScore(TEAM.id, 'Perfection', '6');
+    // The judge total is the criteria sum (22.5 of the 40-point maximum).
+    expect(component.judgeRowTotal(TEAM.id)).toEqual({ label: '22.5 / 40', tone: 'complete' });
+
+    await component.submitJudgeFinal();
+
+    const save = calls.find(call => call.action === 'saveJudgeScores');
+    expect(save).toBeDefined();
+
+    // ONE entry per judge per team — never per-member rows — carrying the
+    // exact official criteria; the judge total is their sum.
+    const entries = save?.payload['entries'] as Array<Record<string, unknown>>;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]['teamId']).toBe(TEAM.id);
+    expect(entries[0]['participantId']).toBeUndefined();
+
+    const criteria = entries[0]['criteria'] as Array<{ name: string; score: number }>;
+    expect(criteria.map(criterion => criterion.name)).toEqual([
+      'Creativity', 'Relevancy to topic', 'Usage of colours', 'Perfection',
+    ]);
+    expect(criteria.reduce((total, criterion) => total + criterion.score, 0)).toBe(22.5);
   });
 });

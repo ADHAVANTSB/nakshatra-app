@@ -351,6 +351,13 @@ test.describe('judging workflow journey', () => {
     await expect(page.getByRole('button', { name: /Judge 1 — Ram/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Judge 2 — Shyam/ })).toBeVisible();
 
+    // ---- the criteria panel shows the exact official ART-001 set ----
+    const criteriaChips = page.locator('.criteria-chip');
+    await expect(criteriaChips).toHaveCount(CRITERIA_NAMES.length);
+    for (const name of CRITERIA_NAMES) {
+      await expect(criteriaChips.filter({ hasText: name })).toHaveCount(1);
+    }
+
     // ---- Judge 1 scores the PRESENT participants and saves a DRAFT ----
     await fillJudgeGrid(page, [8, 7, 6]);
     await page.getByRole('button', { name: 'Save draft' }).click();

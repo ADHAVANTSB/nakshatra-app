@@ -522,15 +522,45 @@ describe('Scoring — judge scoring workspace', () => {
   });
 
   it('PENDING events show the precise pending placeholder (which event, what is needed) and no score inputs', async () => {
-    await render({ ...WORKSPACE_EVENT, eventCode: 'CUL-002', name: 'Skit (Tamil)', scoringMode: 'PENDING' });
+    // Only an eventCode outside EVENT_SCORING_RULES is PENDING now that every
+    // official catalogue event carries its official judging rule.
+    await render({ ...WORKSPACE_EVENT, eventCode: 'LIT-999', name: 'Unmapped Event', scoringMode: 'PENDING' });
 
     const host = fixture.nativeElement as HTMLElement;
     // WHICH event + WHAT is missing + WHERE the authorized administrator supplies it.
-    expect(host.textContent).toContain('Official judging criteria for CUL-002 Skit (Tamil) have not been supplied');
+    expect(host.textContent).toContain('Official judging criteria for LIT-999 Unmapped Event have not been supplied');
     expect(host.textContent).toContain('EVENT_SCORING_RULES');
     expect(host.textContent).toContain('CRITERIA list');
     expect(host.textContent).toContain('SINGLE overall score');
     expect(scoreInputs().length).toBe(0);
+  });
+
+  it('CUL-002 Skit (Tamil) renders one column per official criterion (exact official list)', async () => {
+    await render({
+      ...WORKSPACE_EVENT,
+      eventCode: 'CUL-002',
+      name: 'Skit (Tamil)',
+      scoringMode: 'CRITERIA',
+      criteria: [
+        { name: 'Concept & Creativity', max: 10 },
+        { name: 'Coordination', max: 10 },
+        { name: 'Dialogue Delivery', max: 10 },
+        { name: 'Acting and Expressions', max: 10 },
+        { name: 'Usage of Stage,costume, props', max: 10 },
+      ],
+    });
+
+    const host = fixture.nativeElement as HTMLElement;
+    for (const name of [
+      'Concept & Creativity',
+      'Coordination',
+      'Dialogue Delivery',
+      'Acting and Expressions',
+      'Usage of Stage,costume, props',
+    ]) {
+      expect(host.textContent).toContain(name);
+    }
+    expect(scoreInputs().length).toBe(5);
   });
 
   it('SINGLE events show one overall column per judge with the rounds note', async () => {
@@ -833,7 +863,7 @@ describe('Scoring — judge scoring workspace', () => {
   });
 
   it('keeps PENDING events unfinalizable and judge-score free', async () => {
-    await render({ ...WORKSPACE_EVENT, scoringMode: 'PENDING' });
+    await render({ ...WORKSPACE_EVENT, eventCode: 'LIT-999', name: 'Unmapped Event', scoringMode: 'PENDING' });
 
     const notify = TestBed.inject(NotificationService);
     const warningSpy = vi.spyOn(notify, 'warning');
@@ -841,7 +871,7 @@ describe('Scoring — judge scoring workspace', () => {
 
     // Precise and actionable: WHICH event, WHAT is missing, WHERE it is supplied.
     expect(warningSpy).toHaveBeenCalledWith(
-      'Official judging criteria for E-01 Clay Modelling have not been supplied',
+      'Official judging criteria for LIT-999 Unmapped Event have not been supplied',
       expect.stringContaining('EVENT_SCORING_RULES'),
     );
     expect(requests.some(request => request.action === 'finalizeEvent')).toBe(false);
