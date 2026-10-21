@@ -15,6 +15,8 @@ export interface ShelterHome {
   address: string;
   contactName?: string;
   contactPhone: string;
+  /** Alternate phone in its own field; never merged into contactPhone. */
+  contactAlternatePhone?: string;
   spreadsheetName?: string;
   /** Backend-supplied link that opens the connected sheet. Never built locally. */
   spreadsheetOpenUrl?: string;

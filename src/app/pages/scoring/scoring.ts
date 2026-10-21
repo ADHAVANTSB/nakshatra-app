@@ -13,7 +13,12 @@ import {
   Team,
   TeamMember,
 } from '../../core/models';
-import { EVENT_FINALIZED_MESSAGE, persistenceUnconfirmed } from '../../core/permissions/friendly-error';
+import {
+  EVENT_FINALIZED_MESSAGE,
+  pendingCriteriaHeading,
+  pendingCriteriaMessage,
+  persistenceUnconfirmed,
+} from '../../core/permissions/friendly-error';
 import { canEditModule } from '../../core/permissions/role-matrix';
 import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
@@ -185,6 +190,10 @@ export class Scoring implements OnInit {
   /** The finalization lock message shown in place of the write controls. */
   readonly finalizedMessage = EVENT_FINALIZED_MESSAGE;
 
+  /** Precise pending-criteria copy: which event, what is missing, where it is supplied. */
+  readonly pendingCriteriaHeading = pendingCriteriaHeading;
+  readonly pendingCriteriaMessage = pendingCriteriaMessage;
+
   /**
    * Official finalization (the ONE official finalization path): the backend
    * gates it on complete judge submissions (JUDGE_SCORES_INCOMPLETE) and
@@ -197,8 +206,8 @@ export class Scoring implements OnInit {
     // PENDING events cannot be finalized: no official criteria, no official results.
     if (this.scoringMode() === 'PENDING') {
       this.notify.warning(
-        'This event cannot be finalized yet.',
-        'Official judging criteria pending — finalization opens once the criteria are supplied and verified.'
+        pendingCriteriaHeading(event.eventCode, event.name),
+        pendingCriteriaMessage(event.eventCode, event.name)
       );
       return;
     }
@@ -386,6 +395,10 @@ export class Scoring implements OnInit {
 
   /** Judging is the Scoring module for the approved role matrix. */
   readonly canEdit = computed(() => canEditModule(this.auth.currentUser()?.role, 'SCORING'));
+
+  /** Attendance edits are their own domain (Liaison/Events/Support/Admin). */
+  readonly canEditAttendance = computed(() =>
+    canEditModule(this.auth.currentUser()?.role, 'ATTENDANCE'));
 
   readonly scoringMode = computed<EventScoringMode>(() => this.selectedEvent()?.scoringMode ?? 'PENDING');
 
@@ -810,10 +823,13 @@ export class Scoring implements OnInit {
     this.scoringMode() === 'PENDING' || !this.allJudgesSubmitted());
 
   /** Plain-English reason finalization is blocked; empty when it is not. */
-  readonly finalizeBlockedMessage = computed(() =>
-    this.scoringMode() === 'PENDING'
-      ? 'Official judging criteria pending — finalization opens once the criteria are supplied and verified.'
-      : JUDGES_INCOMPLETE_MESSAGE);
+  readonly finalizeBlockedMessage = computed(() => {
+    if (this.scoringMode() !== 'PENDING') return JUDGES_INCOMPLETE_MESSAGE;
+    const event = this.selectedEvent();
+    return event
+      ? pendingCriteriaMessage(event.eventCode, event.name)
+      : JUDGES_INCOMPLETE_MESSAGE;
+  });
 
   /* ------------------------------------------------------------------
      Judge save draft / submit final (saveJudgeScores)
@@ -882,7 +898,10 @@ export class Scoring implements OnInit {
 
     if (this.scoringMode() === 'PENDING') {
       // Belt-and-braces: the grid renders no inputs in PENDING mode.
-      this.notify.warning('Scoring is closed for this event.', 'Official judging criteria pending — scoring opens once supplied.');
+      this.notify.warning(
+        pendingCriteriaHeading(event.eventCode, event.name),
+        pendingCriteriaMessage(event.eventCode, event.name)
+      );
       return;
     }
 

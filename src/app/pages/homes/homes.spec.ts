@@ -571,6 +571,39 @@ describe('Homes — source metadata preview', () => {
     expect(component.previewError()).toBe('');
   });
 
+  it('keeps the alternate phone in its own field (never the primary phone)', async () => {
+    stubBackend({
+      ...PREVIEW_SUCCESS,
+      metadata: {
+        homeName: 'Anbu Illam',
+        address: '12 Lake View Road',
+        contactPhone: '+91 98400 12345',
+        contactAlternatePhone: '+91 98400 67890',
+      },
+      metadataMissing: ['contactName'],
+    });
+
+    await component.previewSheetMetadata();
+
+    const preview = component.sheetPreview();
+    expect(preview?.metadata['contactPhone']).toBe('+91 98400 12345');
+    expect(preview?.metadata['contactAlternatePhone']).toBe('+91 98400 67890');
+    // A provided alternate phone is not "missing".
+    expect(component.previewMissingLabels()).not.toContain('Alternate phone');
+  });
+
+  it('reports a genuinely missing alternate phone and never fabricates one', async () => {
+    stubBackend({
+      ...PREVIEW_SUCCESS,
+      metadataMissing: ['contactName', 'contactAlternatePhone'],
+    });
+
+    await component.previewSheetMetadata();
+
+    expect(component.previewMissingLabels()).toContain('Alternate phone');
+    expect(component.sheetPreview()?.metadata['contactAlternatePhone']).toBeUndefined();
+  });
+
   it('never presents a caretaker value as the official home contact', async () => {
     stubBackend({
       ...PREVIEW_SUCCESS,

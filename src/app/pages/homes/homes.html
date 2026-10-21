@@ -241,6 +241,10 @@
                 <dd>{{ preview.metadata.contactPhone || 'Not found in the sheet' }}</dd>
               </div>
               <div>
+                <dt>Alternate phone</dt>
+                <dd>{{ preview.metadata.contactAlternatePhone || 'Not found in the sheet' }}</dd>
+              </div>
+              <div>
                 <dt>Participants detected</dt>
                 <dd>
                   {{
@@ -474,6 +478,10 @@
               <div>
                 <dt>Contact Phone</dt>
                 <dd>{{ home.contactPhone || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Alternate Phone</dt>
+                <dd>{{ home.contactAlternatePhone || 'Not recorded' }}</dd>
               </div>
               <div>
                 <dt>Status</dt>

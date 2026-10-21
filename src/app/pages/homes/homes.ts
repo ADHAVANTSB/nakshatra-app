@@ -733,6 +733,7 @@ export class Homes implements OnInit {
       address: 'Address',
       contactName: 'Contact name',
       contactPhone: 'Contact phone',
+      contactAlternatePhone: 'Alternate phone',
     };
     return (this.sheetPreview()?.metadataMissing ?? [])
       .filter(field => Object.prototype.hasOwnProperty.call(labels, field))

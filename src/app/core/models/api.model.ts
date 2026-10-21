@@ -216,7 +216,12 @@ export interface PreviewShelterSheetPayload {
 export type MetadataContactSource = 'ABSENT' | 'CARETAKER_LABEL' | 'EXPLICIT_CONTACT_LABEL';
 
 /** Metadata fields the backend looks for: a subset appears in `metadataMissing`. */
-export type ShelterSheetMetadataField = 'homeName' | 'address' | 'contactName' | 'contactPhone';
+export type ShelterSheetMetadataField =
+  | 'homeName'
+  | 'address'
+  | 'contactName'
+  | 'contactPhone'
+  | 'contactAlternatePhone';
 
 /** One caretaker detected in the source workbook's caretaker section. */
 export interface SourceSheetCaretaker {
@@ -310,6 +315,54 @@ export interface GetValidationResultsData {
   validationResults: ValidationResult[];
 }
 
+/* ================================================================
+   VALIDATION & WARNING CENTRE (getValidationSummary)
+   ================================================================ */
+
+export type ValidationWarningSeverity = 'ERROR' | 'WARNING' | 'INFO';
+
+/** Navigation hint; the UI turns it into a link where practical. */
+export interface ValidationWarningLink {
+  page: 'homes' | 'participants' | 'events' | 'attendance' | 'scoring' | 'judging' | 'results' | 'settings';
+  filter: string;
+}
+
+/**
+ * One warning from the validation centre. Display labels only (names
+ * and codes) - the backend never exposes internal ids here.
+ */
+export interface ValidationWarning {
+  severity: ValidationWarningSeverity;
+  code: string;
+  entityType: string;
+  entityLabel: string;
+  relatedLabel?: string;
+  message: string;
+  field?: string;
+  /** Source-sheet row number where practical; never an internal id. */
+  rowReference?: number | null;
+  suggestedAction: string;
+  resolved: boolean;
+  link?: ValidationWarningLink;
+}
+
+/**
+ * Per-check query status. FAILED means the check could NOT run - it
+ * never means "checked and clean".
+ */
+export interface ValidationSummarySource {
+  name: string;
+  status: 'OK' | 'FAILED';
+  detail?: string;
+}
+
+export interface GetValidationSummaryData {
+  warnings: ValidationWarning[];
+  sources: ValidationSummarySource[];
+  /** True only when every check ran successfully. */
+  complete: boolean;
+}
+
 export interface ListParticipantsData {
   participants: Participant[];
 }
@@ -321,6 +374,8 @@ export interface ConnectedShelterHome {
   address: string;
   contactName: string;
   contactPhone: string;
+  /** Alternate phone in its own field; never merged into contactPhone. */
+  contactAlternatePhone?: string;
   status: string;
   version: number;
   spreadsheetName?: string;
@@ -449,19 +504,49 @@ export interface EventDayRegistrationRecord {
   version: number;
 }
 
+/** One event the participant is actually registered for (registration records only). */
+export interface EventDayRegisteredEvent {
+  eventId: string;
+  eventName: string;
+  /** Backend event category ('' when the event master row is missing). */
+  category: string;
+}
+
+/**
+ * Persisted per-event competition attendance for one registered event.
+ * `status` is '' until a real PRESENT/ABSENT mark exists - never assumed.
+ */
+export interface EventDayCompetitionAttendance {
+  eventId: string;
+  eventName: string;
+  status: '' | 'PRESENT' | 'ABSENT';
+}
+
 /** One row of the event-day check-in queue (read response). */
 export interface EventDayRegistrationEntry {
   participantId: string;
   participantCode: string;
   fullName: string;
   level: string;
+  /**
+   * Participation facts. Optional because a lean backend row may omit
+   * them; the UI shows them when present and never fabricates a value.
+   */
+  gender?: string;
+  age?: number | null;
+  standard?: number | null;
   shelterHomeId: string;
   homeName: string;
+  homeCode?: string;
   /** Authoritative home-sheet state from the backend (LOCKED only). */
   homeSheetStatus: HomeSheetStatus;
   checkInStatus: EventDayCheckInStatus;
   checkedInAt: string;
   checkedInBy: string;
+  /** Real registered events; unregistered events are absent, never invented. */
+  registeredEvents?: EventDayRegisteredEvent[];
+  /** Competition attendance for the registered events ('' = not marked). */
+  competitionAttendance?: EventDayCompetitionAttendance[];
   version: number;
 }
 

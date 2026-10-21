@@ -521,12 +521,15 @@ describe('Scoring — judge scoring workspace', () => {
     TestBed.inject(AuthService).logout();
   });
 
-  it('PENDING events show the pending placeholder and no score inputs', async () => {
-    await render({ ...WORKSPACE_EVENT, scoringMode: 'PENDING' });
+  it('PENDING events show the precise pending placeholder (which event, what is needed) and no score inputs', async () => {
+    await render({ ...WORKSPACE_EVENT, eventCode: 'CUL-002', name: 'Skit (Tamil)', scoringMode: 'PENDING' });
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.textContent).toContain('Official judging criteria pending');
-    expect(host.textContent).toContain('scoring opens once supplied');
+    // WHICH event + WHAT is missing + WHERE the authorized administrator supplies it.
+    expect(host.textContent).toContain('Official judging criteria for CUL-002 Skit (Tamil) have not been supplied');
+    expect(host.textContent).toContain('EVENT_SCORING_RULES');
+    expect(host.textContent).toContain('CRITERIA list');
+    expect(host.textContent).toContain('SINGLE overall score');
     expect(scoreInputs().length).toBe(0);
   });
 
@@ -836,7 +839,11 @@ describe('Scoring — judge scoring workspace', () => {
     const warningSpy = vi.spyOn(notify, 'warning');
     await component.finalizeEventAction();
 
-    expect(warningSpy).toHaveBeenCalledWith('This event cannot be finalized yet.', expect.stringContaining('pending'));
+    // Precise and actionable: WHICH event, WHAT is missing, WHERE it is supplied.
+    expect(warningSpy).toHaveBeenCalledWith(
+      'Official judging criteria for E-01 Clay Modelling have not been supplied',
+      expect.stringContaining('EVENT_SCORING_RULES'),
+    );
     expect(requests.some(request => request.action === 'finalizeEvent')).toBe(false);
   });
 });

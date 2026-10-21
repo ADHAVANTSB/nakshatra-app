@@ -110,9 +110,8 @@
         </div>
       } @else {
         <div class="placeholder">
-          <strong>Official judging criteria pending — scoring opens once supplied</strong>
-          No criteria are invented for {{ event.name }}. Judge scoring and finalization stay closed until the
-          official criteria are supplied and verified.
+          <strong>{{ pendingCriteriaHeading(event.eventCode, event.name) }}</strong>
+          {{ pendingCriteriaMessage(event.eventCode, event.name) }}
         </div>
       }
     </section>
@@ -162,9 +161,8 @@
 
         @if (scoringMode() === 'PENDING') {
           <div class="placeholder">
-            <strong>Official judging criteria pending — scoring opens once supplied</strong>
-            No score fields are invented for {{ event.name }}. The judge grid opens once the official criteria are
-            supplied and verified.
+            <strong>{{ pendingCriteriaHeading(event.eventCode, event.name) }}</strong>
+            {{ pendingCriteriaMessage(event.eventCode, event.name) }}
           </div>
         } @else if (selectedJudge(); as judge) {
 
@@ -207,7 +205,7 @@
                     type="button"
                     class="primary-action"
                     data-testid="save-attendance-batch"
-                    [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                    [disabled]="!canEditAttendance() || attendanceBusy() || eventFinalized()"
                     (click)="saveAttendanceBatch()">
                     {{ attendanceBusy() ? 'Saving…' : 'Save attendance' }}
                   </button>
@@ -265,7 +263,7 @@
                                 type="button"
                                 class="link-button"
                                 [class.selected]="rosterAttendanceStatus(entry) === 'PRESENT'"
-                                [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                                [disabled]="!canEditAttendance() || attendanceBusy() || eventFinalized()"
                                 (click)="queueAttendance(entry.participantId, 'PRESENT')">
                                 Present
                               </button>
@@ -273,7 +271,7 @@
                                 type="button"
                                 class="link-button"
                                 [class.selected]="rosterAttendanceStatus(entry) === 'ABSENT'"
-                                [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                                [disabled]="!canEditAttendance() || attendanceBusy() || eventFinalized()"
                                 (click)="queueAttendance(entry.participantId, 'ABSENT')">
                                 Absent
                               </button>
@@ -286,14 +284,14 @@
                       <button
                         type="button"
                         class="secondary-action"
-                        [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                        [disabled]="!canEditAttendance() || attendanceBusy() || eventFinalized()"
                         (click)="queueTeamAttendance(row.teamId, 'PRESENT')">
                         Mark all present
                       </button>
                       <button
                         type="button"
                         class="secondary-action"
-                        [disabled]="!canEdit() || attendanceBusy() || eventFinalized()"
+                        [disabled]="!canEditAttendance() || attendanceBusy() || eventFinalized()"
                         (click)="queueTeamAttendance(row.teamId, 'ABSENT')">
                         Mark all absent
                       </button>

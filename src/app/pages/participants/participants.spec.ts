@@ -2,7 +2,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { Participant, ParticipantEvent, Event } from '../../core/models';
+import { ApplicationRole, Participant, ParticipantEvent, Event } from '../../core/models';
 import { AuthService } from '../../core/services/auth/auth.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
@@ -1225,6 +1225,8 @@ describe('Participants — event-day check-in', () => {
   interface QueueStubOptions {
     homes: unknown[];
     entries: unknown[];
+    /** Role shown by the session; defaults to ADMIN. */
+    role?: ApplicationRole;
     markError?: { code: string; message: string };
     /** A batch-level failure: nothing is written, everything stays staged. */
     batchError?: { code: string; message: string };
@@ -1368,7 +1370,7 @@ describe('Participants — event-day check-in', () => {
       googleId: 'spec-google-id',
       email: 'tester@nakshatra.local',
       displayName: 'Test User',
-      role: 'ADMIN',
+      role: options.role ?? 'ADMIN',
       accessStatus: 'APPROVED',
       version: 1,
     });
@@ -1730,5 +1732,105 @@ describe('Participants — event-day check-in', () => {
     await store.loadParticipantEvents('participant-1', true);
     expect(component.eventDayStatusLabel(PARTICIPANT as unknown as Participant))
       .toBe('Registered for competition');
+  });
+
+  it('shows real participation facts in the queue rows, not just the lock text', async () => {
+    const entry = {
+      ...ENTRY,
+      homeCode: 'AAI01',
+      gender: 'FEMALE',
+      age: 9,
+      standard: 2,
+      registeredEvents: [
+        { eventId: 'event-1', eventName: 'Clay Modelling', category: 'ARTS' },
+        { eventId: 'event-2', eventName: 'Quiz', category: 'LITERARY' },
+      ],
+      competitionAttendance: [
+        { eventId: 'event-1', eventName: 'Clay Modelling', status: 'PRESENT' },
+        { eventId: 'event-2', eventName: 'Quiz', status: '' },
+      ],
+    };
+    await renderQueue({ homes: [HOME_LOCKED], entries: [entry] });
+
+    const text = pageText();
+    // Compact participation summary from REAL registration records.
+    expect(text).toContain('2 events registered (Arts 1, Literary 1)');
+    expect(text).toContain('Competition attendance: 1 present, 0 absent, 1 not marked');
+    // Expandable details: registered events + per-event attendance.
+    expect(text).toContain('Clay Modelling');
+    expect(text).toContain('Quiz');
+    // Identity: name + code, home name + code, demographics, level.
+    expect(text).toContain('P-0001');
+    expect(text).toContain('AAI01');
+    expect(text).toContain('Age 9');
+    // The home lock is a prerequisite indicator only, never the
+    // participation content itself.
+    expect(text).toContain('Home sheet confirmed and locked');
+  });
+
+  it('never fabricates registrations or attendance in the queue rows', async () => {
+    await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY] });
+
+    const text = pageText();
+    expect(text).toContain('No competition events registered');
+    expect(text).toContain('No competition attendance marked');
+  });
+
+  it('lets a Liaison correct attendance after a save (re-editable, batched)', async () => {
+    const stub = await renderQueue({
+      role: 'LIAISON_TEAM',
+      homes: [HOME_LOCKED],
+      entries: [ENTRY],
+    });
+
+    component.stageEventDay(component.eventDayEntries()[0], 'CHECKED_IN');
+    fixture.detectChanges();
+    await component.saveEventDayAttendance();
+    fixture.detectChanges();
+
+    expect(stub.batchCalls()).toBe(1);
+    expect(stub.batchPayloads[0]).toEqual({
+      items: [
+        { participantId: 'participant-1', shelterHomeId: 'home-1', status: 'CHECKED_IN', expectedVersion: 0 },
+      ],
+    });
+
+    // Post-save correction on the SAME saved row: Present -> Absent.
+    component.stageEventDay(component.eventDayEntries()[0], 'NOT_REGISTERED');
+    fixture.detectChanges();
+    await component.saveEventDayAttendance();
+    fixture.detectChanges();
+
+    expect(stub.batchCalls()).toBe(2);
+    expect(stub.batchPayloads[1]).toEqual({
+      items: [
+        { participantId: 'participant-1', shelterHomeId: 'home-1', status: 'NOT_REGISTERED', expectedVersion: 1 },
+      ],
+    });
+    expect(pageText()).toContain('Attendance saved for 1 participant');
+    expect(component.eventDayHasUnsaved()).toBe(false);
+  });
+
+  it('keeps staged rows and shows the backend reason when a save is rejected', async () => {
+    await renderQueue({
+      role: 'LIAISON_TEAM',
+      homes: [HOME_LOCKED],
+      entries: [ENTRY],
+      batchError: {
+        code: 'AUTHORIZATION_FAILED',
+        message: "This action isn't available for your role.",
+      },
+    });
+
+    component.stageEventDay(component.eventDayEntries()[0], 'CHECKED_IN');
+    fixture.detectChanges();
+    await component.saveEventDayAttendance();
+    fixture.detectChanges();
+
+    expect(pageText()).toContain('Attendance was not fully saved.');
+    expect(pageText()).toContain('available for your role');
+    // Nothing was written: the choice stays staged for a retry.
+    expect(component.eventDayHasUnsaved()).toBe(true);
+    expect(component.eventDayPending()['participant-1']).toBe('CHECKED_IN');
   });
 });

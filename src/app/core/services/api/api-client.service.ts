@@ -62,6 +62,7 @@ import {
   GetParticipantData,
   GetReportsData,
   GetValidationResultsData,
+  GetValidationSummaryData,
   DeleteShelterHomeData,
   DeleteShelterHomePayload,
   ShelterHomeDeletionPreviewData,
@@ -426,6 +427,11 @@ export class ApiClientService {
 
   getValidationResults(payload: ImportStatusPayload): Promise<ApiResponse<GetValidationResultsData>> {
     return this.post<GetValidationResultsData, ImportStatusPayload>('getValidationResults', payload);
+  }
+
+  /** Validation & Warning Centre aggregate (read-only). */
+  getValidationSummary(): Promise<ApiResponse<GetValidationSummaryData>> {
+    return this.post<GetValidationSummaryData, Record<string, never>>('getValidationSummary', {});
   }
 
   listParticipants(shelterHomeId: string): Promise<ApiResponse<ListParticipantsData>> {

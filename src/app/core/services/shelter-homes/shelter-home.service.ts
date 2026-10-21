@@ -45,6 +45,7 @@ export class ShelterHomeService {
       address: home.address,
       contactName: home.contactName,
       contactPhone: home.contactPhone,
+      contactAlternatePhone: home.contactAlternatePhone,
       spreadsheetName: home.spreadsheetName,
       spreadsheetOpenUrl: home.spreadsheetOpenUrl,
       sourceStatus: home.sourceStatus,

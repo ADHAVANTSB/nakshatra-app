@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { EventJudge, EventScoringMode, JudgeScoreRow } from '../../core/models';
-import { persistenceUnconfirmed } from '../../core/permissions/friendly-error';
+import { pendingCriteriaHeading, pendingCriteriaMessage, persistenceUnconfirmed } from '../../core/permissions/friendly-error';
 import { canEditModule } from '../../core/permissions/role-matrix';
 import { ApiClientService } from '../../core/services/api/api-client.service';
 import { AuthService } from '../../core/services/auth/auth.service';
@@ -297,6 +297,10 @@ export class Judging implements OnInit {
      ------------------------------------------------------------------ */
 
   readonly scoringMode = computed<EventScoringMode>(() => this.selectedEvent()?.scoringMode ?? 'PENDING');
+
+  /** Precise pending-criteria copy: which event, what is missing, where it is supplied. */
+  readonly pendingCriteriaHeading = pendingCriteriaHeading;
+  readonly pendingCriteriaMessage = pendingCriteriaMessage;
 
   /** The one-column label for SINGLE events, one column per criterion otherwise. */
   readonly scoreFields = computed<string[]>(() => {

@@ -598,3 +598,30 @@ tr:focus-visible {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Event-day participation facts (queue rows) */
+.cell-participation small {
+  display: block;
+}
+
+.cell-participation .prerequisite-note {
+  color: #6b6257;
+}
+
+.participation-details {
+  margin-top: 0.35rem;
+}
+
+.participation-details summary {
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.participation-details .detail-group {
+  margin: 0.35rem 0 0 0.25rem;
+}
+
+.participation-details ul {
+  margin: 0.15rem 0 0.35rem;
+  padding-left: 1.1rem;
+}

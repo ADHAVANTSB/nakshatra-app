@@ -195,9 +195,8 @@
         </div>
       } @else {
         <div class="placeholder">
-          <strong>Official judging criteria pending — to be supplied and verified</strong>
-          No criteria are invented for {{ event.name }}. Scoring opens once the official criteria are supplied and
-          verified.
+          <strong>{{ pendingCriteriaHeading(event.eventCode, event.name) }}</strong>
+          {{ pendingCriteriaMessage(event.eventCode, event.name) }}
         </div>
       }
 

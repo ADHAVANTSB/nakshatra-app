@@ -4,7 +4,9 @@ import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Attendance as AttendanceRecord, AttendanceStatus, Event, Participant, Team } from '../../core/models';
 import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
+import { canEditModule } from '../../core/permissions/role-matrix';
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
+import { AuthService } from '../../core/services/auth/auth.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
@@ -51,6 +53,7 @@ interface Attendee {
 })
 export class Attendance implements OnInit {
   private readonly attendanceService = inject(AttendanceService);
+  private readonly auth = inject(AuthService);
   private readonly eventService = inject(EventService);
   private readonly registrationService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
@@ -111,6 +114,14 @@ export class Attendance implements OnInit {
   /** A finalized event locks attendance: mutation controls are removed. */
   readonly eventFinalized = computed(() =>
     this.scoringService.isEventFinalized(this.selectedEventId()));
+
+  /**
+   * Role gate for the attendance write controls. The backend authorizes
+   * every write regardless; this only hides the controls so view-only
+   * roles see the banner instead of rejected saves.
+   */
+  readonly canEdit = computed(() =>
+    canEditModule(this.auth.currentUser()?.role, 'ATTENDANCE'));
 
   /** The finalization lock message shown in place of the write controls. */
   readonly finalizedMessage = EVENT_FINALIZED_MESSAGE;

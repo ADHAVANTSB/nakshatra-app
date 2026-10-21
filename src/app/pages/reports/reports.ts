@@ -1,8 +1,16 @@
 import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 
-import { EventCategory, EventStatus, ReportScopePayload } from '../../core/models';
+import {
+  EventCategory,
+  EventStatus,
+  ReportScopePayload,
+  ValidationSummarySource,
+  ValidationWarning,
+} from '../../core/models';
+import { ApiClientService } from '../../core/services/api/api-client.service';
 import {
   AttendanceSummary,
   CertificateSummary,
@@ -14,7 +22,7 @@ import {
 } from '../../core/services/reports/report.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 
-type ReportTab = 'SUMMARY' | 'HOMES' | 'EVENTS' | 'PARTICIPANTS';
+type ReportTab = 'SUMMARY' | 'HOMES' | 'EVENTS' | 'PARTICIPANTS' | 'WARNINGS';
 
 /**
  * What a rows tab renders:
@@ -57,6 +65,8 @@ const NO_CERTIFICATES: CertificateSummary = { generated: null, issued: null };
 export class Reports implements OnInit {
   private readonly reportService = inject(ReportService);
   private readonly shelterData = inject(ShelterDataService);
+  private readonly apiClient = inject(ApiClientService);
+  private readonly router = inject(Router);
 
   readonly tab = signal<ReportTab>('SUMMARY');
   readonly category = signal<EventCategory | ''>('');
@@ -194,8 +204,105 @@ export class Reports implements OnInit {
     this.reload();
   }
 
+  /* ---------------- VALIDATION & WARNING CENTRE ---------------- */
+
+  /**
+   * Warning-centre state. The read is one backend request that
+   * aggregates every check; `sources` keeps each check's own query
+   * status so an empty list is never mistaken for "no problems" when a
+   * check could not run.
+   */
+  readonly warningsState = signal<'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'>('IDLE');
+  readonly warnings = signal<ValidationWarning[]>([]);
+  readonly warningSources = signal<ValidationSummarySource[]>([]);
+  /** True only when every check ran; false means "some checks could not run". */
+  readonly warningsComplete = signal(true);
+  readonly warningsError = signal('');
+
+  readonly warningSeverityFilter = signal<'' | 'ERROR' | 'WARNING' | 'INFO'>('');
+
+  readonly warningRows = computed(() => {
+    const severity = this.warningSeverityFilter();
+    return this.warnings().filter(warning => !severity || warning.severity === severity);
+  });
+
+  readonly warningCounts = computed(() => {
+    const counts = { ERROR: 0, WARNING: 0, INFO: 0 };
+    for (const warning of this.warnings()) {
+      counts[warning.severity]++;
+    }
+    return counts;
+  });
+
+  readonly failedWarningSources = computed(() =>
+    this.warningSources().filter(source => source.status !== 'OK'));
+
+  async loadWarnings(force = false): Promise<void> {
+    if (this.warningsState() === 'LOADING') {
+      return;
+    }
+
+    if (!force && this.warningsState() === 'LOADED') {
+      return;
+    }
+
+    this.warningsState.set('LOADING');
+    this.warningsError.set('');
+
+    const response = await this.apiClient.getValidationSummary();
+
+    if (!response.success) {
+      this.warningsState.set('ERROR');
+      this.warningsError.set(response.error.message);
+      return;
+    }
+
+    this.warnings.set(response.data.warnings ?? []);
+    this.warningSources.set(response.data.sources ?? []);
+    this.warningsComplete.set(response.data.complete !== false);
+    this.warningsState.set('LOADED');
+  }
+
+  retryWarnings(): void {
+    void this.loadWarnings(true);
+  }
+
+  setWarningSeverityFilter(value: '' | 'ERROR' | 'WARNING' | 'INFO'): void {
+    this.warningSeverityFilter.set(value);
+  }
+
+  /** Plain-language label for one check's status. */
+  warningSourceLabel(source: ValidationSummarySource): string {
+    return source.status === 'OK' ? 'Checked' : 'Could not check';
+  }
+
+  /**
+   * Navigates to the surface that fixes the warning. Only the page
+   * route and a readable search filter are used - internal ids never
+   * appear in a warning link.
+   */
+  openWarning(warning: ValidationWarning): void {
+    const link = warning.link;
+
+    if (!link || !link.page) {
+      return;
+    }
+
+    if (link.page === 'participants' && link.filter) {
+      void this.router.navigate(['/participants'], { queryParams: { q: link.filter } });
+      return;
+    }
+
+    void this.router.navigate(['/' + link.page]);
+  }
+
   /** Re-reads what the active tab shows, bypassing the scope cache. */
   reload(): void {
+    if (this.tab() === 'WARNINGS') {
+      void this.loadWarnings(true);
+      return;
+    }
+
     if (this.tab() === 'SUMMARY') {
       void this.reportService.getBackendSummary();
     } else {
@@ -279,6 +386,11 @@ export class Reports implements OnInit {
    * on Retry/Reload; rows are deduplicated by scope in the service.
    */
   private ensureTabData(): void {
+    if (this.tab() === 'WARNINGS') {
+      void this.loadWarnings();
+      return;
+    }
+
     if (this.tab() === 'SUMMARY') {
       if (this.reportService.summaryState().status === 'IDLE') {
         void this.reportService.getBackendSummary();

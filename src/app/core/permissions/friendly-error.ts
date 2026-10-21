@@ -18,6 +18,26 @@ export interface FriendlyError {
 export const EVENT_FINALIZED_MESSAGE =
   'This event has been finalized. Attendance and scores are locked.';
 
+/**
+ * Precise, actionable copy for an event whose official judging criteria
+ * have not been supplied: WHICH event (code + name), exactly WHAT is
+ * missing, and WHERE an authorized administrator supplies it (the
+ * EVENT_SCORING_RULES configuration entry, in either accepted format:
+ * a CRITERIA list or a SINGLE overall score per judge). Nothing is
+ * invented for such an event - scoring stays closed.
+ */
+export function pendingCriteriaHeading(eventCode: string, eventName: string): string {
+  return `Official judging criteria for ${eventCode} ${eventName} have not been supplied`;
+}
+
+export function pendingCriteriaMessage(eventCode: string, eventName: string): string {
+  return (
+    `What is needed: an authorized administrator supplies the EVENT_SCORING_RULES configuration entry for ${eventCode} ` +
+    '- either a CRITERIA list (named criteria, 0-10 each) or a SINGLE overall score per judge. ' +
+    `No criteria are invented for ${eventName}: judge scoring and finalization open once that entry exists.`
+  );
+}
+
 const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
   // Role restrictions: never offer Retry — retrying cannot succeed.
   AUTHORIZATION_FAILED: {
@@ -59,7 +79,7 @@ const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
 
   // Judging workflow rule rejections: retrying the same request cannot succeed.
   CRITERIA_PENDING: {
-    message: 'Official judging criteria are still pending for this event. Scoring opens once the criteria are supplied and verified.',
+    message: 'Official judging criteria for this event have not been supplied. An authorized administrator supplies them in the EVENT_SCORING_RULES configuration entry - either a CRITERIA list (named criteria, 0-10 each) or a SINGLE overall score per judge. Scoring opens once that entry exists.',
     retryable: false,
   },
   JUDGES_LOCKED_AFTER_SCORING: {

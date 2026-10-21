@@ -11,11 +11,13 @@ describe('canEditModule (approved role permission table)', () => {
     }
   });
 
-  it('limits Liaison to Homes and Participants edits', () => {
+  it('limits Liaison to Homes, Participants and Attendance edits', () => {
     expect(canEditModule('LIAISON_TEAM', 'HOMES')).toBe(true);
     expect(canEditModule('LIAISON_TEAM', 'PARTICIPANTS')).toBe(true);
     expect(canEditModule('LIAISON_TEAM', 'SCORING')).toBe(false);
-    expect(canEditModule('LIAISON_TEAM', 'ATTENDANCE')).toBe(false);
+    // Approved operational requirement: liaison may edit competition
+    // attendance (incl. batch saves and post-save corrections).
+    expect(canEditModule('LIAISON_TEAM', 'ATTENDANCE')).toBe(true);
   });
 
   it('limits Events to Attendance and Scoring edits', () => {
@@ -29,6 +31,9 @@ describe('canEditModule (approved role permission table)', () => {
     expect(canEditModule('CERTIFICATE_TEAM', 'RESULT_APPROVAL')).toBe(true);
     expect(canEditModule('CERTIFICATE_TEAM', 'CERTIFICATES')).toBe(false);
     expect(canEditModule('CERTIFICATE_TEAM', 'SCORING')).toBe(false);
+    // CERTIFICATE_TEAM must never gain attendance-editing rights.
+    expect(canEditModule('CERTIFICATE_TEAM', 'ATTENDANCE')).toBe(false);
+    expect(canEditModule('CERTIFICATE_TEAM', 'PARTICIPANTS')).toBe(false);
   });
 
   it('fails closed for missing or unknown roles', () => {

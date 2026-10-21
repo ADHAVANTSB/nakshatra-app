@@ -7,6 +7,7 @@ import {
   Event,
   EventCategory,
   EventDayCheckInStatus,
+  EventDayRegisteredEvent,
   EventDayRegistrationEntry,
   SaveEventDayAttendanceBatchItem,
   EventMode,
@@ -31,7 +32,7 @@ import { ShelterDataService } from '../../core/services/shelter-homes/shelter-da
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { AuthService } from '../../core/services/auth/auth.service';
 import { ScoringService } from '../../core/services/scoring/scoring.service';
-import { NAKSHATRA_EVENT_RULES } from '../../core/constants/nakshatra-rules';
+import { EVENT_CATEGORY_LABELS, NAKSHATRA_EVENT_RULES } from '../../core/constants/nakshatra-rules';
 import { canEditRegistrations } from '../../core/permissions/role-matrix';
 import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
 
@@ -287,6 +288,102 @@ export class Participants implements OnInit {
 
   eventDayFailureFor(entry: EventDayRegistrationEntry): string {
     return this.eventDayFailures()[entry.participantId] ?? '';
+  }
+
+  // ---------------------------------------------------------
+  // EVENT-DAY PARTICIPATION FACTS (queue rows)
+  // ---------------------------------------------------------
+  //
+  // Every value below is rendered from the backend's participation
+  // facts: real registration records only, and a competition attendance
+  // status only where a real PRESENT/ABSENT mark exists.
+
+  /** Display label for the participant level code. */
+  eventDayLevelLabel(entry: EventDayRegistrationEntry): string {
+    return entry.level ? entry.level.replace(/_/g, ' ') : 'No level';
+  }
+
+  /** Display label for the participant gender. */
+  eventDayGenderLabel(entry: EventDayRegistrationEntry): string {
+    if (entry.gender === 'MALE') return 'Male';
+    if (entry.gender === 'FEMALE') return 'Female';
+    return 'Not recorded';
+  }
+
+  /** Registered events grouped under the canonical category order. */
+  eventDayEventGroups(entry: EventDayRegistrationEntry): Array<{
+    category: string;
+    label: string;
+    events: EventDayRegisteredEvent[];
+  }> {
+    const byCategory = new Map<string, EventDayRegisteredEvent[]>();
+
+    for (const event of entry.registeredEvents ?? []) {
+      const key = event.category || 'OTHER';
+      const list = byCategory.get(key) ?? [];
+      list.push(event);
+      byCategory.set(key, list);
+    }
+
+    const ordered = [
+      ...REGISTRATION_CATEGORY_ORDER.filter(category => byCategory.has(category)),
+      ...[...byCategory.keys()].filter(
+        category => !REGISTRATION_CATEGORY_ORDER.includes(category as EventCategory),
+      ),
+    ];
+
+    return ordered.map(category => ({
+      category,
+      label: EVENT_CATEGORY_LABELS[category as EventCategory] ?? category,
+      events: byCategory.get(category) ?? [],
+    }));
+  }
+
+  /** Compact participation summary: how many events, grouped per category. */
+  eventDayParticipationSummary(entry: EventDayRegistrationEntry): string {
+    const events = entry.registeredEvents ?? [];
+
+    if (!events.length) {
+      return 'No competition events registered';
+    }
+
+    const parts = REGISTRATION_CATEGORY_ORDER.map(category => {
+      const count = events.filter(event => event.category === category).length;
+      return count > 0
+        ? `${EVENT_CATEGORY_LABELS[category]} ${count}`
+        : null;
+    }).filter(part => part !== null);
+
+    return `${events.length} event${events.length === 1 ? '' : 's'} registered (${parts.join(', ')})`;
+  }
+
+  /** Compact competition-attendance summary over the registered events. */
+  eventDayCompetitionSummary(entry: EventDayRegistrationEntry): string {
+    const rows = entry.competitionAttendance ?? [];
+
+    if (!rows.length) {
+      return 'No competition attendance marked';
+    }
+
+    const present = rows.filter(row => row.status === 'PRESENT').length;
+    const absent = rows.filter(row => row.status === 'ABSENT').length;
+    const unmarked = rows.length - present - absent;
+
+    return `Competition attendance: ${present} present, ${absent} absent, ${unmarked} not marked`;
+  }
+
+  /** Per-event competition attendance label ('Not marked' is a real state). */
+  eventDayCompetitionLabel(
+    entry: EventDayRegistrationEntry,
+    eventId: string,
+  ): string {
+    const row = (entry.competitionAttendance ?? []).find(
+      item => item.eventId === eventId,
+    );
+
+    if (row?.status === 'PRESENT') return 'Present';
+    if (row?.status === 'ABSENT') return 'Absent';
+    return 'Not marked';
   }
 
   /**
@@ -1085,6 +1182,12 @@ export class Participants implements OnInit {
     // A participantId query param deep-links straight into the detail panel.
     this.route.queryParamMap.subscribe(params => {
       this.selectedHomeId.set(params.get('shelterHomeId') ?? params.get('homeId'));
+
+      // Readable search filter (e.g. from the warning centre links).
+      const search = params.get('q');
+      if (search) {
+        this.search.set(search);
+      }
 
       const participantId = params.get('participantId');
 

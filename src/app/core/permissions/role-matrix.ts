@@ -25,7 +25,10 @@ export type PermissionRole = 'ADMIN' | 'SUPPORT' | 'EVENTS_TEAM' | 'LIAISON_TEAM
 
 /** Modules each non-admin role may edit (everything else is view-only). */
 const EDITABLE: Record<Exclude<PermissionRole, 'ADMIN' | 'SUPPORT'>, PermissionSection[]> = {
-  LIAISON_TEAM: ['HOMES', 'PARTICIPANTS'],
+  // Liaison also edits attendance (event-day check-in and competition
+  // attendance corrections) per the approved operational requirement;
+  // scoring, results and certificates stay view-only for this role.
+  LIAISON_TEAM: ['HOMES', 'PARTICIPANTS', 'ATTENDANCE'],
   EVENTS_TEAM: ['ATTENDANCE', 'SCORING'],
   // Physical distribution of medals/certificates is edited by the
   // certificates role (plus Support/Admin) per the approved matrix.

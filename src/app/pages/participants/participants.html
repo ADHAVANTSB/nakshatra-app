@@ -796,7 +796,7 @@
                 <tr>
                   <th>Participant</th>
                   <th>Shelter home</th>
-                  <th>Eligibility</th>
+                  <th>Participation</th>
                   <th>Status</th>
                   @if (canManageRegistrations()) {
                     <th>Attendance</th>
@@ -812,10 +812,38 @@
                     </td>
                     <td class="cell-home">
                       <strong>{{ entry.homeName }}</strong>
+                      @if (entry.homeCode) {
+                        <small>{{ entry.homeCode }}</small>
+                      }
                     </td>
-                    <td>
-                      {{ entry.level }}
-                      <small>Home sheet confirmed and locked</small>
+                    <td class="cell-participation">
+                      <strong>{{ eventDayLevelLabel(entry) }}</strong>
+                      <small>
+                        {{ eventDayGenderLabel(entry) }} - Age {{ entry.age ?? 'Not recorded' }}
+                        - Std {{ entry.standard ?? 'Not recorded' }}
+                      </small>
+                      <small>{{ eventDayParticipationSummary(entry) }}</small>
+                      <small>{{ eventDayCompetitionSummary(entry) }}</small>
+                      <small class="prerequisite-note">Home sheet confirmed and locked</small>
+                      <details class="participation-details">
+                        <summary>Participation details</summary>
+                        @for (group of eventDayEventGroups(entry); track group.category) {
+                          <div class="detail-group">
+                            <strong>{{ group.label }}</strong>
+                            <ul>
+                              @for (event of group.events; track event.eventId) {
+                                <li>
+                                  {{ event.eventName || 'Event name not available' }}
+                                  - {{ eventDayCompetitionLabel(entry, event.eventId) }}
+                                </li>
+                              }
+                            </ul>
+                          </div>
+                        }
+                        @if ((entry.registeredEvents ?? []).length === 0) {
+                          <p class="panel-note">No competition events are registered for this participant.</p>
+                        }
+                      </details>
                     </td>
                     <td>
                       <strong>{{ eventDayEffectiveLabel(entry) }}</strong>

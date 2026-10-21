@@ -26,6 +26,7 @@
     <button type="button" [class.active]="tab() === 'HOMES'" (click)="setTab('HOMES')">Homes</button>
     <button type="button" [class.active]="tab() === 'EVENTS'" (click)="setTab('EVENTS')">Events</button>
     <button type="button" [class.active]="tab() === 'PARTICIPANTS'" (click)="setTab('PARTICIPANTS')">Participants</button>
+    <button type="button" [class.active]="tab() === 'WARNINGS'" (click)="setTab('WARNINGS')">Warnings</button>
   </div>
 
   <!-- FILTERS -->
@@ -279,7 +280,7 @@
       </div>
     }
 
-  } @else {
+  } @else if (tab() === 'PARTICIPANTS') {
 
     <!-- =========================================================
          PARTICIPANTS
@@ -359,6 +360,114 @@
         </table>
         <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
       </div>
+    }
+  } @else {
+
+    <!-- =========================================================
+         VALIDATION & WARNING CENTRE
+         ========================================================= -->
+    @if (warningsState() === 'LOADING' && warnings().length === 0) {
+      <div class="empty-state" role="status">
+        <h3>Checking for warnings...</h3>
+      </div>
+    } @else if (warningsState() === 'ERROR') {
+      <div class="empty-state" role="alert">
+        <h3>The warnings could not be read.</h3>
+        <p>{{ warningsError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="retryWarnings()">Retry</button></p>
+      </div>
+    } @else {
+      @if (!warningsComplete()) {
+        <div class="empty-state" role="alert">
+          <h3>Some checks could not run.</h3>
+          <p>
+            This list may be incomplete: a check that could not run is not the
+            same as a check that found nothing.
+          </p>
+          <ul>
+            @for (source of failedWarningSources(); track source.name) {
+              <li>{{ source.name }}: could not check.</li>
+            }
+          </ul>
+          <p><button type="button" class="secondary-button" (click)="retryWarnings()">Retry</button></p>
+        </div>
+      }
+
+      <div class="inline-filter">
+        <label for="warning-severity">Severity</label>
+        <select
+          id="warning-severity"
+          [ngModel]="warningSeverityFilter()"
+          (ngModelChange)="setWarningSeverityFilter($event)">
+          <option value="">All ({{ warnings().length }})</option>
+          <option value="ERROR">Errors ({{ warningCounts().ERROR }})</option>
+          <option value="WARNING">Warnings ({{ warningCounts().WARNING }})</option>
+          <option value="INFO">Info ({{ warningCounts().INFO }})</option>
+        </select>
+      </div>
+
+      @if (warningRows().length === 0) {
+        <div class="empty-state" role="status">
+          <h3>{{ warnings().length === 0 ? 'No open warnings.' : 'No warnings match this filter.' }}</h3>
+          @if (warnings().length === 0 && warningsComplete()) {
+            <p>Every check ran and found nothing to report.</p>
+          }
+        </div>
+      } @else {
+        <div class="report-card table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>What was found</th>
+                <th>Where</th>
+                <th>Field / row</th>
+                <th>Suggested correction</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (warning of warningRows(); track warning.code + warning.entityLabel + warning.message) {
+                <tr>
+                  <td>
+                    <span class="severity" [attr.data-severity]="warning.severity">{{ warning.severity }}</span>
+                  </td>
+                  <td>
+                    {{ warning.message }}
+                    <small>{{ warning.code }}</small>
+                  </td>
+                  <td>
+                    <strong>{{ warning.entityLabel }}</strong>
+                    @if (warning.relatedLabel) {
+                      <small>{{ warning.relatedLabel }}</small>
+                    }
+                  </td>
+                  <td>
+                    @if (warning.field) {
+                      <small>Field: {{ warning.field }}</small>
+                    }
+                    @if (warning.rowReference) {
+                      <small>Source row: {{ warning.rowReference }}</small>
+                    }
+                    @if (!warning.field && !warning.rowReference) {
+                      <small>-</small>
+                    }
+                  </td>
+                  <td>{{ warning.suggestedAction }}</td>
+                  <td>{{ warning.resolved ? 'Resolved' : 'Unresolved' }}</td>
+                  <td>
+                    @if (warning.link?.page) {
+                      <button type="button" class="secondary-button" (click)="openWarning(warning)">Open</button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          <p>Codes and names only - internal record ids are never shown here.</p>
+        </div>
+      }
     }
   }
 
