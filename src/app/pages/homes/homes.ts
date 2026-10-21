@@ -7,7 +7,7 @@ import {
   ConnectShelterSheetPayload,
   ConnectedShelterHome,
   ImportStatusEntry,
-  ShelterHomeArchivePreviewData,
+  ShelterHomeDeletionPlanEntry,
   ShelterSheetMetadataField,
   ShelterSheetPreviewData,
   SyncShelterSheetData,
@@ -96,73 +96,81 @@ export class Homes implements OnInit {
   readonly isAdmin = computed(() => this.auth.currentUser()?.role === 'ADMIN');
 
   // ---------------------------------------------------------
-  // SHELTER HOME ARCHIVE LIFECYCLE (backend round 2)
+  // PERMANENT DELETION (the single lifecycle exit)
   // ---------------------------------------------------------
 
   /**
-   * Shown before confirmation so no admin can archive a home without seeing
-   * what the archive affects. Archive deactivates the home; nothing is ever
-   * deleted by the frontend.
+   * Shown in the destructive confirmation dialog so no admin can delete a
+   * home without seeing what it affects. Deletion removes the home's
+   * operational records; official history (finalized results, issued
+   * certificates, distribution evidence, audit) is retained, and a verified
+   * backup is taken before anything is removed.
    */
-  readonly ARCHIVE_CONFIRMATION_NOTE =
-    'The home will be archived (deactivated) and removed from the active list — ' +
-    'it is not permanently deleted. No participant, registration, attendance, ' +
-    'score, certificate or audit record will be removed.';
+  readonly DELETION_CONFIRMATION_NOTE =
+    'Permanent deletion removes this home and its operational records. ' +
+    'Finalized results, issued certificates, distribution evidence and ' +
+    'audit history are retained. A verified backup is taken first. This ' +
+    'cannot be undone from the app.';
 
-  readonly archivePreview = signal<ShelterHomeArchivePreviewData | null>(null);
-  readonly archivePreviewHomeId = signal<string | null>(null);
-  readonly archivePreviewLoading = signal(false);
-  readonly archivePreviewError = signal('');
-  readonly archiving = signal(false);
-  readonly archiveError = signal('');
-  readonly archiveNotice = signal('');
+  readonly deletionPreview = signal<ShelterHomeDeletionPlanEntry | null>(null);
+  readonly deletionPreviewHomeId = signal<string | null>(null);
+  readonly deletionPreviewLoading = signal(false);
+  readonly deletionPreviewError = signal('');
+  readonly deleting = signal(false);
+  readonly deletionError = signal('');
+  readonly deletionNotice = signal('');
+  readonly deleteReason = signal('');
+  readonly deleteConfirmCode = signal('');
 
-  readonly archivedHomes = signal<ConnectedShelterHome[]>([]);
-  readonly archivedLoading = signal(false);
-  readonly archivedLoaded = signal(false);
-  readonly archivedError = signal('');
-  readonly restoringHomeId = signal<string | null>(null);
-  readonly restoreError = signal('');
-
-  /** Archive/restore visibility gate; the backend re-checks authorization. */
-  canArchive(home: ConnectedShelterHome): boolean {
-    return this.isAdmin() && home.status !== 'ARCHIVED';
-  }
-
-  canRestore(): boolean {
-    return this.isAdmin();
+  /** Deletion visibility gate; the backend re-checks authorization. */
+  canDelete(): boolean {
+    const role = this.auth.currentUser()?.role;
+    return role === 'ADMIN' || role === 'SUPPORT';
   }
 
   /**
-   * Read-only impact preview for archiving a home. Confirmation is impossible
-   * before this has succeeded, so an admin always sees the real counts.
+   * Read-only deletion manifest for one home. Confirmation is impossible
+   * before this has succeeded, so an admin always sees the real dependent
+   * record counts and types before anything is deleted.
    */
-  async openArchivePreview(home: ConnectedShelterHome): Promise<void> {
-    if (!this.canArchive(home) || this.archivePreviewLoading()) {
+  async openDeletionPreview(home: ConnectedShelterHome): Promise<void> {
+    if (!this.canDelete() || this.deletionPreviewLoading()) {
       return;
     }
 
-    this.archivePreviewHomeId.set(home.id);
-    this.archivePreviewError.set('');
-    this.archiveError.set('');
-    this.archiveNotice.set('');
-    this.archivePreviewLoading.set(true);
+    this.deletionPreviewHomeId.set(home.id);
+    this.deletionPreviewError.set('');
+    this.deletionError.set('');
+    this.deletionNotice.set('');
+    this.deletionPreviewLoading.set(true);
 
-    const response = await this.apiClient.previewShelterHomeArchive(home.id);
+    const response =
+      await this.apiClient.previewShelterHomeDeletion({ shelterHomeId: home.id });
 
-    this.archivePreviewLoading.set(false);
+    this.deletionPreviewLoading.set(false);
 
     if (!response.success) {
-      this.archivePreviewError.set(response.error.message);
+      this.deletionPreviewError.set(response.error.message);
       return;
     }
 
-    this.archivePreview.set(response.data);
+    const plan = response.data.homes[0] ?? null;
+
+    if (!plan) {
+      this.deletionPreviewError.set(
+        'The backend returned no deletion plan for this home.'
+      );
+      return;
+    }
+
+    this.deletionPreview.set(plan);
+    this.deleteReason.set('');
+    this.deleteConfirmCode.set('');
   }
 
   /** Re-runs the preview after a failed read; the pending home id is kept. */
-  async retryArchivePreview(): Promise<void> {
-    const homeId = this.archivePreviewHomeId();
+  async retryDeletionPreview(): Promise<void> {
+    const homeId = this.deletionPreviewHomeId();
 
     if (!homeId) {
       return;
@@ -171,125 +179,101 @@ export class Homes implements OnInit {
     const home = this.shelterData.getHomeById(homeId)
       ?? ({ id: homeId, homeCode: '', homeName: '', address: '', contactName: '', contactPhone: '', status: 'ACTIVE', version: 0 } as ConnectedShelterHome);
 
-    await this.openArchivePreview(home);
+    await this.openDeletionPreview(home);
   }
 
-  cancelArchive(): void {
-    this.archivePreview.set(null);
-    this.archivePreviewHomeId.set(null);
-    this.archivePreviewError.set('');
-    this.archiveError.set('');
+  cancelDeletion(): void {
+    this.deletionPreview.set(null);
+    this.deletionPreviewHomeId.set(null);
+    this.deletionPreviewError.set('');
+    this.deletionError.set('');
+    this.deleteReason.set('');
+    this.deleteConfirmCode.set('');
+  }
+
+  updateDeleteReason(value: string): void {
+    this.deleteReason.set(value);
+  }
+
+  updateDeleteConfirmCode(value: string): void {
+    this.deleteConfirmCode.set(value);
+  }
+
+  /** Per-table dependent record counts/types shown before confirmation. */
+  deletionImpactRows(): Array<{ table: string; remove: number; retain: number; reason: string }> {
+    const plan = this.deletionPreview();
+
+    if (!plan) {
+      return [];
+    }
+
+    return Object.keys(plan.counts)
+      .map(table => ({
+        table,
+        remove: plan.counts[table].delete,
+        retain: plan.counts[table].retain,
+        reason: plan.counts[table].reason,
+      }))
+      .filter(row => row.remove > 0 || row.retain > 0);
   }
 
   /**
-   * Performs the archive only after a preview was shown. The home leaves the
-   * active list only after the backend confirms the archive; a failure keeps
-   * the preview so the retry affordance stays available.
+   * Performs the permanent deletion only after a manifest was shown and the
+   * admin typed the home's own code. The home leaves the active list only
+   * after the backend confirms; a failure keeps the dialog so the retry
+   * affordance stays available.
    */
-  async confirmArchive(): Promise<void> {
-    const preview = this.archivePreview();
+  async confirmDeletion(): Promise<void> {
+    const preview = this.deletionPreview();
+    const reason = this.deleteReason().trim();
 
-    if (!preview || this.archiving()) {
+    if (!preview || this.deleting()) {
       return;
     }
 
-    this.archiving.set(true);
-    this.archiveError.set('');
+    if (!reason) {
+      this.deletionError.set('A deletion reason is required.');
+      return;
+    }
 
-    const home = this.shelterData.getHomeById(preview.shelterHome.id);
-    const response = await this.apiClient.archiveShelterHome({
-      shelterHomeId: preview.shelterHome.id,
+    if (this.deleteConfirmCode().trim() !== preview.homeCode) {
+      this.deletionError.set(
+        'Type ' + preview.homeCode + ' to confirm permanent deletion.'
+      );
+      return;
+    }
+
+    this.deleting.set(true);
+    this.deletionError.set('');
+
+    const home = this.shelterData.getHomeById(preview.shelterHomeId);
+    const response = await this.apiClient.deleteShelterHome({
+      shelterHomeId: preview.shelterHomeId,
+      reason,
+      confirm: this.deleteConfirmCode().trim(),
       expectedVersion: home?.version,
     });
 
+    this.deleting.set(false);
+
     if (!response.success) {
-      this.archiving.set(false);
-      this.archiveError.set(response.error.message);
+      this.deletionError.set(response.error.message);
       return;
     }
 
-    this.archiving.set(false);
-    this.archivePreview.set(null);
+    this.deletionPreview.set(null);
+    this.deletionPreviewHomeId.set(null);
+    this.deleteReason.set('');
+    this.deleteConfirmCode.set('');
 
-    // Confirmed success: refresh the active list from the backend and pull
-    // the archived section so both views stay truthful.
     await this.shelterData.loadConnectedHomes();
 
-    this.archiveNotice.set(
-      `${preview.shelterHome.homeName} archived. ` +
-      (response.data.triggerRemoved
-        ? 'The source change trigger was removed.'
-        : 'The source change trigger could not be removed — it can be removed again later.')
-    );
-
-    await this.loadArchivedHomes(true);
-  }
-
-  /**
-   * Reads the archived homes through the backend's includeArchived option —
-   * one request, filtered by the backend's own status field. ADMIN-gated.
-   */
-  async loadArchivedHomes(force = false): Promise<void> {
-    if (!this.canRestore() || this.archivedLoading()) {
-      return;
-    }
-
-    if (!force && this.archivedLoaded()) {
-      return;
-    }
-
-    this.archivedLoading.set(true);
-    this.archivedError.set('');
-
-    const response = await this.apiClient.listShelterHomes({ includeArchived: true });
-
-    this.archivedLoading.set(false);
-
-    if (!response.success) {
-      this.archivedError.set(response.error.message);
-      return;
-    }
-
-    this.archivedHomes.set(
-      response.data.shelterHomes.filter(home => home.status === 'ARCHIVED')
-    );
-    this.archivedLoaded.set(true);
-  }
-
-  /**
-   * Restores an archived home. A `triggerReinstallRequired` outcome is shown
-   * exactly as the backend reported it — the frontend never claims triggers
-   * were restored.
-   */
-  async restoreArchivedHome(home: ConnectedShelterHome): Promise<void> {
-    if (!this.canRestore() || this.restoringHomeId()) {
-      return;
-    }
-
-    this.restoringHomeId.set(home.id);
-    this.restoreError.set('');
-    this.archiveNotice.set('');
-
-    const response = await this.apiClient.restoreShelterHome({
-      shelterHomeId: home.id,
-      expectedVersion: home.version,
-    });
-
-    this.restoringHomeId.set(null);
-
-    if (!response.success) {
-      this.restoreError.set(response.error.message);
-      return;
-    }
-
-    await this.shelterData.loadConnectedHomes();
-    await this.loadArchivedHomes(true);
-
-    this.archiveNotice.set(
-      `${home.homeName} restored.` +
-      (response.data.triggerReinstallRequired
-        ? ' The source change trigger needs reinstall — use Install source trigger on the home before syncing.'
-        : '')
+    this.deletionNotice.set(
+      response.data.alreadyDeleted
+        ? preview.homeName + ' was already deleted. Nothing was changed.'
+        : preview.homeName + ' permanently deleted: ' +
+          response.data.deleted + ' record(s) removed, ' +
+          response.data.retained + ' retained as official history.'
     );
   }
 
@@ -319,8 +303,6 @@ export class Homes implements OnInit {
 
   ngOnInit(): void {
     void this.shelterData.ensureLoaded();
-    // ADMIN-gated inside; loads the archived homes section once per session.
-    void this.loadArchivedHomes();
   }
 
   // ---------------------------------------------------------
@@ -353,10 +335,6 @@ export class Homes implements OnInit {
    * and no raw backend code ever reaches the primary UI.
    */
   connectionStatusLabel(home: ConnectedShelterHome): string {
-    if (home.status === 'ARCHIVED') {
-      return 'Archived';
-    }
-
     switch ((this.importStatus(home.id) || '').toUpperCase()) {
       case 'RUNNING':
       case 'IN_PROGRESS':
@@ -959,12 +937,12 @@ export class Homes implements OnInit {
 
     if (error.code === 'SHELTER_HOME_ARCHIVED') {
       this.saving.set(false);
+      // The backend message already names the only exit (permanent
+      // deletion); no restore path exists anymore.
       this.connectionOutcome.set({
         state: 'ARCHIVED_SOURCE',
-        message: `${error.message} Open the Archived homes section to restore it.`,
+        message: error.message,
       });
-      // Make sure the restore path (with its ADMIN gate) is visible.
-      void this.loadArchivedHomes();
       return;
     }
 

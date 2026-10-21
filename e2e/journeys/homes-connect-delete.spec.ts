@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 /**
  * Shelter-home journeys (checklist areas B, C, D, E) — MOCKED.
  *
- * Metadata preview, connect/import outcomes, retry, archive and restore run
+ * Metadata preview, connect/import outcomes, retry and permanent deletion run
  * against intercepted Apps Script responses with disposable in-memory state.
  * Nothing here proves live Google Sheets behaviour (BLOCKED until a test
  * backend and disposable spreadsheet exist).
@@ -67,7 +67,7 @@ async function previewMetadata(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Preview source metadata' }).click();
 }
 
-test.describe('shelter homes: preview, connect, archive', () => {
+test.describe('shelter homes: preview, connect, delete', () => {
   test('preview requires a sheet URL before it can be requested', async ({ page }) => {
     const pageErrors = monitorPageErrors(page);
 
@@ -364,7 +364,7 @@ test.describe('shelter homes: preview, connect, archive', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('connecting an archived source points to the restore path', async ({ page, backend }) => {
+  test('connecting an archived source points to the permanent-deletion exit', async ({ page, backend }) => {
     const pageErrors = monitorPageErrors(page);
 
     await signIn(page);
@@ -387,7 +387,7 @@ test.describe('shelter homes: preview, connect, archive', () => {
       'connectShelterSheet',
       200,
       'SHELTER_HOME_ARCHIVED',
-      'This Google Sheet belongs to an archived shelter home. Restore the shelter home before connecting it again.',
+      'This Google Sheet belongs to an archived shelter home. Permanently delete that home before registering the sheet again.',
     );
 
     await previewMetadata(page);
@@ -396,7 +396,8 @@ test.describe('shelter homes: preview, connect, archive', () => {
     const outcome = page.locator('.connection-outcome');
     await expect(outcome).toBeVisible();
     await expect(outcome).toContainText(/archived/i);
-    await expect(outcome).toContainText(/restore/i);
+    await expect(outcome).toContainText(/permanently delete/i);
+    await expect(outcome).not.toContainText(/restore/i);
     expect(pageErrors).toEqual([]);
   });
 
@@ -464,113 +465,154 @@ test.describe('shelter homes: preview, connect, archive', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('archive previews real impact counts, then archives and lists the home as archived', async ({ page, backend }) => {
+  test('Delete previews dependent record counts, then permanently deletes after typing the home code', async ({ page, backend }) => {
     const pageErrors = monitorPageErrors(page);
     const homes: MutableHome[] = [makeHome()];
 
     await signIn(page);
     await page.goto('/#/homes');
 
-    backend.on('listShelterHomes', (request) => ({
+    backend.on('listShelterHomes', () => ({
+      body: {
+        success: true,
+        data: { shelterHomes: homes.filter((home) => home.status !== 'ARCHIVED') },
+      },
+    }));
+    backend.on('previewShelterHomeDeletion', () => ({
       body: {
         success: true,
         data: {
-          shelterHomes: (request.payload as { includeArchived?: boolean } | undefined)?.includeArchived
-            ? homes
-            : homes.filter((home) => home.status !== 'ARCHIVED'),
+          dryRun: true,
+          generatedAt: '2026-01-01T00:00:00.000Z',
+          authorized: true,
+          approvalSteps: [],
+          backupStorageReady: true,
+          homes: [{
+            shelterHomeId: 'home-1',
+            homeCode: 'SH-001',
+            homeName: 'Sunshine Childrens Home',
+            programId: '',
+            environmentId: '',
+            homeStatus: 'ACTIVE',
+            sheetConfirmation: 'LOCKED',
+            source: {
+              spreadsheetName: 'Sunshine Home Register',
+              sourceStatus: 'CONNECTED',
+              sourceRefRedacted: 'Sunshine Home Register (...xyz)',
+            },
+            counts: {
+              Participants: {
+                delete: 10,
+                retain: 2,
+                class: 'MIXED',
+                reason: 'TOMBSTONE: participant referenced by official records',
+              },
+              Attendance: { delete: 30, retain: 0, class: 'OPERATIONAL', reason: '' },
+            },
+            sharedUntouched: { Events: 5 },
+            deletableRows: 42,
+            retainedRows: 30,
+            sourceReuseEligible: true,
+            backupStorageReady: true,
+            validation: 'READY',
+            blockers: [],
+          }],
+          deletedHomes: [],
         },
       },
     }));
-    backend.on('previewShelterHomeArchive', () => ({
-      body: {
-        success: true,
-        data: {
-          shelterHome: { id: 'home-1', homeCode: 'SH-001', homeName: 'Sunshine Childrens Home', status: 'ACTIVE' },
-          source: { spreadsheetName: 'Sunshine Home Register', sourceStatus: 'CONNECTED', spreadsheetOpenUrl: '' },
-          impact: {
-            participantCount: 12,
-            activeRegistrationCount: 8,
-            attendanceCount: 30,
-            scoreCount: 6,
-            certificateCount: 4,
-            auditHistoryCount: 41,
-          },
-          triggerCleanupRequired: true,
-        },
-      },
-    }));
-    backend.on('archiveShelterHome', () => {
-      homes[0] = { ...homes[0], status: 'ARCHIVED', version: 2 };
+    backend.on('deleteShelterHome', () => {
+      homes.length = 0;
       return {
         body: {
           success: true,
           data: {
             shelterHomeId: 'home-1',
-            status: 'ARCHIVED',
-            version: 2,
-            triggerRemoved: true,
-            impact: {
-              participantCount: 12,
-              activeRegistrationCount: 8,
-              attendanceCount: 30,
-              scoreCount: 6,
-              certificateCount: 4,
-              auditHistoryCount: 41,
-            },
+            backupId: 'HDB-1',
+            backupVerified: true,
+            deleted: 42,
+            retained: 30,
           },
         },
       };
     });
 
-    await homeCard(page, 'Sunshine Childrens Home').getByRole('button', { name: 'Archive…' }).click();
+    await homeCard(page, 'Sunshine Childrens Home').getByRole('button', { name: /^delete/i }).click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('Archive Sunshine Childrens Home');
-    await expect(dialog).toContainText('12');
-    await expect(dialog).toContainText('41');
+    await expect(dialog).toContainText('Permanently delete Sunshine Childrens Home');
+    await expect(dialog).toContainText('Participants');
+    await expect(dialog).toContainText('TOMBSTONE');
+    await expect(dialog).toContainText('42');
 
-    await dialog.getByRole('button', { name: 'Archive home' }).click();
+    // The destructive button stays disabled until the reason and the exact
+    // home code are typed.
+    const confirmButton = dialog.getByRole('button', { name: 'Permanently delete home' });
+    await expect(confirmButton).toBeDisabled();
+    await dialog.locator('#deletion-reason').fill('duplicate home');
+    await expect(confirmButton).toBeDisabled();
+    await dialog.locator('#deletion-confirm-code').fill('WRONG');
+    await expect(confirmButton).toBeDisabled();
+    await dialog.locator('#deletion-confirm-code').fill('SH-001');
+    await expect(confirmButton).toBeEnabled();
 
-    await expect(page.locator('.alert.success')).toContainText('Sunshine Childrens Home archived.');
+    await confirmButton.click();
+
+    await expect(page.locator('.alert.success')).toContainText('permanently deleted');
+    await expect(page.locator('.alert.success')).toContainText('42');
     await expect(homeCard(page, 'Sunshine Childrens Home')).toHaveCount(0);
-    await expect(page.locator('.archived-homes')).toContainText('Sunshine Childrens Home');
+    expect(backend.requests.filter((request) => request.action === 'deleteShelterHome')).toHaveLength(1);
     expect(pageErrors).toEqual([]);
   });
 
-  test('restoring an archived home returns it to the connected list', async ({ page, backend }) => {
+  test('the deletion dialog can be cancelled without any destructive request', async ({ page, backend }) => {
     const pageErrors = monitorPageErrors(page);
-    const homes: MutableHome[] = [makeHome({ status: 'ARCHIVED', version: 2 })];
 
     await signIn(page);
     await page.goto('/#/homes');
 
-    backend.on('listShelterHomes', (request) => ({
+    backend.on('listShelterHomes', () => ({
+      body: { success: true, data: { shelterHomes: [makeHome()] } },
+    }));
+    backend.on('previewShelterHomeDeletion', () => ({
       body: {
         success: true,
         data: {
-          shelterHomes: (request.payload as { includeArchived?: boolean } | undefined)?.includeArchived
-            ? homes
-            : homes.filter((home) => home.status !== 'ARCHIVED'),
+          dryRun: true,
+          generatedAt: '',
+          homes: [{
+            shelterHomeId: 'home-1',
+            homeCode: 'SH-001',
+            homeName: 'Sunshine Childrens Home',
+            programId: '',
+            environmentId: '',
+            homeStatus: 'ACTIVE',
+            sheetConfirmation: 'LOCKED',
+            source: { spreadsheetName: '', sourceStatus: 'CONNECTED', sourceRefRedacted: '' },
+            counts: {
+              Participants: { delete: 10, retain: 2, class: 'MIXED', reason: 'TOMBSTONE' },
+            },
+            sharedUntouched: {},
+            deletableRows: 10,
+            retainedRows: 2,
+            sourceReuseEligible: true,
+            backupStorageReady: true,
+            validation: 'READY',
+            blockers: [],
+          }],
+          deletedHomes: [],
         },
       },
     }));
-    backend.on('restoreShelterHome', () => {
-      homes[0] = { ...homes[0], status: 'ACTIVE', version: 3 };
-      return {
-        body: {
-          success: true,
-          data: { shelterHomeId: 'home-1', status: 'ACTIVE', version: 3, triggerReinstallRequired: true },
-        },
-      };
-    });
 
-    // No active cards, the archived section lists the home with Restore.
-    await expect(page.locator('.archived-homes')).toBeVisible();
-    await expect(page.locator('.archived-homes')).toContainText('Sunshine Childrens Home');
-    await page.locator('.archived-homes').getByRole('button', { name: 'Restore' }).click();
+    await homeCard(page, 'Sunshine Childrens Home').getByRole('button', { name: /^delete/i }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
 
-    await expect(homeCard(page, 'Sunshine Childrens Home')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(backend.requests.filter((request) => request.action === 'deleteShelterHome')).toHaveLength(0);
     expect(pageErrors).toEqual([]);
   });
 });

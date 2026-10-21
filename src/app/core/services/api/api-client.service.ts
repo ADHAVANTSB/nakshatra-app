@@ -62,8 +62,9 @@ import {
   GetParticipantData,
   GetReportsData,
   GetValidationResultsData,
-  ArchiveShelterHomeData,
-  ArchiveShelterHomePayload,
+  DeleteShelterHomeData,
+  DeleteShelterHomePayload,
+  ShelterHomeDeletionPreviewData,
   ImportStatusData,
   ImportStatusPayload,
   ListEventRegistrationsData,
@@ -88,9 +89,6 @@ import {
   ParticipantEventSummariesPayload,
   ReconcileParticipantSheetWritesData,
   ReconcileParticipantSheetWritesPayload,
-  RestoreShelterHomeData,
-  RestoreShelterHomePayload,
-  ShelterHomeArchivePreviewData,
   ShelterHomeIdPayload,
   RegistrationRequestData,
   RegistrationStatus,
@@ -290,55 +288,42 @@ export class ApiClientService {
   }
 
   /**
-   * Read-only impact preview for archiving a shelter home (ADMIN). Never
-   * writes and never audits on the backend.
+   * Read-only CLEANUP MANIFEST for permanently deleting a shelter home
+   * (ADMIN). With a shelterHomeId it returns that home's deletion plan;
+   * never writes and never audits on the backend.
    */
-  async previewShelterHomeArchive(shelterHomeId: string): Promise<ApiResponse<ShelterHomeArchivePreviewData>> {
-    const response = await this.post<ShelterHomeArchivePreviewData, ShelterHomeIdPayload>(
-      'previewShelterHomeArchive', { shelterHomeId }
+  async previewShelterHomeDeletion(payload?: ShelterHomeIdPayload): Promise<ApiResponse<ShelterHomeDeletionPreviewData>> {
+    const response = await this.post<ShelterHomeDeletionPreviewData, ShelterHomeIdPayload | undefined>(
+      'previewShelterHomeDeletion', payload
     );
     if (!response.success) return response;
     const data = response.data;
     return typeof data === 'object' && data !== null
-      && typeof (data as ShelterHomeArchivePreviewData).shelterHome === 'object'
-      && typeof (data as ShelterHomeArchivePreviewData).impact === 'object'
-      && typeof (data as ShelterHomeArchivePreviewData).triggerCleanupRequired === 'boolean'
+      && Array.isArray((data as ShelterHomeDeletionPreviewData).homes)
+      && Array.isArray((data as ShelterHomeDeletionPreviewData).deletedHomes)
       ? response
-      : { success: false, error: { code: 'INVALID_ARCHIVE_PREVIEW_RESPONSE', message: 'The server returned an invalid archive preview.' } };
+      : { success: false, error: { code: 'INVALID_DELETION_PREVIEW_RESPONSE', message: 'The server returned an invalid deletion preview.' } };
   }
 
   /**
-   * Safe archive lifecycle operation (ADMIN): the home becomes ARCHIVED;
-   * nothing is deleted. `expectedVersion` enables optimistic concurrency.
+   * The one destructive operation (ADMIN): permanently deletes a home's
+   * eligible operational rows after a verified recoverable backup.
+   * Requires a reason and the explicit `confirm=<homeCode>` token;
+   * official history (finalized results, issued certificates, distribution
+   * evidence, audit) is retained. Idempotent: `alreadyDeleted` repeats
+   * change nothing.
    */
-  async archiveShelterHome(payload: ArchiveShelterHomePayload): Promise<ApiResponse<ArchiveShelterHomeData>> {
-    const response = await this.post<ArchiveShelterHomeData, ArchiveShelterHomePayload>(
-      'archiveShelterHome', payload
+  async deleteShelterHome(payload: DeleteShelterHomePayload): Promise<ApiResponse<DeleteShelterHomeData>> {
+    const response = await this.post<DeleteShelterHomeData, DeleteShelterHomePayload>(
+      'deleteShelterHome', payload
     );
     if (!response.success) return response;
     const data = response.data;
     return typeof data === 'object' && data !== null
-      && (data as ArchiveShelterHomeData).status === 'ARCHIVED'
-      && typeof (data as ArchiveShelterHomeData).triggerRemoved === 'boolean'
+      && typeof (data as DeleteShelterHomeData).backupId === 'string'
+      && typeof (data as DeleteShelterHomeData).deleted === 'number'
       ? response
-      : { success: false, error: { code: 'INVALID_ARCHIVE_RESPONSE', message: 'The server returned an invalid archive response.' } };
-  }
-
-  /**
-   * Restores an archived home to ACTIVE (ADMIN). A `triggerReinstallRequired`
-   * outcome must be displayed, never interpreted as a reinstalled trigger.
-   */
-  async restoreShelterHome(payload: RestoreShelterHomePayload): Promise<ApiResponse<RestoreShelterHomeData>> {
-    const response = await this.post<RestoreShelterHomeData, RestoreShelterHomePayload>(
-      'restoreShelterHome', payload
-    );
-    if (!response.success) return response;
-    const data = response.data;
-    return typeof data === 'object' && data !== null
-      && typeof (data as RestoreShelterHomeData).status === 'string'
-      && typeof (data as RestoreShelterHomeData).triggerReinstallRequired === 'boolean'
-      ? response
-      : { success: false, error: { code: 'INVALID_RESTORE_RESPONSE', message: 'The server returned an invalid restore response.' } };
+      : { success: false, error: { code: 'INVALID_DELETION_RESPONSE', message: 'The server returned an invalid deletion response.' } };
   }
 
   /**

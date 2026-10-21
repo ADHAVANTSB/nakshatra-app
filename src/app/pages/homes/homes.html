@@ -336,7 +336,11 @@
           }
 
           @if (outcome.state === 'ARCHIVED_SOURCE') {
-            <p>Open the Archived homes section below to restore it.</p>
+            <p>
+              A legacy archived home still holds this sheet. It is not listed
+              here; Support/Admin can permanently delete it (deleteShelterHome),
+              after which this sheet can be registered again.
+            </p>
           }
         </section>
       }
@@ -545,14 +549,14 @@
                   >
                     {{ isSyncing(home.id) ? 'Syncing…' : 'Sync from Google Sheet' }}
                   </button>
-                  @if (canArchive(home)) {
+                  @if (canDelete()) {
                     <button
                       type="button"
-                      class="secondary-action"
-                      (click)="openArchivePreview(home)"
-                      [disabled]="archiving()"
+                      class="secondary-action danger-action"
+                      (click)="openDeletionPreview(home)"
+                      [disabled]="deleting()"
                     >
-                      Archive…
+                      Delete...
                     </button>
                   }
                 </div>
@@ -677,142 +681,117 @@
       </div>
     }
 
-    <!-- ARCHIVE LIFECYCLE: notice, preview confirmation, archived section -->
-    <!-- Rendered whenever the section is live, NOT only when at least one
-         active home exists: archiving the last connected home must still
-         leave the restore path reachable. -->
+    <!-- PERMANENT DELETION: notice + destructive confirmation dialog -->
 
-    @if (archiveNotice()) {
+    @if (deletionNotice()) {
       <div class="alert success" role="status">
-        <span>{{ archiveNotice() }}</span>
+        <span>{{ deletionNotice() }}</span>
       </div>
     }
 
-    @if (archivePreviewError()) {
+    @if (deletionPreviewError()) {
       <div class="alert error" role="alert">
-        <strong>The archive preview failed.</strong>
-        <span>{{ archivePreviewError() }}</span>
-        <button type="button" class="secondary-action" (click)="retryArchivePreview()">
+        <strong>The deletion preview failed.</strong>
+        <span>{{ deletionPreviewError() }}</span>
+        <button type="button" class="secondary-action" (click)="retryDeletionPreview()">
           Retry preview
         </button>
       </div>
     }
 
-    @if (archivePreview(); as preview) {
-      <div class="archive-preview-panel" role="dialog" aria-labelledby="archive-preview-title">
-        <h3 id="archive-preview-title">Archive {{ preview.shelterHome.homeName }}</h3>
+    @if (deletionPreview(); as preview) {
+      <div
+        class="deletion-preview-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deletion-preview-title"
+      >
+        <h3 id="deletion-preview-title">Permanently delete {{ preview.homeName }}</h3>
 
-        <p class="archive-note">{{ ARCHIVE_CONFIRMATION_NOTE }}</p>
+        <p class="deletion-note">{{ DELETION_CONFIRMATION_NOTE }}</p>
 
-        <dl class="archive-impact">
-          <div>
-            <dt>Participants</dt>
-            <dd>{{ preview.impact.participantCount }}</dd>
-          </div>
-          <div>
-            <dt>Active registrations</dt>
-            <dd>{{ preview.impact.activeRegistrationCount }}</dd>
-          </div>
-          <div>
-            <dt>Attendance records</dt>
-            <dd>{{ preview.impact.attendanceCount }}</dd>
-          </div>
-          <div>
-            <dt>Scores</dt>
-            <dd>{{ preview.impact.scoreCount }}</dd>
-          </div>
-          <div>
-            <dt>Certificates</dt>
-            <dd>{{ preview.impact.certificateCount }}</dd>
-          </div>
-          <div>
-            <dt>Audit history</dt>
-            <dd>{{ preview.impact.auditHistoryCount }}</dd>
-          </div>
+        <p>
+          <strong>Home:</strong> {{ preview.homeName }} ({{ preview.homeCode }})
+          <br />
+          <strong>Dependent records (from the backend manifest):</strong>
+        </p>
+
+        <dl class="deletion-impact">
+          @for (row of deletionImpactRows(); track row.table) {
+            <div>
+              <dt>{{ row.table }}</dt>
+              <dd>
+                {{ row.remove }} removed
+                @if (row.retain > 0) {
+                  &middot; {{ row.retain }} retained
+                }
+                @if (row.reason) {
+                  &middot; {{ row.reason }}
+                }
+              </dd>
+            </div>
+          }
         </dl>
 
-        @if (preview.source.spreadsheetName || preview.source.sourceStatus) {
-          <p>
-            <strong>Connected source:</strong>
-            {{ preview.source.spreadsheetName || '—' }} · {{ preview.source.sourceStatus || '—' }}
+        <p>
+          Totals: <strong>{{ preview.deletableRows }}</strong> record(s) removed,
+          <strong>{{ preview.retainedRows }}</strong> retained as official history.
+        </p>
+
+        @if (preview.validation === 'BLOCKED') {
+          <p class="form-message error" role="alert">
+            This home is not eligible for deletion.
+            @if (preview.blockers.length) {
+              ({{ preview.blockers.join(', ') }})
+            }
           </p>
         }
 
-        @if (preview.triggerCleanupRequired) {
-          <p role="note">The backend reports a source change trigger that will need cleanup.</p>
-        }
+        <label for="deletion-reason">Deletion reason (mandatory)</label>
+        <input
+          id="deletion-reason"
+          type="text"
+          placeholder="e.g. Duplicate home created during testing"
+          [value]="deleteReason()"
+          (input)="updateDeleteReason($any($event.target).value)" />
 
-        @if (archiveError(); as error) {
+        <label for="deletion-confirm-code">
+          Type <strong>{{ preview.homeCode }}</strong> to confirm permanent deletion
+        </label>
+        <input
+          id="deletion-confirm-code"
+          type="text"
+          autocomplete="off"
+          [value]="deleteConfirmCode()"
+          (input)="updateDeleteConfirmCode($any($event.target).value)" />
+
+        @if (deletionError(); as error) {
           <p class="form-message error" role="alert">{{ error }}</p>
         }
 
         <div class="home-card-actions">
           <button
             type="button"
-            class="secondary-action"
-            (click)="confirmArchive()"
-            [disabled]="archiving()"
+            class="secondary-action danger-action"
+            (click)="confirmDeletion()"
+            [disabled]="
+              deleting() ||
+              !deleteReason().trim() ||
+              deleteConfirmCode().trim() !== preview.homeCode
+            "
           >
-            {{ archiving() ? 'Archiving…' : 'Archive home' }}
+            {{ deleting() ? 'Deleting...' : 'Permanently delete home' }}
           </button>
           <button
             type="button"
             class="secondary-action"
-            (click)="cancelArchive()"
-            [disabled]="archiving()"
+            (click)="cancelDeletion()"
+            [disabled]="deleting()"
           >
             Cancel
           </button>
         </div>
       </div>
-    }
-
-    @if (canRestore()) {
-      <section class="archived-homes" aria-label="Archived shelter homes">
-        <h3>Archived homes</h3>
-
-        @if (restoreError(); as error) {
-          <div class="alert error" role="alert">
-            <span>{{ error }}</span>
-            <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
-              Retry
-            </button>
-          </div>
-        }
-
-        @if (archivedError(); as error) {
-          <div class="alert error" role="alert">
-            <span>{{ error }}</span>
-            <button type="button" class="secondary-action" (click)="loadArchivedHomes(true)">
-              Retry
-            </button>
-          </div>
-        }
-
-        @if (archivedLoading()) {
-          <p role="status">Loading archived homes…</p>
-        }
-
-        @if (archivedHomes().length) {
-          <ul class="archived-homes-list">
-            @for (home of archivedHomes(); track home.id) {
-              <li>
-                <span>{{ home.homeName }}</span>
-                <button
-                  type="button"
-                  class="secondary-action"
-                  (click)="restoreArchivedHome(home)"
-                  [disabled]="restoringHomeId() !== null"
-                >
-                  {{ restoringHomeId() === home.id ? 'Restoring…' : 'Restore' }}
-                </button>
-              </li>
-            }
-          </ul>
-        } @else if (!archivedLoading() && archivedLoaded() && !archivedError()) {
-          <p>No archived homes.</p>
-        }
-      </section>
     }
   </section>
 </div>

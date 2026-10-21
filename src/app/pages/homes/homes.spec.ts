@@ -189,18 +189,41 @@ describe('Homes — sync from Google Sheet', () => {
 });
 
 
-describe('Homes — shelter home archive lifecycle', () => {
+describe('Homes - permanent deletion', () => {
   let component: Homes;
   let calls: Record<string, number>;
   let lastPayload: Record<string, unknown>;
 
-  const ARCHIVED_IMPACT = {
-    participantCount: 12,
-    activeRegistrationCount: 30,
-    attendanceCount: 45,
-    scoreCount: 28,
-    certificateCount: 3,
-    auditHistoryCount: 57,
+  const DELETION_PLAN = {
+    shelterHomeId: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    programId: '',
+    environmentId: '',
+    homeStatus: 'ACTIVE',
+    sheetConfirmation: 'LOCKED',
+    source: {
+      spreadsheetName: 'Sunrise Participants',
+      sourceStatus: 'CONNECTED',
+      sourceRefRedacted: 'Sunrise Participants (...WXYZ)',
+    },
+    counts: {
+      Participants: {
+        delete: 10,
+        retain: 2,
+        class: 'MIXED',
+        reason: 'TOMBSTONE: participant referenced by official records',
+      },
+      ParticipantEvents: { delete: 30, retain: 0, class: 'OPERATIONAL', reason: '' },
+      Scores: { delete: 2, retain: 26, class: 'MIXED', reason: 'FINALIZED official result' },
+    },
+    sharedUntouched: { Events: 5 },
+    deletableRows: 42,
+    retainedRows: 30,
+    sourceReuseEligible: true,
+    backupStorageReady: true,
+    validation: 'READY',
+    blockers: [],
   };
 
   beforeEach(async () => {
@@ -250,10 +273,9 @@ describe('Homes — shelter home archive lifecycle', () => {
     ));
   }
 
-  function stubArchiveBackend(overrides: {
+  function stubDeletionBackend(overrides: {
     previewFails?: boolean;
-    archiveFails?: boolean;
-    restoreTriggerReinstall?: boolean;
+    deleteFails?: boolean;
   } = {}): void {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
@@ -263,55 +285,36 @@ describe('Homes — shelter home archive lifecycle', () => {
       }
 
       switch (request.action) {
-        case 'previewShelterHomeArchive':
+        case 'previewShelterHomeDeletion':
           if (overrides.previewFails) {
-            return failure('PREVIEW_FAILED', 'The archive preview failed.');
+            return failure('PREVIEW_FAILED', 'The deletion preview failed.');
           }
           return envelope({
-            shelterHome: { id: 'home-1', homeCode: 'H-01', homeName: 'Sunrise Home', status: 'ACTIVE' },
-            source: { spreadsheetName: 'Sunrise Participants', sourceStatus: 'CONNECTED', spreadsheetOpenUrl: '' },
-            impact: ARCHIVED_IMPACT,
-            triggerCleanupRequired: false,
+            dryRun: true,
+            generatedAt: '2026-01-01T00:00:00.000Z',
+            authorized: true,
+            approvalSteps: [],
+            backupStorageReady: true,
+            homes: [DELETION_PLAN],
+            deletedHomes: [],
           });
 
-        case 'archiveShelterHome':
-          if (overrides.archiveFails) {
-            return failure('ARCHIVE_FAILED', 'The archive could not be completed.');
+        case 'deleteShelterHome':
+          if (overrides.deleteFails) {
+            return failure('DELETE_FAILED', 'The deletion could not be completed.');
           }
           return envelope({
             shelterHomeId: 'home-1',
-            status: 'ARCHIVED',
-            version: 2,
-            triggerRemoved: true,
-            impact: ARCHIVED_IMPACT,
+            backupId: 'HDB-1',
+            backupVerified: true,
+            deleted: 42,
+            retained: 30,
           });
 
-        case 'restoreShelterHome':
+        case 'listShelterHomes':
           return envelope({
-            shelterHomeId: 'home-1',
-            status: 'ACTIVE',
-            version: 3,
-            triggerReinstallRequired: overrides.restoreTriggerReinstall === true,
+            shelterHomes: lastPayload['deleteShelterHome'] ? [] : [HOME],
           });
-
-        case 'listShelterHomes': {
-          // After a successful archive the default (active) list no longer
-          // contains the home; the includeArchived read shows both.
-          const archived = calls['archiveShelterHome'] > 0 || overrides.restoreTriggerReinstall === undefined;
-          void archived;
-          const activeRows = lastPayload['archiveShelterHome'] && (calls['restoreShelterHome'] ?? 0) === 0
-            ? []
-            : [HOME];
-          if (request.payload?.['includeArchived'] === true) {
-            return envelope({
-              shelterHomes: [
-                ...activeRows,
-                { ...HOME, id: 'home-2', homeCode: 'H-02', homeName: 'Archived Home', status: 'ARCHIVED', version: 4 },
-              ],
-            });
-          }
-          return envelope({ shelterHomes: activeRows });
-        }
 
         case 'getImportStatus':
           return envelope({ imports: [] });
@@ -328,60 +331,102 @@ describe('Homes — shelter home archive lifecycle', () => {
     });
   }
 
-  it('previews the real backend impact and never fires an archive before confirmation', async () => {
-    stubArchiveBackend();
+  it('previews the real dependent record counts and never fires a deletion before confirmation', async () => {
+    stubDeletionBackend();
 
-    await component.openArchivePreview(HOME);
+    await component.openDeletionPreview(HOME);
 
-    expect(calls['previewShelterHomeArchive']).toBe(1);
-    expect(calls['archiveShelterHome']).toBeUndefined();
+    expect(calls['previewShelterHomeDeletion']).toBe(1);
+    expect(calls['deleteShelterHome']).toBeUndefined();
 
-    const preview = component.archivePreview();
-    expect(preview?.impact.participantCount).toBe(12);
-    expect(preview?.impact.activeRegistrationCount).toBe(30);
-    expect(preview?.impact.attendanceCount).toBe(45);
-    expect(preview?.impact.scoreCount).toBe(28);
-    expect(preview?.impact.certificateCount).toBe(3);
+    const preview = component.deletionPreview();
+    expect(preview?.homeName).toBe('Sunrise Home');
+    expect(preview?.homeCode).toBe('H-01');
+    expect(preview?.deletableRows).toBe(42);
+    expect(preview?.retainedRows).toBe(30);
+
+    const rows = component.deletionImpactRows();
+    expect(rows.map(row => row.table)).toEqual(['Participants', 'ParticipantEvents', 'Scores']);
+    expect(rows[0]).toEqual({
+      table: 'Participants',
+      remove: 10,
+      retain: 2,
+      reason: 'TOMBSTONE: participant referenced by official records',
+    });
   });
 
-  it('states plainly that confirmation archives rather than deletes', () => {
-    expect(component.ARCHIVE_CONFIRMATION_NOTE).toContain('archived');
-    expect(component.ARCHIVE_CONFIRMATION_NOTE).toContain('not permanently deleted');
+  it('states plainly that deletion is permanent, keeps official history and takes a backup', () => {
+    expect(component.DELETION_CONFIRMATION_NOTE).toContain('Permanent deletion');
+    expect(component.DELETION_CONFIRMATION_NOTE).toContain('retained');
+    expect(component.DELETION_CONFIRMATION_NOTE).toContain('verified backup');
   });
 
-  it('archives with optimistic version, refreshes the active list, reports the truthful outcome', async () => {
-    stubArchiveBackend();
+  it('refuses to delete without a reason or without the exact home code', async () => {
+    stubDeletionBackend();
 
     await TestBed.inject(ShelterDataService).loadConnectedHomes();
-    await component.openArchivePreview(HOME);
-    await component.confirmArchive();
+    await component.openDeletionPreview(HOME);
 
-    expect(calls['archiveShelterHome']).toBe(1);
-    expect((lastPayload['archiveShelterHome'] as { expectedVersion?: number }).expectedVersion).toBe(1);
+    await component.confirmDeletion();
+    expect(component.deletionError()).toContain('reason');
+    expect(calls['deleteShelterHome']).toBeUndefined();
+
+    component.updateDeleteReason('duplicate home');
+    component.updateDeleteConfirmCode('WRONG');
+    await component.confirmDeletion();
+    expect(component.deletionError()).toContain('H-01');
+    expect(calls['deleteShelterHome']).toBeUndefined();
+  });
+
+  it('deletes with the stable home id + code confirmation, refreshes the list and reports counts', async () => {
+    stubDeletionBackend();
+
+    await TestBed.inject(ShelterDataService).loadConnectedHomes();
+    await component.openDeletionPreview(HOME);
+    component.updateDeleteReason('duplicate home');
+    component.updateDeleteConfirmCode('H-01');
+    await component.confirmDeletion();
+
+    expect(calls['deleteShelterHome']).toBe(1);
+
+    const payload = lastPayload['deleteShelterHome'] as {
+      shelterHomeId: string;
+      confirm: string;
+      reason: string;
+      expectedVersion?: number;
+    };
+    expect(payload.shelterHomeId).toBe('home-1');
+    expect(payload.confirm).toBe('H-01');
+    expect(payload.reason).toBe('duplicate home');
+    expect(payload.expectedVersion).toBe(1);
 
     // Removed from the active list only after confirmed success.
     expect(TestBed.inject(ShelterDataService).getHomeById('home-1')).toBeUndefined();
-    expect(component.archivePreview()).toBeNull();
-    expect(component.archiveNotice()).toContain('archived');
-    expect(component.archiveNotice()).toContain('trigger');
+    expect(component.deletionPreview()).toBeNull();
+    expect(component.deletionNotice()).toContain('permanently deleted');
+    expect(component.deletionNotice()).toContain('42');
+    expect(component.deletionNotice()).toContain('30');
   });
 
-  it('keeps the home and the preview, and offers retry, when the archive fails', async () => {
-    stubArchiveBackend({ archiveFails: true });
+  it('keeps the home and the dialog, and offers retry, when the deletion fails', async () => {
+    stubDeletionBackend({ deleteFails: true });
 
     await TestBed.inject(ShelterDataService).loadConnectedHomes();
-    await component.openArchivePreview(HOME);
-    await component.confirmArchive();
+    await component.openDeletionPreview(HOME);
+    component.updateDeleteReason('duplicate home');
+    component.updateDeleteConfirmCode('H-01');
+    await component.confirmDeletion();
 
-    expect(component.archiveError()).toContain('could not be completed');
+    expect(component.deletionError()).toContain('could not be completed');
     // The home is NOT removed from the active list on failure.
     expect(TestBed.inject(ShelterDataService).getHomeById('home-1')).toBeDefined();
-    // The preview survives so the retry affordance stays available.
-    expect(component.archivePreview()).not.toBeNull();
+    // The dialog survives so the retry affordance stays available.
+    expect(component.deletionPreview()).not.toBeNull();
   });
 
-  it('restricts archive and restore controls to ADMIN users', () => {
+  it('restricts the delete control to Support/Admin users', () => {
     const auth = TestBed.inject(AuthService);
+
     auth.setGoogleAuthenticatedUser({
       id: 'spec-user',
       googleId: 'spec-google-id',
@@ -391,26 +436,27 @@ describe('Homes — shelter home archive lifecycle', () => {
       accessStatus: 'APPROVED',
       version: 1,
     });
+    expect(component.canDelete()).toBe(true);
 
-    expect(component.canArchive(HOME)).toBe(false);
-    expect(component.canRestore()).toBe(false);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'LIAISON_TEAM',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    expect(component.canDelete()).toBe(false);
   });
 
-  it('loads archived homes through the includeArchived read and restores truthfully', async () => {
-    stubArchiveBackend({ restoreTriggerReinstall: true });
+  it('reports a failed preview and can retry it', async () => {
+    stubDeletionBackend({ previewFails: true });
 
-    await component.loadArchivedHomes(true);
-
-    expect(calls['listShelterHomes']).toBe(1);
-    expect(component.archivedHomes().length).toBe(1);
-    expect(component.archivedHomes()[0].status).toBe('ARCHIVED');
-
-    await component.restoreArchivedHome(component.archivedHomes()[0]);
-
-    expect(calls['restoreShelterHome']).toBe(1);
-    // The backend said the trigger was NOT reinstalled; the UI must not
-    // pretend it was.
-    expect(component.archiveNotice()).toContain('needs reinstall');
+    await component.openDeletionPreview(HOME);
+    expect(component.deletionPreviewError()).toContain('failed');
+    expect(component.deletionPreview()).toBeNull();
+    expect(calls['deleteShelterHome']).toBeUndefined();
   });
 });
 
@@ -830,11 +876,11 @@ describe('Homes — connect outcome handling', () => {
     expect(calls['connectShelterSheet']).toBe(1);
   });
 
-  it('treats an archived source distinctly and points to the restore path', async () => {
+  it('treats an archived source distinctly and points to the permanent-deletion exit', async () => {
     stubBackend({
       connectFailure: {
         code: 'SHELTER_HOME_ARCHIVED',
-        message: 'This Google Spreadsheet is connected to an archived shelter home. Restore the home before reconnecting it.',
+        message: 'This Google Spreadsheet is connected to an archived shelter home. Permanently delete that home before registering the sheet again.',
       },
     });
 
@@ -842,11 +888,10 @@ describe('Homes — connect outcome handling', () => {
 
     const outcome = component.connectionOutcome();
     expect(outcome?.state).toBe('ARCHIVED_SOURCE');
-    expect(outcome?.message).toContain('Restore');
+    expect(outcome?.message).toContain('Permanently delete');
+    expect(outcome?.message).not.toContain('Restore');
     expect(component.successMessage()).toBe('');
     expect(component.connectedHome()).toBeNull();
-    // The archived homes section (with the authorized Restore action) loads.
-    expect(calls['listShelterHomes']).toBeGreaterThanOrEqual(1);
   });
 
   it('never reports success when the connect response is an HTTP 404 non-JSON page', async () => {
@@ -1002,8 +1047,9 @@ describe('Homes — friendly connection status labels', () => {
     expect(labelFor(undefined, { currentImportVersionId: 'import-1' })).toBe('Checking status');
   });
 
-  it('labels an archived home as Archived regardless of import state', () => {
-    expect(labelFor('COMPLETED', { status: 'ARCHIVED' })).toBe('Archived');
+  it('emits no archive status label (archive/restore retired)', () => {
+    expect(labelFor('COMPLETED', { status: 'ARCHIVED' })).toBe('Synced');
+    expect(labelFor('COMPLETED', { status: 'ARCHIVED' })).not.toContain('Archiv');
   });
 
   it('never shows a raw backend status code in the primary label', () => {
