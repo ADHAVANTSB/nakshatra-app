@@ -762,6 +762,7 @@
                     <div class="team-member-card">
                       <div>
                         <strong>{{ participant.fullName }}</strong>
+                        <small class="participant-code">{{ participant.participantCode }}</small>
                         <span>{{ getHomeName(participant.shelterHomeId) }}</span>
                         <small>{{ participant.gender }} · Age {{ participant.age }} · Class {{ participant.standard }} · {{ participant.level ? levelLabel(participant.level) : 'No level' }}</small>
                       </div>
@@ -804,6 +805,7 @@
                         <div class="team-candidate-card">
                           <div>
                             <strong>{{ candidate.participant.fullName }}</strong>
+                            <small class="participant-code">{{ candidate.participant.participantCode }}</small>
                             <span>{{ getHomeName(candidate.participant.shelterHomeId) }}</span>
                             <small>{{ candidate.participant.level ? levelLabel(candidate.participant.level) : 'No level' }} · {{ candidate.isRegistered ? 'Registered' : 'Not registered' }} · {{ candidate.isEligible ? 'Eligible' : 'Not eligible' }}</small>
                             @if (candidate.assignedTeam) {
@@ -1309,6 +1311,7 @@
                         </strong>
 
                         <span>
+                          <small class="participant-code">{{ participant.participantCode }}</small>
                         </span>
 
                         <small>

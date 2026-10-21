@@ -248,7 +248,7 @@
                       <tbody>
                         @for (entry of row.roster; track entry.participantId) {
                           <tr>
-                            <td>{{ entry.name }}</td>
+                            <td><strong>{{ entry.name }}</strong>@if (entry.participantCode) { <small class="participant-code">{{ entry.participantCode }}</small> }</td>
                             <td>
                               <span
                                 class="att-badge"
@@ -351,7 +351,7 @@
                 <tbody>
                   @for (row of judgeRows(); track row.id) {
                     <tr>
-                      <td data-l="Participant"><strong>{{ row.fullName }}</strong></td>
+                      <td data-l="Participant"><strong>{{ row.fullName }}</strong><small class="participant-code">{{ row.participantCode }}</small></td>
                       @for (field of judgeScoreFields(); track field) {
                         <td class="num" [attr.data-l]="field">
                           <input

@@ -48,6 +48,8 @@ export type ScoreValidation = { empty: true } | { value: number } | { error: str
 export interface TeamRosterEntry {
   participantId: string;
   name: string;
+  /** Stable participant code shown under the name; '' when unknown. */
+  participantCode: string;
   /** PRESENT, ABSENT, or '' = unmarked (never assumed PRESENT). */
   attendanceStatus: string;
 }
@@ -634,6 +636,7 @@ export class Scoring implements OnInit {
         return {
           participantId: member.participantId,
           name: participant?.fullName ?? member.participantId,
+          participantCode: participant?.participantCode ?? '',
           attendanceStatus:
             this.attendanceService.getByParticipantEvent(member.participantId, event.id)?.status ?? '',
         };

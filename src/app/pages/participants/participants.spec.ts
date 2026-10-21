@@ -668,23 +668,24 @@ describe('Participants � participant table presentation', () => {
     fixture.detectChanges();
   }
 
-  it('hides internal codes and the removed status columns from the primary table', async () => {
+  it('shows the participant code under the name and keeps status columns hidden', async () => {
     await renderWith([TABLE_SUMMARY_ENTRY]);
 
     const host = fixture.nativeElement as HTMLElement;
     const tbody = host.querySelector('tbody');
     expect(tbody).toBeTruthy();
-    expect(tbody!.textContent).not.toContain('P-0001');
-    expect(tbody!.textContent).not.toContain('H-01');
 
     const headers = Array.from(host.querySelectorAll('th'))
       .map(th => (th.textContent ?? '').trim());
     expect(headers).not.toContain('Eligibility');
     expect(headers).not.toContain('Validation');
     expect(headers).not.toContain('Approval');
-    // The name is emphasized; the code line is gone from the identity cell.
+    // Home codes stay out of the table — only participant codes are shown.
+    expect(tbody!.textContent).not.toContain('H-01');
+    // The name is emphasized and its stable participant code sits under it.
     const identityCell = tbody!.querySelector('td');
     expect(identityCell?.textContent).toContain('Test Participant');
+    expect(identityCell?.textContent).toContain('P-0001');
   });
 
   it('renders real event names grouped by category with authoritative counts', async () => {

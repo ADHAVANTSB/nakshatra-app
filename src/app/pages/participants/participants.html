@@ -152,6 +152,7 @@
           <div>
             <span class="eyebrow">PARTICIPANT DETAIL</span>
             <h3>{{ participant.fullName }}</h3>
+            <small class="participant-code">{{ participant.participantCode }}</small>
             <p class="detail-meta">
               {{ homeName(participant.shelterHomeId) }}
             </p>
@@ -270,6 +271,7 @@
           <div class="detail-item detail-item--wide">
             <span>Participant name</span>
             <strong>{{ participant.fullName }}</strong>
+            <small class="participant-code">{{ participant.participantCode }}</small>
           </div>
           <div class="detail-item detail-item--wide">
             <span>Shelter home</span>
@@ -920,6 +922,7 @@
                 (keydown.enter)="openParticipant(participant)">
                 <td class="cell-identity">
                   <strong class="participant-name">{{ participant.fullName }}</strong>
+                  <small class="participant-code">{{ participant.participantCode }}</small>
                   <small class="event-day-status">{{ eventDayStatusLabel(participant) }}</small>
                 </td>
                 <td class="cell-home">
