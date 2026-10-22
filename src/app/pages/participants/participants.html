@@ -146,7 +146,7 @@
 
     @if (detailParticipant(); as participant) {
 
-      <div class="section-card detail-card">
+      <div class="section-card detail-card" #detailCard tabindex="-1">
 
         <div class="detail-head">
           <div>
@@ -441,7 +441,7 @@
 
         <!-- REGISTERED EVENTS -->
 
-        <div class="event-block">
+        <div class="event-block" #eventsSection tabindex="-1">
 
           <div class="detail-head">
             <div>

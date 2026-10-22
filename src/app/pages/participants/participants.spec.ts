@@ -750,6 +750,80 @@ describe('Participants � participant table presentation', () => {
 
     expect(component.openParticipantId()).toBe('participant-1');
   });
+
+  it('wires both row actions to their handlers for the clicked participant', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const openSpy = vi.spyOn(component, 'openParticipant');
+    const manageSpy = vi.spyOn(component, 'openManageEvents');
+    const host = fixture.nativeElement as HTMLElement;
+    const row = host.querySelector('tbody tr') as HTMLElement;
+
+    (Array.from(row.querySelectorAll('button'))
+      .find(button => (button.textContent ?? '').includes('View / Edit')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+    expect(openSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'participant-1' }));
+
+    (Array.from(row.querySelectorAll('button'))
+      .find(button => (button.textContent ?? '').includes('Manage events')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+    expect(manageSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'participant-1' }));
+  });
+
+  it('reveals the detail card and lands Manage events on the registration section', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const row = host.querySelector('tbody tr') as HTMLElement;
+    const buttons = Array.from(row.querySelectorAll('button'));
+
+    (buttons.find(button => (button.textContent ?? '').includes('View / Edit')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+
+    const detailCard = host.querySelector('.detail-card') as HTMLElement;
+    expect(detailCard).toBeTruthy();
+    await vi.waitFor(() => expect(document.activeElement).toBe(detailCard));
+
+    (buttons.find(button => (button.textContent ?? '').includes('Manage events')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+
+    const eventsSection = host.querySelector('.event-block') as HTMLElement;
+    expect(eventsSection).toBeTruthy();
+    await vi.waitFor(() => expect(document.activeElement).toBe(eventsSection));
+  });
+
+  it('releases the detail loading guard even when a detail read rejects', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const participantService = TestBed.inject(ParticipantService);
+    const participantEventService = TestBed.inject(ParticipantEventService);
+    const participant = participantService.getParticipants()[0];
+    const loadParticipant = vi
+      .spyOn(participantService, 'loadParticipant')
+      .mockRejectedValue(new Error('read failed'));
+    const loadEvents = vi
+      .spyOn(participantEventService, 'loadParticipantEvents')
+      .mockRejectedValue(new Error('read failed'));
+
+    await expect(component.openParticipant(participant)).rejects.toThrow('read failed');
+
+    // The guard must not latch: a later click still opens the detail.
+    expect(component.detailLoading()).toBe(false);
+    loadParticipant.mockRestore();
+    loadEvents.mockRestore();
+
+    const host = fixture.nativeElement as HTMLElement;
+    (Array.from((host.querySelector('tbody tr') as HTMLElement).querySelectorAll('button'))
+      .find(button => (button.textContent ?? '').includes('View / Edit')) as HTMLButtonElement)
+      .click();
+    fixture.detectChanges();
+
+    expect(component.openParticipantId()).toBe('participant-1');
+  });
 });
 
 

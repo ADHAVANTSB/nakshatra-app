@@ -1,5 +1,16 @@
 import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  OnInit,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
@@ -1100,9 +1111,13 @@ export class Participants implements OnInit {
     return this.summaryIssueLabels(participantId)[0] ?? '';
   }
 
-  /** Opens the detail panel on the events section (Manage events action). */
+  /**
+   * Opens the detail panel on the events section (Manage events action).
+   * The registration editing UI is revealed and focused, so the action is
+   * visible even when the row sits far down the list.
+   */
   openManageEvents(participant: Participant): void {
-    this.openParticipant(participant);
+    void this.openParticipant(participant, 'events');
   }
 
   /**
@@ -1229,31 +1244,70 @@ export class Participants implements OnInit {
   // DETAIL VIEW
   // ---------------------------------------------------------
 
+  private readonly injector = inject(Injector);
+  private readonly detailCard = viewChild<ElementRef<HTMLElement>>('detailCard');
+  private readonly eventsSection = viewChild<ElementRef<HTMLElement>>('eventsSection');
+
+  /**
+   * Brings the opened panel (or its registration section) into view after the
+   * next render. A row far down the list would otherwise open the panel
+   * thousands of pixels above the click and the action would look dead.
+   */
+  private revealDetail(target: 'detail' | 'events'): void {
+    afterNextRender(
+      () => {
+        const element = (
+          target === 'events' ? this.eventsSection() : this.detailCard()
+        )?.nativeElement;
+
+        if (!element) {
+          return;
+        }
+
+        // Optional call: jsdom (ng test) has no scrollIntoView.
+        element.scrollIntoView?.({ block: 'start' });
+        element.focus({ preventScroll: true });
+      },
+      { injector: this.injector }
+    );
+  }
+
+  /** Monotonic token so a superseded open's late reads never write stale state. */
+  private detailLoadToken = 0;
+
   /**
    * Opens one participant and reads the two backend resources the panel needs:
    * the participant record itself and its registrations.
    */
-  async openParticipant(participant: Participant): Promise<void> {
-    if (this.detailLoading()) {
-      return;
-    }
+  async openParticipant(
+    participant: Participant,
+    reveal: 'detail' | 'events' = 'detail'
+  ): Promise<void> {
+    const token = ++this.detailLoadToken;
 
     this.openParticipantId.set(participant.id);
     this.editing.set(false);
     this.registrations.set(null);
     this.resetFeedback();
     this.detailLoading.set(true);
+    this.revealDetail(reveal);
 
     if (!this.eventService.loaded()) {
       void this.eventService.load();
     }
 
-    await Promise.all([
-      this.reloadParticipant(participant.id),
-      this.reloadRegistrations(participant.id),
-    ]);
-
-    this.detailLoading.set(false);
+    // The loading flag must always release: a rejected read would otherwise
+    // latch it true and make every later row action a silent no-op.
+    try {
+      await Promise.all([
+        this.reloadParticipant(participant.id),
+        this.reloadRegistrations(participant.id),
+      ]);
+    } finally {
+      if (token === this.detailLoadToken) {
+        this.detailLoading.set(false);
+      }
+    }
   }
 
   closeDetail(): void {
@@ -1275,11 +1329,17 @@ export class Participants implements OnInit {
       return;
     }
 
+    const token = ++this.detailLoadToken;
     this.detailLoading.set(true);
 
-    await this.reloadParticipant(participantId);
+    try {
+      await this.reloadParticipant(participantId);
+    } finally {
+      if (token === this.detailLoadToken) {
+        this.detailLoading.set(false);
+      }
+    }
 
-    this.detailLoading.set(false);
     this.saveError.set('');
     this.saveErrorCode.set('');
   }
@@ -1758,7 +1818,9 @@ export class Participants implements OnInit {
   }
 
   private async reloadParticipant(participantId: string): Promise<void> {
-    this.detailError.set('');
+    if (this.openParticipantId() === participantId) {
+      this.detailError.set('');
+    }
 
     const { participant: fresh, errorMessage } =
       await this.participantService.loadParticipant(participantId);
@@ -1766,7 +1828,9 @@ export class Participants implements OnInit {
     if (!fresh) {
       // The backend's real error is shown; the generic sentence alone would
       // mask whether this was a session problem, a timeout or a bad response.
-      this.detailError.set(`The participant record could not be loaded. ${errorMessage}`);
+      if (this.openParticipantId() === participantId) {
+        this.detailError.set(`The participant record could not be loaded. ${errorMessage}`);
+      }
       return;
     }
 
@@ -1774,13 +1838,24 @@ export class Participants implements OnInit {
   }
 
   private async reloadRegistrations(participantId: string, force = true): Promise<void> {
-    this.registrationsLoading.set(true);
-    this.registrationsError.set('');
+    // A superseded open (user switched rows or closed the panel while the
+    // slow backend read ran) must never overwrite the current participant's
+    // state with its late answer.
+    const stale = () => this.openParticipantId() !== participantId;
+
+    if (!stale()) {
+      this.registrationsLoading.set(true);
+      this.registrationsError.set('');
+    }
 
     const result = await this.participantEventService.loadParticipantEvents(
       participantId,
       force
     );
+
+    if (stale()) {
+      return;
+    }
 
     this.registrationsLoading.set(false);
 

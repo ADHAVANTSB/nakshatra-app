@@ -1,0 +1,65 @@
+﻿[33mΓ¥»[39m Building...
+[32mΓ£ö[39m Building...
+[1mInitial chunk files[22m                                         [2m | [22m[1mNames[22m                                                    [2m | [22m [1mRaw size[22m
+[32mspec-app-pages-participants-participants.js[39m                 [2m | [22m[2mspec-app-pages-participants-participants[22m                 [2m | [22m[36m284.13 kB[39m[2m | [22m
+[32mspec-app-pages-homes-homes.js[39m                               [2m | [22m[2mspec-app-pages-homes-homes[22m                               [2m | [22m[36m210.61 kB[39m[2m | [22m
+[32mspec-app-pages-events-events.js[39m                             [2m | [22m[2mspec-app-pages-events-events[22m                             [2m | [22m[36m170.79 kB[39m[2m | [22m
+[32mchunk-ZHVBHQZ2.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m155.00 kB[39m[2m | [22m
+[32mchunk-AU2V23LQ.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m133.55 kB[39m[2m | [22m
+[32mspec-app-pages-settings-settings.js[39m                         [2m | [22m[2mspec-app-pages-settings-settings[22m                         [2m | [22m[36m132.21 kB[39m[2m | [22m
+[32mspec-app-pages-reports-reports.js[39m                           [2m | [22m[2mspec-app-pages-reports-reports[22m                           [2m | [22m[36m117.21 kB[39m[2m | [22m
+[32mspec-app-pages-login-login.js[39m                               [2m | [22m[2mspec-app-pages-login-login[22m                               [2m | [22m [36m78.49 kB[39m[2m | [22m
+[32mspec-app-pages-attendance-attendance.js[39m                     [2m | [22m[2mspec-app-pages-attendance-attendance[22m                     [2m | [22m [36m76.08 kB[39m[2m | [22m
+[32mspec-app-app.js[39m                                             [2m | [22m[2mspec-app-app[22m                                             [2m | [22m [36m75.75 kB[39m[2m | [22m
+[32mspec-app-pages-judging-judging.js[39m                           [2m | [22m[2mspec-app-pages-judging-judging[22m                           [2m | [22m [36m72.14 kB[39m[2m | [22m
+[32mspec-app-pages-certificates-certificates.js[39m                 [2m | [22m[2mspec-app-pages-certificates-certificates[22m                 [2m | [22m [36m68.67 kB[39m[2m | [22m
+[32mstyles.css[39m                                                  [2m | [22m[2mstyles[22m                                                   [2m | [22m [36m67.44 kB[39m[2m | [22m
+[32mchunk-CBTQRNRU.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m56.58 kB[39m[2m | [22m
+[32mspec-app-pages-select-zone-select-zone.js[39m                   [2m | [22m[2mspec-app-pages-select-zone-select-zone[22m                   [2m | [22m [36m30.88 kB[39m[2m | [22m
+[32mspec-app-pages-scoring-scoring.js[39m                           [2m | [22m[2mspec-app-pages-scoring-scoring[22m                           [2m | [22m [36m29.78 kB[39m[2m | [22m
+[32mchunk-GMJAXV6D.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m26.18 kB[39m[2m | [22m
+[32mspec-app-core-services-api-api-client.service.js[39m            [2m | [22m[2mspec-app-core-services-api-api-client.service[22m            [2m | [22m [36m19.78 kB[39m[2m | [22m
+[32mchunk-M75J24VY.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m19.67 kB[39m[2m | [22m
+[32mspec-app-pages-select-program-select-program.js[39m             [2m | [22m[2mspec-app-pages-select-program-select-program[22m             [2m | [22m [36m17.56 kB[39m[2m | [22m
+[32mspec-app-core-services-events-participant-event.service.js[39m  [2m | [22m[2mspec-app-core-services-events-participant-event.service[22m  [2m | [22m [36m15.63 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-approval.js[39m                  [2m | [22m[2mspec-app-pages-results-results-approval[22m                  [2m | [22m [36m13.97 kB[39m[2m | [22m
+[32mchunk-AZLP6G6U.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m13.64 kB[39m[2m | [22m
+[32mspec-app-pages-scoring-scoring-group.js[39m                     [2m | [22m[2mspec-app-pages-scoring-scoring-group[22m                     [2m | [22m [36m12.85 kB[39m[2m | [22m
+[32mspec-app-core-services-imports-sync-all-homes.service.js[39m    [2m | [22m[2mspec-app-core-services-imports-sync-all-homes.service[22m    [2m | [22m  [36m9.13 kB[39m[2m | [22m
+[32mchunk-TI3THUUJ.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m7.61 kB[39m[2m | [22m
+[32mspec-app-core-permissions-permission-ux.js[39m                  [2m | [22m[2mspec-app-core-permissions-permission-ux[22m                  [2m | [22m  [36m7.54 kB[39m[2m | [22m
+[32mspec-app-core-services-shelter-homes-shelter-data.service.js[39m[2m | [22m[2mspec-app-core-services-shelter-homes-shelter-data.service[22m[2m | [22m  [36m7.28 kB[39m[2m | [22m
+[32mspec-app-core-services-attendance-attendance.service.js[39m     [2m | [22m[2mspec-app-core-services-attendance-attendance.service[22m     [2m | [22m  [36m7.20 kB[39m[2m | [22m
+[32mchunk-W37BKTNB.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m6.04 kB[39m[2m | [22m
+[32mchunk-4Z2THT5A.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m5.75 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-display.js[39m                   [2m | [22m[2mspec-app-pages-results-results-display[22m                   [2m | [22m  [36m5.57 kB[39m[2m | [22m
+[32mchunk-6JHFWOTA.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m5.31 kB[39m[2m | [22m
+[32mchunk-RSTWSNOR.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.75 kB[39m[2m | [22m
+[32mchunk-HY5IMGF7.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.73 kB[39m[2m | [22m
+[32mchunk-RSAGQV6G.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.32 kB[39m[2m | [22m
+[32mchunk-TLX2BLDZ.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.08 kB[39m[2m | [22m
+[32mspec-app-core-services-program-program-context.service.js[39m   [2m | [22m[2mspec-app-core-services-program-program-context.service[22m   [2m | [22m  [36m4.00 kB[39m[2m | [22m
+[32mspec-app-core-services-auth-auth.guards.js[39m                  [2m | [22m[2mspec-app-core-services-auth-auth.guards[22m                  [2m | [22m  [36m3.77 kB[39m[2m | [22m
+[32mspec-app-core-services-program-program-context.guards.js[39m    [2m | [22m[2mspec-app-core-services-program-program-context.guards[22m    [2m | [22m  [36m2.61 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-rank.js[39m                      [2m | [22m[2mspec-app-pages-results-results-rank[22m                      [2m | [22m  [36m2.47 kB[39m[2m | [22m
+[32mchunk-WSH4OKNA.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m2.20 kB[39m[2m | [22m
+[32mchunk-2X4SOSO2.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.97 kB[39m[2m | [22m
+[32mchunk-AGWCQQZM.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.77 kB[39m[2m | [22m
+[32minit-testbed.js[39m                                             [2m | [22m[2minit-testbed[22m                                             [2m | [22m  [36m1.21 kB[39m[2m | [22m
+[32mchunk-LJPHEC63.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.19 kB[39m[2m | [22m
+[32mvitest-mock-patch.js[39m                                        [2m | [22m[2mvitest-mock-patch[22m                                        [2m | [22m[36m974 bytes[39m[2m | [22m
+[32mchunk-VGDRZSX3.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m183 bytes[39m[2m | [22m
+
+[1m [22m                                                           [2m | [22m[1mInitial total[22m                                            [2m | [22m  [1m2.00 MB[22m
+
+Application bundle generation complete. [28.493 seconds] - 2026-10-22T17:40:21.488Z
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/Users/AdhavanTSB/OneDrive - TechStar Consulting Inc/Desktop/Nakshatra/nakshatra-app[39m
+
+
+[2m Test Files [22m [1m[32m26 passed[39m[22m[90m (26)[39m
+[2m      Tests [22m [1m[32m346 passed[39m[22m[90m (346)[39m
+[2m   Start at [22m 23:10:24
+[2m   Duration [22m 33.32s[2m (transform 11.82s, setup 26.19s, import 24.27s, tests 41.57s, environment 312.57s)[22m
+

@@ -473,11 +473,11 @@
             <dl>
               <div>
                 <dt>Contact Name</dt>
-                <dd>{{ home.contactName || '—' }}</dd>
+                <dd>{{ home.contactName || 'Not recorded' }}</dd>
               </div>
               <div>
                 <dt>Contact Phone</dt>
-                <dd>{{ home.contactPhone || '—' }}</dd>
+                <dd>{{ home.contactPhone || 'Not recorded' }}</dd>
               </div>
               <div>
                 <dt>Alternate Phone</dt>
@@ -664,8 +664,8 @@
                 <h4>{{ home.homeName }}</h4>
                                 <p><strong>Address:</strong> {{ home.address || '—' }}</p>
                 <p>
-                  <strong>Contact:</strong> {{ home.contactName || '—' }} ·
-                  {{ home.contactPhone || '—' }}
+                  <strong>Contact:</strong> {{ home.contactName || 'Not recorded' }} ·
+                  {{ home.contactPhone || 'Not recorded' }}
                 </p>
                 <p><strong>Google Sheet:</strong> {{ home.spreadsheetName || 'Connected' }}</p>
                 <p>
