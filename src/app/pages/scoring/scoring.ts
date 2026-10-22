@@ -600,6 +600,9 @@ export class Scoring implements OnInit {
       .filter((participant): participant is Participant => !!participant);
   });
 
+  /** Registered count for the group workspace's "nobody registered" status. */
+  readonly registeredParticipantCount = computed(() => this.registeredParticipants().length);
+
   /**
    * Judge grid rows: PRESENT participants only. Absent and unmarked
    * participants are excluded entirely and cannot be judge-scored.

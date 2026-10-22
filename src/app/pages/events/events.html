@@ -630,12 +630,6 @@
             </div>
           }
 
-          @if (teamFormError()) {
-            <div class="validation-box error">
-              <div class="validation-title"><span>!</span>{{ teamFormError() }}</div>
-            </div>
-          }
-
           @if (teamValidation(); as validation) {
 
             @if (validation.errors.length > 0) {
@@ -673,27 +667,7 @@
                 <span>Loading teams…</span>
               }
             </div>
-            <button
-              type="button"
-              class="primary-button small-button"
-              [disabled]="event.status !== 'ACTIVE' || teamBusy() !== null"
-              (click)="openCreateTeam()">
-              + Create Team
-            </button>
           </div>
-
-          @if (showCreateTeam()) {
-            <div class="team-form-card">
-              <label for="team-name">Team name</label>
-              <input id="team-name" type="text" [(ngModel)]="teamName" [disabled]="teamBusy() === 'create'" placeholder="Enter team name" />
-              <div class="team-form-actions">
-                <button type="button" class="secondary-button small-button" [disabled]="teamBusy() === 'create'" (click)="closeCreateTeam()">Cancel</button>
-                <button type="button" class="primary-button small-button" [disabled]="teamBusy() !== null" (click)="createTeam()">
-                  {{ teamBusy() === 'create' ? 'Creating…' : 'Create Team' }}
-                </button>
-              </div>
-            </div>
-          }
 
           @if (teamsLoadState().status === 'ERROR') {
             <div class="validation-box error" role="alert">
@@ -735,8 +709,8 @@
           } @else {
             <div class="participant-empty">
               <div class="participant-empty-icon">◉</div>
-              <strong>No teams have been created for this event.</strong>
-              <span>Create a team after participants are registered for this group event.</span>
+              <strong>No teams are resolved for this event yet.</strong>
+              <span>Teams resolve automatically: every registered home's participants form its team. Register participants for this group event first.</span>
             </div>
           }
 
@@ -750,11 +724,9 @@
                 <button type="button" class="close-button" (click)="closeTeamMembers()">×</button>
               </div>
 
-              @if (canModifyTeam(team)) {
-                <button type="button" class="primary-button small-button" [disabled]="teamBusy() !== null" (click)="openAddTeamMember()">+ Add Participant</button>
-              } @else {
-                <div class="team-rule-note">Locked and cancelled teams cannot be edited.</div>
-              }
+              <div class="team-rule-note">
+                The roster is the home's registered participants for this event - it resolves automatically from registrations.
+              </div>
 
               @if (selectedTeamMembers().length > 0) {
                 <div class="team-member-list">
@@ -766,65 +738,13 @@
                         <span>{{ getHomeName(participant.shelterHomeId) }}</span>
                         <small>{{ participant.gender }} · Age {{ participant.age }} · Class {{ participant.standard }} · {{ participant.level ? levelLabel(participant.level) : 'No level' }}</small>
                       </div>
-                      @if (canModifyTeam(team)) {
-                        <button type="button" class="mini-action danger" [disabled]="teamBusy() !== null" (click)="removeTeamMember(participant.id)">
-                          {{ teamBusy() === 'remove:' + participant.id ? 'Removing…' : 'Remove' }}
-                        </button>
-                      }
                     </div>
                   }
                 </div>
               } @else {
                 <div class="participant-empty">
                   <strong>This team has no members</strong>
-                  <span>Add registered, eligible participants to compose the team.</span>
-                </div>
-              }
-
-              @if (showAddTeamMember()) {
-                <div class="team-add-panel">
-                  <div class="section-heading">
-                    <div><h3>Add participant</h3><span>Only registered, eligible participants can be added.</span></div>
-                    <button type="button" class="close-button" (click)="closeAddTeamMember()">×</button>
-                  </div>
-                  <div class="participant-filters">
-                    <div class="search-wrapper">
-                      <span class="search-icon">⌕</span>
-                      <input type="text" placeholder="Search name or code" [ngModel]="teamParticipantSearch()" (ngModelChange)="setTeamParticipantSearch($event)" />
-                    </div>
-                    <select aria-label="Filter participants by shelter home" [ngModel]="teamParticipantHomeFilter()" (ngModelChange)="setTeamParticipantHome($event)">
-                      <option value="ALL">All shelter homes</option>
-                      @for (home of homes(); track home.id) {
-                        <option [value]="home.id">{{ home.name }}</option>
-                      }
-                    </select>
-                  </div>
-                  @if (teamCandidates().length > 0) {
-                    <div class="team-candidate-list">
-                      @for (candidate of teamCandidates(); track candidate.participant.id) {
-                        <div class="team-candidate-card">
-                          <div>
-                            <strong>{{ candidate.participant.fullName }}</strong>
-                            <small class="participant-code">{{ candidate.participant.participantCode }}</small>
-                            <span>{{ getHomeName(candidate.participant.shelterHomeId) }}</span>
-                            <small>{{ candidate.participant.level ? levelLabel(candidate.participant.level) : 'No level' }} · {{ candidate.isRegistered ? 'Registered' : 'Not registered' }} · {{ candidate.isEligible ? 'Eligible' : 'Not eligible' }}</small>
-                            @if (candidate.assignedTeam) {
-                              <small>Already assigned to {{ candidate.assignedTeam.name }}.</small>
-                            }
-                          </div>
-                          <button
-                            type="button"
-                            class="mini-action"
-                            [disabled]="!candidate.isRegistered || !candidate.isEligible || !!candidate.assignedTeam || teamBusy() !== null"
-                            (click)="addTeamMember(candidate.participant.id)">
-                            {{ teamBusy() === 'add:' + candidate.participant.id ? 'Adding…' : 'Add' }}
-                          </button>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <div class="no-candidates"><strong>No participants found</strong><span>Try another search or shelter-home filter.</span></div>
-                  }
+                  <span>The roster resolves automatically from this event's registered participants.</span>
                 </div>
               }
             </section>

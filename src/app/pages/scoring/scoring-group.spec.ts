@@ -327,7 +327,8 @@ describe('Scoring — GROUP events score at team level', () => {
     expect(component.teamRows().length).toBe(1);
     expect(component.isGroupEvent()).toBe(true);
     expect(host.querySelector('[data-testid="team-attendance-incomplete"]')).not.toBeNull();
-    expect(host.textContent).toContain('Team scoring is disabled — attendance incomplete.');
+    // The banner splits its text across template lines; normalize whitespace like the browser renders it.
+    expect(host.textContent?.replace(/\s+/g, ' ')).toContain('Team scoring is disabled — attendance incomplete.');
 
     const inputs = Array.from(host.querySelectorAll<HTMLInputElement>('input.score-input'));
     expect(inputs.length).toBeGreaterThan(0);

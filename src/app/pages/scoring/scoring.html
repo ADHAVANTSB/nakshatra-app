@@ -196,7 +196,16 @@
 
           @if (isGroupEvent()) {
             @if (teamRows().length === 0) {
-              <div class="empty">No teams are registered for this event yet.</div>
+              <div class="empty" role="status">
+                @if (registeredParticipantCount() === 0) {
+                  No participants are registered for this event yet. A team entry
+                  per shelter home is resolved automatically once the home's
+                  participants are registered.
+                } @else {
+                  Team entries resolve automatically from registrations and are
+                  not available yet. Check the registrations for this event.
+                }
+              </div>
             } @else {
               @if (pendingAttendanceCount() > 0) {
                 <div class="attendance-save-bar" role="group" aria-label="Pending attendance marks">
@@ -227,8 +236,15 @@
 
                   @if (!row.scoreable) {
                     <div class="alert error" role="alert" data-testid="team-attendance-incomplete">
-                      <strong>Team scoring is disabled — attendance incomplete.</strong>
+                      <strong>Team scoring is disabled
+                        @if (row.missingAttendance.length > 0) {
+                          — attendance incomplete.
+                        } @else {
+                          — no member is marked PRESENT.
+                        }
+                      </strong>
                       <span>{{ row.blockedReason }}</span>
+                      <a routerLink="/attendance" [queryParams]="{ eventId: event.id }">Open Attendance to correct</a>
                     </div>
                   }
 
