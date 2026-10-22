@@ -1,0 +1,13 @@
+﻿
+Running 7 tests using 4 workers
+
+  -  2 [desktop-chromium] ΓÇ║ e2e\journeys\a11y-responsive.spec.ts:121:7 ΓÇ║ responsive emulation sweep ΓÇ║ the mobile navigation drawer opens and navigates
+  ok 3 [desktop-chromium] ΓÇ║ e2e\journeys\a11y-responsive.spec.ts:145:7 ΓÇ║ accessibility smoke (axe-core, desktop) ΓÇ║ login page has no critical or serious axe violations (10.0s)
+  ok 1 [desktop-chromium] ΓÇ║ e2e\journeys\a11y-responsive.spec.ts:88:7 ΓÇ║ responsive emulation sweep ΓÇ║ key pages fit the viewport and keep their controls usable (15.4s)
+  ok 6 [desktop-chromium] ΓÇ║ e2e\journeys\participation-vs-attendance.spec.ts:100:7 ΓÇ║ homes to participation navigation ΓÇ║ the Homes "Participants" action opens the roster with NO attendance controls (7.4s)
+  ok 5 [desktop-chromium] ΓÇ║ e2e\journeys\a11y-responsive.spec.ts:179:7 ΓÇ║ accessibility smoke (axe-core, desktop) ΓÇ║ attendance page has no critical or serious axe violations (10.3s)
+  ok 4 [desktop-chromium] ΓÇ║ e2e\journeys\a11y-responsive.spec.ts:158:7 ΓÇ║ accessibility smoke (axe-core, desktop) ΓÇ║ authenticated key pages have no critical or serious axe violations (17.2s)
+  ok 7 [desktop-chromium] ΓÇ║ e2e\journeys\participation-vs-attendance.spec.ts:130:7 ΓÇ║ homes to participation navigation ΓÇ║ the event-day check-in is a separate, explicit mode of the page (6.6s)
+
+  1 skipped
+  6 passed (1.1m)

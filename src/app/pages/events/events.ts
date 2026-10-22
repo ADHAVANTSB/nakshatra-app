@@ -479,6 +479,34 @@ export class Events implements OnInit {
 
 
   // =========================================================
+  // REGISTRATION COUNTS (batched aggregate)
+  // =========================================================
+
+  /**
+   * Batched registration-count aggregate for EVERY event, loaded
+   * together with the catalogue in one request at page init. Counts are
+   * correct in both the collapsed and the expanded card state and are
+   * never re-fetched per click.
+   */
+  readonly registrationCounts =
+    this.shelterData.registrationCounts;
+
+  readonly registrationCountsStatus =
+    this.shelterData.registrationCountsStatus;
+
+  /**
+   * Active registration count for one event, or null while the
+   * aggregate is pending or failed - so "loaded and zero" is never
+   * confused with "loading" or "unable to load".
+   */
+  registrationCount(eventId: string): number | null {
+    return this.registrationCountsStatus() === 'LOADED'
+      ? (this.registrationCounts()[eventId] ?? 0)
+      : null;
+  }
+
+
+  // =========================================================
   // COLLAPSIBLE EVENT CARDS
   // =========================================================
 
@@ -526,26 +554,12 @@ export class Events implements OnInit {
   }
 
 
-  /** Active registrations for one event; the count shown on the card header. */
-  activeRegistrationCount(
-    eventId: string
-  ): number {
-
-    return this.participantEventService
-      .registrations$()
-      .filter(registration =>
-        registration.eventId === eventId &&
-        registration.registrationStatus === 'REGISTERED'
-      ).length;
-  }
-
-
   /**
    * Participants for the expanded card's table — every registration row the
    * backend returned, each carrying its registration status; the header count
-   * stays REGISTERED-only (`activeRegistrationCount`). Display data comes from
-   * the registration row first, then the cached participant record; a row is
-   * never dropped for lack of a cached participant.
+   * comes from the batched aggregate (`registrationCount`). Display data comes
+   * from the registration row first, then the cached participant record; a row
+   * is never dropped for lack of a cached participant.
    */
   cardParticipants(
     eventId: string

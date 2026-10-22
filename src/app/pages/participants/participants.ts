@@ -201,6 +201,14 @@ export class Participants implements OnInit {
   // ---------------------------------------------------------
 
   /** Queue filters; both narrow the backend-returned queue client-side. */
+  /**
+   * The event-day check-in workflow is an explicit MODE of this page
+   * (`?section=checkin`), never part of the participation roster. The
+   * Homes page "Participants" action always lands on the roster, which
+   * never shows Present/Absent controls and never saves attendance.
+   */
+  readonly showEventDayCheckIn = signal(false);
+
   readonly eventDayHomeFilter = signal('');
   readonly eventDayStatusFilter = signal<EventDayCheckInStatus | ''>('');
 
@@ -1198,6 +1206,11 @@ export class Participants implements OnInit {
     this.route.queryParamMap.subscribe(params => {
       this.selectedHomeId.set(params.get('shelterHomeId') ?? params.get('homeId'));
 
+      // Event-day check-in is opt-in via `?section=checkin`; arriving
+      // without it (the Homes page "Participants" action) is always the
+      // roster + registrations view.
+      this.showEventDayCheckIn.set(params.get('section') === 'checkin');
+
       // Readable search filter (e.g. from the warning centre links).
       const search = params.get('q');
       if (search) {
@@ -1238,6 +1251,25 @@ export class Participants implements OnInit {
     this.validationFilter.set('');
     this.selectedHomeId.set(null);
     void this.router.navigate(['/participants']);
+  }
+
+  /** Opens the separate event-day check-in workflow (explicit action). */
+  openEventDayCheckIn(): void {
+    void this.router.navigate(['/participants'], {
+      queryParams: {
+        section: 'checkin',
+        shelterHomeId: this.selectedHomeId() ?? undefined,
+      },
+    });
+  }
+
+  /** Returns to the participation roster; nothing is saved or changed. */
+  closeEventDayCheckIn(): void {
+    void this.router.navigate(['/participants'], {
+      queryParams: {
+        shelterHomeId: this.selectedHomeId() ?? undefined,
+      },
+    });
   }
 
   // ---------------------------------------------------------

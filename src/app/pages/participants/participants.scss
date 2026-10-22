@@ -39,6 +39,19 @@
    FILTERS
    --------------------------------------------------------- */
 
+.page-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .filter-summary {
   color: #58707f;
   font-size: 13px;

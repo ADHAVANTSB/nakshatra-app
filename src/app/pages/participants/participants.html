@@ -9,13 +9,24 @@
       <h1>Participants</h1>
       <p>Participants imported from each shelter home Google Sheet.</p>
     </div>
-    <button
-      class="secondary-button"
-      type="button"
-      (click)="clearFilters()"
-      [disabled]="loading()">
-      Clear filters
-    </button>
+    <div class="page-header-actions">
+      @if (!showEventDayCheckIn()) {
+        <button
+          class="secondary-button"
+          type="button"
+          (click)="openEventDayCheckIn()"
+          [disabled]="loading()">
+          Event Day Check-In
+        </button>
+      }
+      <button
+        class="secondary-button"
+        type="button"
+        (click)="clearFilters()"
+        [disabled]="loading()">
+        Clear filters
+      </button>
+    </div>
   </div>
 
   @if (successMessage()) {
@@ -675,13 +686,15 @@
       </div>
     }
 
-    <!-- EVENT-DAY CHECK-IN -->
+    <!-- EVENT-DAY CHECK-IN (separate workflow: only rendered when the
+         page is explicitly opened in check-in mode; the participation
+         roster never shows Present/Absent controls) -->
 
-    @if (eventDayLoading() && eventDayEntries().length === 0) {
+    @if (showEventDayCheckIn() && eventDayLoading() && eventDayEntries().length === 0) {
       <div class="section-card">
         <p class="panel-note" role="status">Reading the event-day check-in list…</p>
       </div>
-    } @else if (eventDayLoadError()) {
+    } @else if (showEventDayCheckIn() && eventDayLoadError()) {
       <div class="section-card">
         <div class="alert error" role="alert">
           <strong>The event-day check-in list could not be read.</strong>
@@ -689,7 +702,7 @@
           <button type="button" class="link-button" (click)="retryEventDayQueue()">Retry</button>
         </div>
       </div>
-    } @else if (eventDayEntries().length) {
+    } @else if (showEventDayCheckIn() && eventDayEntries().length) {
       <div class="section-card">
         <div class="section-card-header">
           <div>
@@ -706,9 +719,17 @@
               appear when the list is refreshed or saved.
             </p>
           </div>
-          <span class="filter-summary">
-            {{ eventDayRows().length }} of {{ eventDayEntries().length }} shown
-          </span>
+          <div class="section-card-actions">
+            <span class="filter-summary">
+              {{ eventDayRows().length }} of {{ eventDayEntries().length }} shown
+            </span>
+            <button
+              type="button"
+              class="secondary-button"
+              (click)="closeEventDayCheckIn()">
+              Back to participants
+            </button>
+          </div>
         </div>
 
         @if (eventDaySuccess()) {

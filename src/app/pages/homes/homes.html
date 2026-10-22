@@ -355,9 +355,59 @@
 
       @if (syncSummary(); as summary) {
         <section class="sync-summary" aria-label="Participant import summary">
-          <h3>Participant sync summary</h3>
+          <h3>Sync summary</h3>
+
+          <p class="panel-note">
+            @if (summary.succeeded === true) {
+              The backend reported a clean sync.
+            } @else if (summary.succeeded === false) {
+              <strong>The backend reported issues in this sync</strong> — see
+              the sections below. A connected sheet is not the same as a
+              successful sync.
+            } @else {
+              Reconciliation counts reported by the backend for this sync.
+            }
+            @if (summary.sheetsProcessed.length) {
+              Sheets processed:
+              @for (sheet of summary.sheetsProcessed; track sheet) {
+                <strong>{{ sheet }}</strong>{{ $last ? '.' : ', ' }}
+              }
+            }
+          </p>
 
           <dl>
+            <div>
+              <dt>Participants checked</dt>
+              <dd>{{ summary.participants.checked ?? summary.recordsProcessed ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Participants added</dt>
+              <dd>{{ summary.participants.added ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Participants updated</dt>
+              <dd>{{ summary.participants.updated ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Participants unchanged</dt>
+              <dd>{{ summary.participants.unchanged ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Registrations added</dt>
+              <dd>{{ summary.registrations.added ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Registrations removed or reconciled</dt>
+              <dd>{{ summary.registrations.removed ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Registrations unchanged</dt>
+              <dd>{{ summary.registrations.unchanged ?? 'Unavailable' }}</dd>
+            </div>
+            <div>
+              <dt>Rows needing attention</dt>
+              <dd>{{ summary.rowsNeedingAttention ?? 'Unavailable' }}</dd>
+            </div>
             <div>
               <dt>Records processed</dt>
               <dd>{{ summary.recordsProcessed ?? 'Unavailable' }}</dd>
@@ -379,6 +429,82 @@
               <dd>{{ syncStatusLabel(summary.syncStatus) }}</dd>
             </div>
           </dl>
+
+          <h4>Per-section outcomes</h4>
+          <ul class="section-outcomes">
+            <li>
+              <strong>Participants</strong>
+              @if (summary.participantSection; as section) {
+                <span [class.badge--success]="section.succeeded" [class.badge--warn]="!section.succeeded">
+                  {{ section.succeeded ? 'Succeeded' : 'Needs attention' }}
+                </span>
+                <small>
+                  {{ section.createdCount }} added · {{ section.updatedCount }} updated ·
+                  {{ section.unchangedCount }} unchanged · {{ section.errorCount }} errors
+                </small>
+              } @else {
+                <span>Not reported by the backend</span>
+              }
+            </li>
+            <li>
+              <strong>Event registrations</strong>
+              @if (summary.eventSection; as section) {
+                <span [class.badge--success]="section.succeeded" [class.badge--warn]="!section.succeeded">
+                  {{ section.succeeded ? 'Succeeded' : 'Needs attention' }}
+                </span>
+                <small>
+                  @if (section.tableDetected) {
+                    {{ section.createdCount }} added · {{ section.removedCount }} removed ·
+                    {{ section.unchangedCount }} unchanged · {{ section.unresolvedCount }} unresolved
+                  } @else {
+                    No Event wise table detected in the source workbook.
+                  }
+                </small>
+              } @else {
+                <span>Not reported by the backend</span>
+              }
+            </li>
+            <li>
+              <strong>Home details</strong>
+              @if (summary.homeSection; as section) {
+                <span [class.badge--success]="section.succeeded" [class.badge--warn]="!section.succeeded">
+                  {{ section.succeeded ? 'Succeeded' : 'Needs attention' }}
+                </span>
+                <small>
+                  @if (section.changedFields.length) {
+                    Updated: {{ section.changedFields.join(', ') }}
+                  } @else {
+                    No home detail changed.
+                  }
+                  @if (section.pendingColumns.length) {
+                    · not yet writable: {{ section.pendingColumns.join(', ') }}
+                  }
+                </small>
+              } @else {
+                <span>Not reported by the backend</span>
+              }
+            </li>
+          </ul>
+
+          @if (summary.conflicts.length) {
+            <div class="validation-results">
+              <h4>Unresolved conflicts ({{ summary.conflicts.length }})</h4>
+              <ul>
+                @for (conflict of summary.conflicts; track $index) {
+                  <li>
+                    <strong>{{ conflict.type }}</strong>
+                    @if (conflict.participantName) {
+                      · {{ conflict.participantName }}
+                    }
+                    @if (conflict.eventName) {
+                      · {{ conflict.eventName }}
+                    }
+                    <small>{{ conflict.resolution }}</small>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
 
           <p>
             Imported participant count: <strong>{{ importedParticipantCount() ?? 0 }}</strong>
@@ -543,7 +669,13 @@
                 </div>
                 <div>
                   <dt>Sync Status</dt>
-                  <dd>{{ syncStatusLabel(home.sourceStatus) }}</dd>
+                  <dd>
+                    {{ syncStatusLabel(home.sourceStatus) }}
+                    <small>
+                      Reconciliation status. A connected sheet is not the
+                      same as a successful sync.
+                    </small>
+                  </dd>
                 </div>
               </dl>
 

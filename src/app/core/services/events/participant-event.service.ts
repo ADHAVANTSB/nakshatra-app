@@ -608,6 +608,9 @@ export class ParticipantEventService {
     await Promise.all([
       this.shelterData.loadEventRegistrations(eventId, true),
       this.shelterData.loadParticipantEvents(participantId, true),
+      // The batched registration-count aggregate is refetched (ONE
+      // request) so every page showing counts reflects this write.
+      this.shelterData.refreshRegistrationCounts(),
     ]);
   }
 

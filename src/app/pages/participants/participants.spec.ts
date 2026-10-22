@@ -1302,6 +1302,12 @@ describe('Participants — event-day check-in', () => {
     entries: unknown[];
     /** Role shown by the session; defaults to ADMIN. */
     role?: ApplicationRole;
+    /**
+     * Open the explicit event-day check-in mode (the default for these
+     * tests). false renders the participation roster, which must never
+     * show attendance controls.
+     */
+    checkInMode?: boolean;
     markError?: { code: string; message: string };
     /** A batch-level failure: nothing is written, everything stays staged. */
     batchError?: { code: string; message: string };
@@ -1458,6 +1464,12 @@ describe('Participants — event-day check-in', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+    // The check-in workflow is an explicit mode (?section=checkin); the
+    // roster never renders it. Set after ngOnInit, which reads the mode
+    // from the query params (absent here).
+    if (options.checkInMode !== false) {
+      component.showEventDayCheckIn.set(true);
+    }
     await vi.waitFor(() => expect(component.eventDayEntries().length).toBeGreaterThan(0));
     fixture.detectChanges();
 
@@ -1907,5 +1919,65 @@ describe('Participants — event-day check-in', () => {
     // Nothing was written: the choice stays staged for a retry.
     expect(component.eventDayHasUnsaved()).toBe(true);
     expect(component.eventDayPending()['participant-1']).toBe('CHECKED_IN');
+  });
+
+  // ---------------------------------------------------------
+  // Participation roster vs event-day check-in (separate workflows)
+  // ---------------------------------------------------------
+
+  it('the participation roster (Homes "Participants" action) never renders attendance controls', async () => {
+    await renderQueue({
+      homes: [HOME_LOCKED],
+      entries: [ENTRY, ENTRY_OTHER_HOME],
+      checkInMode: false,
+    });
+
+    // Arriving without ?section=checkin is always the roster mode.
+    expect(component.showEventDayCheckIn()).toBe(false);
+
+    const labels = buttonLabels();
+    expect(labels.some(label => label === 'Present')).toBe(false);
+    expect(labels.some(label => label === 'Absent')).toBe(false);
+    expect(labels).not.toContain('Save Attendance');
+    expect(labels).not.toContain('Select All Present');
+    expect(labels).not.toContain('Mark All Absent');
+    expect(pageText()).not.toContain('Save Attendance');
+  });
+
+  it('the check-in mode is opened only by its explicit action, and can be left again', async () => {
+    await renderQueue({
+      homes: [HOME_LOCKED],
+      entries: [ENTRY, ENTRY_OTHER_HOME],
+      checkInMode: false,
+    });
+
+    expect(component.showEventDayCheckIn()).toBe(false);
+
+    component.showEventDayCheckIn.set(true);
+    fixture.detectChanges();
+    expect(buttonLabels()).toContain('Save Attendance');
+
+    component.closeEventDayCheckIn();
+    component.showEventDayCheckIn.set(false);
+    fixture.detectChanges();
+    expect(buttonLabels()).not.toContain('Save Attendance');
+  });
+
+  it('an event-day check-in save never creates, removes or changes a registration', async () => {
+    const captured = await renderQueue({ homes: [HOME_LOCKED], entries: [ENTRY] });
+
+    component.stageEventDay(component.eventDayEntries()[0], 'CHECKED_IN');
+    fixture.detectChanges();
+    await component.saveEventDayAttendance();
+
+    const registrationMutations = captured.actions.filter(action =>
+      action === 'registerParticipant' ||
+      action === 'cancelRegistration' ||
+      action === 'reactivateRegistration' ||
+      action === 'markAttendance' ||
+      action === 'saveAttendance');
+
+    expect(registrationMutations).toEqual([]);
+    expect(captured.batchCalls()).toBe(1);
   });
 });

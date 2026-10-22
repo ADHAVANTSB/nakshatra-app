@@ -72,12 +72,15 @@ describe('Events — category grouping and card details', () => {
     TestBed.inject(AuthService).logout();
   });
 
-  async function seedEvents(events: Event[]): Promise<void> {
+  async function seedEvents(
+    events: Event[],
+    registrationCounts?: Record<string, number> | null,
+  ): Promise<void> {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string };
       if (request.action === 'listEvents') {
         return Promise.resolve(new Response(
-          JSON.stringify({ success: true, data: { events } }),
+          JSON.stringify({ success: true, data: { events, registrationCounts: registrationCounts ?? {} } }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ));
       }
@@ -134,7 +137,9 @@ describe('Events — category grouping and card details', () => {
       .toBe('—');
   });
 
-  it('expanded card rows include every registration with its status; the header counts REGISTERED only', async () => {
+  it('expanded card rows include every registration with its status; the header count comes from the batched aggregate', async () => {
+    await seedEvents([event({ id: 'event-1' })], { 'event-1': 1 });
+
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string; payload?: { eventId?: string } };
       if (request.action === 'listEventRegistrations') {
@@ -162,7 +167,8 @@ describe('Events — category grouping and card details', () => {
 
     const rows = component.cardParticipants('event-1');
     expect(rows.map(row => row.status)).toEqual(['REGISTERED', 'WAITLISTED', 'CANCELLED']);
-    expect(component.activeRegistrationCount('event-1')).toBe(1);
+    expect(rows.filter(row => row.status === 'REGISTERED').length).toBe(1);
+    expect(component.registrationCount('event-1')).toBe(1);
   });
 
   it('reads registrations lazily — one request per card expand, none on collapse or re-expand', async () => {
@@ -243,6 +249,293 @@ describe('Events — category grouping and card details', () => {
     const rows = component.cardParticipants('event-1');
 
     expect(rows[0].homeName).toBe('Sunrise Home');
+  });
+});
+
+/**
+ * Batched registration-count aggregate: loaded together with the
+ * catalogue at page init for EVERY event, correct in the collapsed and
+ * the expanded state, with `0 registered` / `Loading…` / `Unable to load`
+ * as distinct states (never an em dash), refreshed by registration saves
+ * and Sheets syncs, and never fetched per event.
+ */
+describe('Events — batched registration counts at page init', () => {
+  let fixture: ComponentFixture<Events>;
+  let component: Events;
+
+  interface BackendCalls {
+    [action: string]: number;
+  }
+
+  function jsonResponse(data: unknown): Promise<Response> {
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: true, data }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+  }
+
+  function failureResponse(action: string): Promise<Response> {
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: action } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+  }
+
+  const EVENTS = [
+    event({ id: 'event-1', name: 'Clay Modelling' }),
+    event({ id: 'event-2', name: 'Rangoli' }),
+    event({ id: 'event-3', name: 'Group Song' }),
+  ];
+
+  /**
+   * Stubs the backend. `countsProvider` returns the aggregate for the
+   * NEXT listEvents response, so refreshes can change what is served.
+   */
+  function stubCountsBackend(
+    countsProvider: () => Record<string, number> | null,
+    calls: BackendCalls,
+  ): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      calls[request.action] = (calls[request.action] ?? 0) + 1;
+
+      switch (request.action) {
+        case 'listEvents':
+          return jsonResponse({ events: EVENTS, registrationCounts: countsProvider() });
+        case 'getPageData':
+          return jsonResponse({
+            shelterHomes: [],
+            participants: [],
+            imports: [],
+            validationResults: [],
+          });
+        case 'listEventDayRegistrations':
+          return jsonResponse({ eventDayRegistrations: [] });
+        case 'listScores':
+          return jsonResponse({ scores: [] });
+        case 'listEventRegistrations':
+          return jsonResponse({ participantEvents: [] });
+        case 'listParticipantEvents':
+          return jsonResponse({ participantEvents: [] });
+        case 'cancelRegistration':
+          return jsonResponse({
+            participantEvent: registration({ id: 'reg-1', eventId: 'event-1', registrationStatus: 'CANCELLED' }),
+          });
+        case 'listShelterHomes':
+          return jsonResponse({ shelterHomes: [] });
+        case 'listParticipants':
+          return jsonResponse({ participants: [] });
+        case 'getImportStatus':
+          return jsonResponse({ imports: [] });
+        default:
+          return failureResponse(request.action);
+      }
+    });
+  }
+
+  async function renderWithCounts(
+    countsProvider: () => Record<string, number> | null,
+  ): Promise<BackendCalls> {
+    const calls: BackendCalls = {};
+    stubCountsBackend(countsProvider, calls);
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Events);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(component.events().length).toBe(3));
+    fixture.detectChanges();
+    return calls;
+  }
+
+  function cardCountLabels(): string[] {
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.event-card-registered');
+    return Array.from(cards).map(card => (card.textContent ?? '').trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Events],
+      providers: [provideRouter([])],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('shows every event count at page init without expanding any card, with NO per-event count request', async () => {
+    const calls = await renderWithCounts(() => ({ 'event-1': 28, 'event-2': 0, 'event-3': 5 }));
+
+    const labels = cardCountLabels();
+    expect(labels).toHaveLength(3);
+    expect(labels[0]).toContain('Registered: 28');
+    expect(labels[1]).toContain('Registered: 0');
+    expect(labels[2]).toContain('Registered: 5');
+
+    // No card was expanded and still every count rendered.
+    expect(component.expandedEventId()).toBeNull();
+
+    // The counts ride with the catalogue: zero per-event count requests.
+    expect(calls['listEventRegistrations'] ?? 0).toBe(0);
+    expect(calls['listParticipantEvents'] ?? 0).toBe(0);
+    // One batched aggregate request (two at most when the boot fan-out
+    // and the catalogue load race); never one per event.
+    expect(calls['listEvents']).toBeGreaterThanOrEqual(1);
+    expect(calls['listEvents']).toBeLessThanOrEqual(2);
+  });
+
+  it('a loaded zero renders "Registered: 0", never an em dash', async () => {
+    await renderWithCounts(() => ({ 'event-1': 0, 'event-2': 0, 'event-3': 0 }));
+
+    for (const label of cardCountLabels()) {
+      expect(label).toContain('Registered: 0');
+      expect(label).not.toContain('—');
+    }
+  });
+
+  it('renders "Loading…" while the aggregate is pending and the count once it arrives', async () => {
+    await renderWithCounts(() => ({ 'event-1': 3, 'event-2': 3, 'event-3': 3 }));
+    expect(cardCountLabels()[0]).toContain('Registered: 3');
+
+    // A refetch (after a write or sync) is pending state again.
+    let releaseCounts: ((response: Response) => void) | null = null;
+    const calls: BackendCalls = {};
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      calls[request.action] = (calls[request.action] ?? 0) + 1;
+
+      if (request.action === 'listEvents') {
+        return new Promise<Response>(resolve => {
+          releaseCounts = resolve;
+        });
+      }
+
+      return jsonResponse({
+        shelterHomes: [], participants: [], imports: [], validationResults: [],
+        eventDayRegistrations: [], scores: [], participantEvents: [],
+      });
+    });
+
+    void TestBed.inject(ShelterDataService).refreshRegistrationCounts();
+    await vi.waitFor(() => expect(releaseCounts).toBeTruthy());
+
+    fixture.detectChanges();
+    expect(component.registrationCountsStatus()).toBe('LOADING');
+    expect(component.registrationCount('event-1')).toBeNull();
+    expect(cardCountLabels()[0]).toContain('Loading…');
+    expect(cardCountLabels()[0]).not.toContain('—');
+
+    releaseCounts!(new Response(
+      JSON.stringify({ success: true, data: { events: EVENTS, registrationCounts: { 'event-1': 3, 'event-2': 3, 'event-3': 3 } } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await vi.waitFor(() => expect(component.registrationCountsStatus()).toBe('LOADED'));
+    fixture.detectChanges();
+
+    expect(cardCountLabels()[0]).toContain('Registered: 3');
+  });
+
+  it('renders "Unable to load" when the aggregate cannot be loaded - never a dash or a fake zero', async () => {
+    await renderWithCounts(() => null);
+
+    expect(component.registrationCountsStatus()).toBe('ERROR');
+    expect(component.registrationCount('event-1')).toBeNull();
+
+    for (const label of cardCountLabels()) {
+      expect(label).toContain('Unable to load');
+      expect(label).not.toContain('—');
+    }
+  });
+
+  it('counts stay correct in the expanded card state too', async () => {
+    await renderWithCounts(() => ({ 'event-1': 28, 'event-2': 0, 'event-3': 5 }));
+
+    component.toggleCard(component.events()[0]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.expandedEventId()).toBe('event-1');
+    expect(cardCountLabels()[0]).toContain('Registered: 28');
+
+    const detail = (fixture.nativeElement as HTMLElement).querySelector('.event-card-details');
+    expect((detail?.textContent ?? '').replace(/\s+/g, ' ')).toContain('Registered 28');
+
+    // Collapse again: still the same authoritative count.
+    component.toggleCard(component.events()[0]);
+    fixture.detectChanges();
+    expect(cardCountLabels()[0]).toContain('Registered: 28');
+  });
+
+  it('counts update after a registration write (the aggregate is refetched, no full reload)', async () => {
+    let counts: Record<string, number> | null = { 'event-1': 28, 'event-2': 0, 'event-3': 5 };
+    const calls = await renderWithCounts(() => counts);
+
+    const eventsRequestsAfterLoad = calls['listEvents'];
+
+    counts = { 'event-1': 27, 'event-2': 0, 'event-3': 5 };
+
+    const result = await TestBed.inject(ParticipantEventService)
+      .cancelRegistration('participant-1', 'event-1');
+    expect(result.success).toBe(true);
+
+    await vi.waitFor(() => expect(component.registrationCount('event-1')).toBe(27));
+    fixture.detectChanges();
+    expect(cardCountLabels()[0]).toContain('Registered: 27');
+
+    // Exactly ONE extra aggregate request for the write.
+    expect(calls['listEvents']).toBe(eventsRequestsAfterLoad + 1);
+  });
+
+  it('counts update after a Sheets sync refresh', async () => {
+    let counts: Record<string, number> | null = { 'event-1': 28, 'event-2': 0, 'event-3': 5 };
+    const calls = await renderWithCounts(() => counts);
+
+    counts = { 'event-1': 30, 'event-2': 1, 'event-3': 5 };
+
+    await TestBed.inject(ShelterDataService).refreshAfterBulkSync(['home-1']);
+
+    await vi.waitFor(() => expect(component.registrationCount('event-1')).toBe(30));
+    expect(component.registrationCount('event-2')).toBe(1);
+    expect(calls['listEvents']).toBeGreaterThanOrEqual(2);
+  });
+
+  it('concurrent aggregate refreshes never settle with stale counts', async () => {
+    let counts: Record<string, number> | null = { 'event-1': 1, 'event-2': 1, 'event-3': 1 };
+    await renderWithCounts(() => counts);
+
+    const store = TestBed.inject(ShelterDataService);
+
+    counts = { 'event-1': 2, 'event-2': 2, 'event-3': 2 };
+    const first = store.refreshRegistrationCounts();
+
+    counts = { 'event-1': 3, 'event-2': 3, 'event-3': 3 };
+    const second = store.refreshRegistrationCounts();
+
+    await Promise.all([first, second]);
+
+    await vi.waitFor(() => expect(store.registrationCounts()['event-1']).toBe(3));
+    expect(store.registrationCountsStatus()).toBe('LOADED');
   });
 });
 

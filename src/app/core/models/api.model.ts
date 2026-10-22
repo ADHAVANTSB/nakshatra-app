@@ -295,6 +295,56 @@ export interface ImportStatusPayload {
   importVersionId?: string;
 }
 
+/** Per-section outcome of one `syncShelterSheet` import. */
+export interface SyncParticipantSectionOutcome {
+  succeeded: boolean;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  skippedLockedCount: number;
+  rejectedCount: number;
+  orphanedCount: number;
+  errorCount: number;
+  warningCount: number;
+}
+
+export interface SyncEventSectionOutcome {
+  succeeded: boolean;
+  tableDetected: boolean;
+  rowCount: number;
+  createdCount: number;
+  updatedCount: number;
+  removedCount: number;
+  unchangedCount: number;
+  unresolvedCount: number;
+  duplicateCount: number;
+  conflictCount: number;
+  retainedPendingWriteCount: number;
+  removalPassStatus: string;
+  removalSkippedIncompleteCount: number;
+  errorCount: number;
+  warningCount: number;
+}
+
+export interface SyncHomeSectionOutcome {
+  succeeded: boolean;
+  updated: boolean;
+  changedFields: string[];
+  pendingColumns: string[];
+  validationIssueCount: number;
+  errorCount: number;
+  warningCount: number;
+}
+
+/** One unresolved source-vs-app registration conflict, as reported. */
+export interface SyncRegistrationConflict {
+  type: string;
+  participantName?: string;
+  eventName?: string;
+  sourceRowNumber?: number | null;
+  resolution: string;
+}
+
 export interface SyncShelterSheetData extends ImportProgressData {
   shelterHomeId: string;
   shelterHomeName: string;
@@ -306,6 +356,35 @@ export interface SyncShelterSheetData extends ImportProgressData {
   validParticipantCount: number;
   errorCount: number;
   warningCount: number;
+  /** True only for a clean import; a partial failure is never success. */
+  succeeded?: boolean;
+  /** Whether the source's last-successful-sync timestamp advanced. */
+  lastSyncedAtAdvanced?: boolean;
+  createdParticipantCount?: number;
+  updatedParticipantCount?: number;
+  unchangedParticipantCount?: number;
+  skippedLockedParticipantCount?: number;
+  rejectedParticipantCount?: number;
+  orphanedParticipantCount?: number;
+  /** Sheets processed by this sync (null when not detected). */
+  participantSheetDetected?: string | null;
+  eventWiseSheetDetected?: string | null;
+  eventWiseDetected?: boolean;
+  eventWiseRowCount?: number;
+  createdRegistrationCount?: number;
+  updatedRegistrationCount?: number;
+  unchangedRegistrationCount?: number;
+  duplicateEventParticipationCount?: number;
+  unresolvedRegistrationCount?: number;
+  removedRegistrationCount?: number;
+  conflictRegistrationCount?: number;
+  retainedPendingWriteCount?: number;
+  removalPassStatus?: string;
+  registrationConflicts?: SyncRegistrationConflict[];
+  participantSection?: SyncParticipantSectionOutcome;
+  eventSection?: SyncEventSectionOutcome;
+  homeSection?: SyncHomeSectionOutcome;
+  warnings?: string[];
 }
 export interface ImportStatusData {
   imports: ImportStatusEntry[];
@@ -466,6 +545,13 @@ export interface UpdateParticipantData {
 
 export interface ListEventsData {
   events: Event[];
+  /**
+   * Batched aggregate: active registration count per event id
+   * (REGISTERED rows deduplicated per participant+event, scope-isolated).
+   * Present with the catalogue so every count renders at page init from
+   * the same request; null when the caller may not read registrations.
+   */
+  registrationCounts?: Record<string, number> | null;
 }
 
 export interface ListEventRegistrationsData {

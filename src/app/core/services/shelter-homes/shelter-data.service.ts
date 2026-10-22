@@ -71,6 +71,17 @@ export class ShelterDataService {
   private readonly loadingRegistrationsState = signal(false);
   private readonly registrationErrorsState = signal<Record<string, string>>({});
 
+  /** Batched registration-count aggregate from the events list action. */
+  private readonly registrationCountsState = signal<Record<string, number>>({});
+
+  /**
+   * Outcome of the last aggregate read. Kept separate from the counts so
+   * "loaded and zero" is never confused with "pending" or "failed".
+   */
+  private readonly registrationCountsStatusState = signal<
+    'LOADING' | 'LOADED' | 'ERROR'
+  >('LOADING');
+
   /** Registrations already read from the backend, keyed by event or participant. */
   private readonly loadedEventRegistrations = new Set<string>();
   private readonly loadedParticipantRegistrations = new Set<string>();
@@ -97,6 +108,9 @@ export class ShelterDataService {
   readonly loaded = this.loadedState.asReadonly();
   readonly eventsLoaded = this.eventsLoadedState.asReadonly();
   readonly loadingEvents = this.loadingEventsState.asReadonly();
+  readonly registrationCounts = this.registrationCountsState.asReadonly();
+  readonly registrationCountsStatus =
+    this.registrationCountsStatusState.asReadonly();
   readonly loadingRegistrations = this.loadingRegistrationsState.asReadonly();
   readonly registrationErrors = this.registrationErrorsState.asReadonly();
 
@@ -168,23 +182,56 @@ export class ShelterDataService {
   }
 
   private async requestEvents(): Promise<Event[] | null> {
-    this.loadingEventsState.set(true);
+    // A refetch over an already-loaded catalogue keeps the current list
+    // on screen (responsive while loading); only the initial read drives
+    // the page-level loading state.
+    if (!this.eventsLoadedState()) {
+      this.loadingEventsState.set(true);
+    }
+
+    // The aggregate rides with this response, so a pending read (first
+    // load or refresh) is reported as pending - never as stale numbers.
+    this.registrationCountsStatusState.set('LOADING');
 
     try {
       const response = await this.apiClient.listEvents();
 
       if (!response.success) {
         this.recordError({ scope: 'EVENTS', message: response.error.message });
+        // The aggregate rides with this response, so a failed read leaves
+        // the counts explicitly failed - never stale numbers.
+        this.registrationCountsStatusState.set('ERROR');
         return null;
       }
 
       this.eventsState.set(response.data.events);
       this.eventsLoadedState.set(true);
       this.clearErrors('EVENTS');
+
+      const counts = response.data.registrationCounts;
+
+      if (counts === null || counts === undefined) {
+        this.registrationCountsState.set({});
+        this.registrationCountsStatusState.set('ERROR');
+      } else {
+        this.registrationCountsState.set(counts);
+        this.registrationCountsStatusState.set('LOADED');
+      }
+
       return response.data.events;
     } finally {
       this.loadingEventsState.set(false);
     }
+  }
+
+  /**
+   * Re-reads the events list so the batched registration-count aggregate
+   * reflects registrations changed by a Nakshatra save or a Sheets sync.
+   * One request refreshes every event's count; concurrent callers share
+   * the same in-flight read (see `loadEvents`).
+   */
+  refreshRegistrationCounts(): Promise<Event[] | null> {
+    return this.loadEvents(true);
   }
 
   getEventById(eventId: string): Event | undefined {
@@ -641,6 +688,9 @@ export class ShelterDataService {
       ...[...this.loadedEventRegistrations].map(eventId =>
         this.loadEventRegistrations(eventId, true)
       ),
+      // A sync can add or reconcile registrations, so the batched
+      // registration-count aggregate is refetched too (ONE request).
+      this.loadEvents(true),
     ]);
   }
 

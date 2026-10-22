@@ -1,0 +1,351 @@
+﻿[33mΓ¥»[39m Building...
+[32mΓ£ö[39m Building...
+[1mInitial chunk files[22m                                         [2m | [22m[1mNames[22m                                                    [2m | [22m [1mRaw size[22m
+[32mspec-app-pages-participants-participants.js[39m                 [2m | [22m[2mspec-app-pages-participants-participants[22m                 [2m | [22m[36m288.02 kB[39m[2m | [22m
+[32mspec-app-pages-homes-homes.js[39m                               [2m | [22m[2mspec-app-pages-homes-homes[22m                               [2m | [22m[36m233.69 kB[39m[2m | [22m
+[32mspec-app-pages-events-events.js[39m                             [2m | [22m[2mspec-app-pages-events-events[22m                             [2m | [22m[36m181.63 kB[39m[2m | [22m
+[32mchunk-SDCCD6JX.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m155.00 kB[39m[2m | [22m
+[32mchunk-IUYUCZFG.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m133.55 kB[39m[2m | [22m
+[32mspec-app-pages-settings-settings.js[39m                         [2m | [22m[2mspec-app-pages-settings-settings[22m                         [2m | [22m[36m132.21 kB[39m[2m | [22m
+[32mspec-app-pages-reports-reports.js[39m                           [2m | [22m[2mspec-app-pages-reports-reports[22m                           [2m | [22m[36m117.21 kB[39m[2m | [22m
+[32mspec-app-pages-login-login.js[39m                               [2m | [22m[2mspec-app-pages-login-login[22m                               [2m | [22m [36m78.49 kB[39m[2m | [22m
+[32mspec-app-pages-attendance-attendance.js[39m                     [2m | [22m[2mspec-app-pages-attendance-attendance[22m                     [2m | [22m [36m76.08 kB[39m[2m | [22m
+[32mspec-app-app.js[39m                                             [2m | [22m[2mspec-app-app[22m                                             [2m | [22m [36m75.75 kB[39m[2m | [22m
+[32mspec-app-pages-judging-judging.js[39m                           [2m | [22m[2mspec-app-pages-judging-judging[22m                           [2m | [22m [36m72.14 kB[39m[2m | [22m
+[32mspec-app-pages-certificates-certificates.js[39m                 [2m | [22m[2mspec-app-pages-certificates-certificates[22m                 [2m | [22m [36m68.67 kB[39m[2m | [22m
+[32mstyles.css[39m                                                  [2m | [22m[2mstyles[22m                                                   [2m | [22m [36m67.44 kB[39m[2m | [22m
+[32mchunk-CBTQRNRU.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m56.58 kB[39m[2m | [22m
+[32mspec-app-pages-select-zone-select-zone.js[39m                   [2m | [22m[2mspec-app-pages-select-zone-select-zone[22m                   [2m | [22m [36m30.88 kB[39m[2m | [22m
+[32mspec-app-pages-scoring-scoring.js[39m                           [2m | [22m[2mspec-app-pages-scoring-scoring[22m                           [2m | [22m [36m29.78 kB[39m[2m | [22m
+[32mchunk-CXDRBLDX.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m26.37 kB[39m[2m | [22m
+[32mchunk-EX4PXJLI.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m21.32 kB[39m[2m | [22m
+[32mspec-app-core-services-api-api-client.service.js[39m            [2m | [22m[2mspec-app-core-services-api-api-client.service[22m            [2m | [22m [36m19.78 kB[39m[2m | [22m
+[32mspec-app-pages-select-program-select-program.js[39m             [2m | [22m[2mspec-app-pages-select-program-select-program[22m             [2m | [22m [36m17.56 kB[39m[2m | [22m
+[32mspec-app-core-services-events-participant-event.service.js[39m  [2m | [22m[2mspec-app-core-services-events-participant-event.service[22m  [2m | [22m [36m15.63 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-approval.js[39m                  [2m | [22m[2mspec-app-pages-results-results-approval[22m                  [2m | [22m [36m13.97 kB[39m[2m | [22m
+[32mchunk-ODWV4G4I.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m [36m13.64 kB[39m[2m | [22m
+[32mspec-app-pages-scoring-scoring-group.js[39m                     [2m | [22m[2mspec-app-pages-scoring-scoring-group[22m                     [2m | [22m [36m12.85 kB[39m[2m | [22m
+[32mspec-app-core-services-imports-sync-all-homes.service.js[39m    [2m | [22m[2mspec-app-core-services-imports-sync-all-homes.service[22m    [2m | [22m  [36m9.13 kB[39m[2m | [22m
+[32mchunk-TI3THUUJ.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m7.61 kB[39m[2m | [22m
+[32mspec-app-core-permissions-permission-ux.js[39m                  [2m | [22m[2mspec-app-core-permissions-permission-ux[22m                  [2m | [22m  [36m7.54 kB[39m[2m | [22m
+[32mspec-app-core-services-shelter-homes-shelter-data.service.js[39m[2m | [22m[2mspec-app-core-services-shelter-homes-shelter-data.service[22m[2m | [22m  [36m7.28 kB[39m[2m | [22m
+[32mspec-app-core-services-attendance-attendance.service.js[39m     [2m | [22m[2mspec-app-core-services-attendance-attendance.service[22m     [2m | [22m  [36m7.20 kB[39m[2m | [22m
+[32mchunk-W37BKTNB.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m6.04 kB[39m[2m | [22m
+[32mchunk-4Z2THT5A.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m5.75 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-display.js[39m                   [2m | [22m[2mspec-app-pages-results-results-display[22m                   [2m | [22m  [36m5.57 kB[39m[2m | [22m
+[32mchunk-R6CJ5R2M.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m5.31 kB[39m[2m | [22m
+[32mchunk-RSTWSNOR.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.75 kB[39m[2m | [22m
+[32mchunk-HY5IMGF7.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.73 kB[39m[2m | [22m
+[32mchunk-46X3VSTM.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.32 kB[39m[2m | [22m
+[32mchunk-TLX2BLDZ.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m4.08 kB[39m[2m | [22m
+[32mspec-app-core-services-program-program-context.service.js[39m   [2m | [22m[2mspec-app-core-services-program-program-context.service[22m   [2m | [22m  [36m4.00 kB[39m[2m | [22m
+[32mspec-app-core-services-auth-auth.guards.js[39m                  [2m | [22m[2mspec-app-core-services-auth-auth.guards[22m                  [2m | [22m  [36m3.77 kB[39m[2m | [22m
+[32mspec-app-core-services-program-program-context.guards.js[39m    [2m | [22m[2mspec-app-core-services-program-program-context.guards[22m    [2m | [22m  [36m2.61 kB[39m[2m | [22m
+[32mspec-app-pages-results-results-rank.js[39m                      [2m | [22m[2mspec-app-pages-results-results-rank[22m                      [2m | [22m  [36m2.47 kB[39m[2m | [22m
+[32mchunk-NE34RLUS.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m2.20 kB[39m[2m | [22m
+[32mchunk-2X4SOSO2.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.97 kB[39m[2m | [22m
+[32mchunk-XCVHQCN2.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.77 kB[39m[2m | [22m
+[32minit-testbed.js[39m                                             [2m | [22m[2minit-testbed[22m                                             [2m | [22m  [36m1.21 kB[39m[2m | [22m
+[32mchunk-LJPHEC63.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m  [36m1.19 kB[39m[2m | [22m
+[32mvitest-mock-patch.js[39m                                        [2m | [22m[2mvitest-mock-patch[22m                                        [2m | [22m[36m974 bytes[39m[2m | [22m
+[32mchunk-VGDRZSX3.js[39m                                           [2m | [22m[2m-[22m                                                        [2m | [22m[36m183 bytes[39m[2m | [22m
+
+[1m [22m                                                           [2m | [22m[1mInitial total[22m                                            [2m | [22m  [1m2.04 MB[22m
+
+Application bundle generation complete. [24.491 seconds] - 2026-10-22T18:35:28.172Z
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/Users/AdhavanTSB/OneDrive - TechStar Consulting Inc/Desktop/Nakshatra/nakshatra-app[39m
+
+ [31mΓ¥»[39m [30m[46m nakshatra-app [49m[39m src/app/pages/events/events.spec.ts [2m([22m[2m21 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 2869[2mms[22m[39m
+[31m     [31m├ù[31m renders "LoadingΓÇª" while the aggregate is pending and the count once it arrives[39m[32m 239[2mms[22m[39m
+[90mstdout[2m | src/app/pages/participants/participants.spec.ts[2m > [22m[2mParticipants ΓÇö event-day check-in[2m > [22m[2mkeeps staged rows and shows the backend reason when a save is rejected
+[22m[39m[nakshatra] api error {
+  code: 'AUTHORIZATION_FAILED',
+  message: "This action isn't available for your role.",
+  action: 'saveEventDayAttendanceBatch',
+  httpStatus: 200,
+  requestId: undefined
+}
+
+ [31mΓ¥»[39m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts [2m([22m[2m49 tests[22m[2m | [22m[31m12 failed[39m[2m)[22m[33m 7099[2mms[22m[39m
+[31m     [31m├ù[31m shows the check-in queue with distinct Not registered / Checked in statuses[39m[32m 258[2mms[22m[39m
+[31m     [31m├ù[31m stages Present/Absent locally with NO network call and never auto-marks anyone[39m[32m 176[2mms[22m[39m
+[31m     [31m├ù[31m saves every pending change in ONE batch request and settles the saved state[39m[32m 179[2mms[22m[39m
+[31m     [31m├ù[31m keeps successful records, shows per-record failures and retries ONLY the failed ones[39m[32m 143[2mms[22m[39m
+[31m     [31m├ù[31m keeps every change staged when the whole batch fails[39m[32m 117[2mms[22m[39m
+[31m     [31m├ù[31m preserves unsaved edits when the list refreshes in the background[39m[32m 131[2mms[22m[39m
+[31m     [31m├ù[31m Reset Unsaved Changes restores the last backend-confirmed state[39m[32m 121[2mms[22m[39m
+[31m     [31m├ù[31m Select All Present / Mark All Absent stage the filtered rows in bulk[39m[32m 133[2mms[22m[39m
+[31m     [31m├ù[31m shows real participation facts in the queue rows, not just the lock text[39m[32m 101[2mms[22m[39m
+[31m     [31m├ù[31m never fabricates registrations or attendance in the queue rows[39m[32m 98[2mms[22m[39m
+[31m     [31m├ù[31m lets a Liaison correct attendance after a save (re-editable, batched)[39m[32m 101[2mms[22m[39m
+[31m     [31m├ù[31m keeps staged rows and shows the backend reason when a save is rejected[39m[32m 95[2mms[22m[39m
+node.exe : 
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[39m[1m[41m Failed Tests 13 [49m[22m[31mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/events/events.spec.ts[2m > [22mEvents 
+ΓÇö batched registration counts at page init[2m > [22mrenders "LoadingΓÇª" while the aggregate is pending and the 
+count once it arrives
+[31m[1mAssertionError[22m: the given combination of arguments (undefined and string) is invalid for this assertion. 
+You can use an array, a map, an object, a set, a string, or a weakset instead of a string[39m
+[36m [2mΓ¥»[22m src/app/pages/events/events.spec.ts:[2m445:34[22m[39m
+    [90m443|[39m     [34mexpect[39m(component[33m.[39m[34mregistrationCountsStatus[39m())[33m.[39m[34mtoBe[
+39m([32m'LOADING'[39m)[33m;[39m
+    [90m444|[39m     [34mexpect[39m(component[33m.[39m[34mregistrationCount[39m([32m'event-1'[39m))[33m.[39
+m[34mtoBeNull[39m()[33m;[39m
+    [90m445|[39m     [34mexpect[39m([34mcardCountLabels[39m()[[34m0[39m])[33m.[39m[34mtoContain[39m([32m'L
+oadingΓÇª'[39m)[33m;[39m
+    [90m   |[39m                                  [31m^[39m
+    [90m446|[39m     [34mexpect[39m([34mcardCountLabels[39m()[[34m0[39m])[33m.[39mnot[33m.[39m[34mtoContai
+n[39m([32m'ΓÇö'[39m)[33m;[39m
+    [90m447|[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[1/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mshows the check-in queue with distinct Not registered / Checked in 
+statuses
+[31m[1mAssertionError[22m: expected 'PARTICIPATIONParticipantsParticipantsΓÇª' to contain 'Not registered'[39m
+
+Expected: "Not registered"
+Received: "PARTICIPATIONParticipantsParticipants imported from each shelter home Google Sheet. Event Day Check-In  
+Clear filters FILTERFind participants 1 of 1 shown  Shelter home All shelter homesSunrise Home Search  Level All 
+levelsJUNIOR Validation All statusesPASSEDParticipantShelter homeGender / ageLevelParticipating eventsActionsTest 
+ParticipantP-0001Home sheet confirmedSunrise Home Male Age 10 ┬╖ Std 5JuniorsΓÇö View / Edit  Manage events "
+
+[36m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1496:24[22m[39m
+    [90m1494|[39m     expect(component.eventDayCheckInLabel(component.eventDayRows()[1])ΓÇª
+    [90m1495|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'Event Day 
+Check-In'[39m)[33m;[39m
+    [90m1496|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'Not 
+registered'[39m)[33m;[39m
+    [90m   |[39m                        [31m^[39m
+    [90m1497|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'Checked 
+in'[39m)[33m;[39m
+    [90m1498|[39m   })[33m;[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[2/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mstages Present/Absent locally with NO network call and never 
+auto-marks anyone
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1552:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[3/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22msaves every pending change in ONE batch request and settles the 
+saved state
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1574:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[4/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mkeeps successful records, shows per-record failures and retries 
+ONLY the failed ones
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1628:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[5/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mkeeps every change staged when the whole batch fails
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1665:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[6/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mpreserves unsaved edits when the list refreshes in the background
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1680:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[7/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mReset Unsaved Changes restores the last backend-confirmed state
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m rowForName src/app/pages/participants/participants.spec.ts:[2m1521:28[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1718:13[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[8/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mSelect All Present / Mark All Absent stage the filtered rows in 
+bulk
+[31m[1mError[22m: event-day section not found[39m
+[36m [2mΓ¥»[22m eventDaySection src/app/pages/participants/participants.spec.ts:[2m1516:25[22m[39m
+    [90m1514|[39m     const section = Array.from((fixture.nativeElement as HTMLElement).ΓÇª
+    [90m1515|[39m       .find(card => (card.textContent ?? '').includes('Event Day CheckΓÇª
+    [90m1516|[39m     [35mif[39m ([33m![39msection) [35mthrow[39m [35mnew[39m 
+[33mError[39m([32m'event-day section not found'[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m1517|[39m     [35mreturn[39m section [35mas[39m [33mHTMLElement[39m[33m;[39m
+    [90m1518|[39m   }
+[90m [2mΓ¥»[22m clickToolbar src/app/pages/participants/participants.spec.ts:[2m1536:31[22m[39m
+[90m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1732:5[22m[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[9/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mshows real participation facts in the queue rows, not just the 
+lock text
+[31m[1mAssertionError[22m: expected 'PARTICIPATIONParticipantsParticipantsΓÇª' to contain '2 events registered 
+(Arts 1, LiteraryΓÇª'[39m
+
+Expected: "2 events registered (Arts 1, Literary 1)"
+Received: "PARTICIPATIONParticipantsParticipants imported from each shelter home Google Sheet. Event Day Check-In  
+Clear filters FILTERFind participants 1 of 1 shown  Shelter home All shelter homesSunrise Home Search  Level All 
+levelsJUNIOR Validation All statusesPASSEDParticipantShelter homeGender / ageLevelParticipating eventsActionsTest 
+ParticipantP-0001Home sheet confirmedSunrise Home Male Age 10 ┬╖ Std 5JuniorsΓÇö View / Edit  Manage events "
+
+[36m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1832:18[22m[39m
+    [90m1830|[39m     [35mconst[39m text [33m=[39m [34mpageText[39m()[33m;[39m
+    [90m1831|[39m     [90m// Compact participation summary from REAL registration records.[39m
+    [90m1832|[39m     [34mexpect[39m(text)[33m.[39m[34mtoContain[39m([32m'2 events registered (Arts 1, 
+Literary 1)'[39m)[33m;[39m
+    [90m   |[39m                  [31m^[39m
+    [90m1833|[39m     expect(text).toContain('Competition attendance: 1 present, 0 absenΓÇª
+    [90m1834|[39m     [90m// Expandable details: registered events + per-event attendance.[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[10/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mnever fabricates registrations or attendance in the queue rows
+[31m[1mAssertionError[22m: expected 'PARTICIPATIONParticipantsParticipantsΓÇª' to contain 'No competition events 
+registered'[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m24 passed[39m[22m[90m (26)[39m
+[2m      Tests [22m [1m[31m13 failed[39m[22m[2m | [22m[1m[32m341 passed[39m[22m[90m (354)[39m
+[2m   Start at [22m 00:05:33
+[2m   Duration [22m 45.73s[2m (transform 11.81s, setup 32.04s, import 21.51s, tests 40.04s, environment 576.77s)[22m
+
+Expected: "No competition events registered"
+Received: "PARTICIPATIONParticipantsParticipants imported from each shelter home Google Sheet. Event Day Check-In  
+Clear filters FILTERFind participants 1 of 1 shown  Shelter home All shelter homesSunrise Home Search  Level All 
+levelsJUNIOR Validation All statusesPASSEDParticipantShelter homeGender / ageLevelParticipating eventsActionsTest 
+ParticipantP-0001Home sheet confirmedSunrise Home Male Age 10 ┬╖ Std 5JuniorsΓÇö View / Edit  Manage events "
+
+[36m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1850:18[22m[39m
+    [90m1848|[39m
+    [90m1849|[39m     [35mconst[39m text [33m=[39m [34mpageText[39m()[33m;[39m
+    [90m1850|[39m     [34mexpect[39m(text)[33m.[39m[34mtoContain[39m([32m'No competition events 
+registered'[39m)[33m;[39m
+    [90m   |[39m                  [31m^[39m
+    [90m1851|[39m     [34mexpect[39m(text)[33m.[39m[34mtoContain[39m([32m'No competition attendance 
+marked'[39m)[33m;[39m
+    [90m1852|[39m   })[33m;[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[11/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mlets a Liaison correct attendance after a save (re-editable, 
+batched)
+[31m[1mAssertionError[22m: expected 'PARTICIPATIONParticipantsParticipantsΓÇª' to contain 'Attendance saved for 1 
+participant'[39m
+
+Expected: "Attendance saved for 1 participant"
+Received: "PARTICIPATIONParticipantsParticipants imported from each shelter home Google Sheet. Event Day Check-In  
+Clear filters FILTERFind participants 1 of 1 shown  Shelter home All shelter homesSunrise Home Search  Level All 
+levelsJUNIOR Validation All statusesPASSEDParticipantShelter homeGender / ageLevelParticipating eventsActionsTest 
+ParticipantP-0001Home sheet confirmedSunrise Home Male Age 10 ┬╖ Std 5JuniorsΓÇö View / Edit  Manage events "
+
+[36m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1885:24[22m[39m
+    [90m1883|[39m       ][33m,[39m
+    [90m1884|[39m     })[33m;[39m
+    [90m1885|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'Attendance saved 
+for 1 participant'[39m)[33m;[39m
+    [90m   |[39m                        [31m^[39m
+    [90m1886|[39m     [34mexpect[39m(component[33m.[39m[34meventDayHasUnsaved[39m())[33m.[39m[34mtoBe[39m(
+[35mfalse[39m)[33m;[39m
+    [90m1887|[39m   })[33m;[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[12/13]ΓÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[46m nakshatra-app [49m[39m src/app/pages/participants/participants.spec.ts[2m > 
+[22mParticipants ΓÇö event-day check-in[2m > [22mkeeps staged rows and shows the backend reason when a save is 
+rejected
+[31m[1mAssertionError[22m: expected 'PARTICIPATIONParticipantsParticipantsΓÇª' to contain 'Attendance was not fully 
+saved.'[39m
+
+Expected: "Attendance was not fully saved."
+Received: "PARTICIPATIONParticipantsParticipants imported from each shelter home Google Sheet. Event Day Check-In  
+Clear filters FILTERFind participants 1 of 1 shown  Shelter home All shelter homesSunrise Home Search  Level All 
+levelsJUNIOR Validation All statusesPASSEDParticipantShelter homeGender / ageLevelParticipating eventsActionsTest 
+ParticipantP-0001Home sheet confirmedSunrise Home Male Age 10 ┬╖ Std 5JuniorsΓÇö View / Edit  Manage events "
+
+[36m [2mΓ¥»[22m src/app/pages/participants/participants.spec.ts:[2m1905:24[22m[39m
+    [90m1903|[39m     fixture[33m.[39m[34mdetectChanges[39m()[33m;[39m
+    [90m1904|[39m
+    [90m1905|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'Attendance was not 
+fully saved.'[39m)[33m;[39m
+    [90m   |[39m                        [31m^[39m
+    [90m1906|[39m     [34mexpect[39m([34mpageText[39m())[33m.[39m[34mtoContain[39m([32m'available for your 
+role'[39m)[33m;[39m
+    [90m1907|[39m     [90m// Nothing was written: the choice stays staged for a retry.[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[13/13]ΓÄ»[22m[39m
+

@@ -10,6 +10,10 @@ import {
   ShelterHomeDeletionPlanEntry,
   ShelterSheetMetadataField,
   ShelterSheetPreviewData,
+  SyncEventSectionOutcome,
+  SyncHomeSectionOutcome,
+  SyncParticipantSectionOutcome,
+  SyncRegistrationConflict,
   SyncShelterSheetData,
   ValidationResult,
 } from '../../core/models';
@@ -588,15 +592,29 @@ export class Homes implements OnInit {
         sync.data.importVersionId ?? sync.data.importVersion?.id;
 
       await this.shelterData.loadImportStatus(home.id, importVersionId);
-      // The sync may have changed the home's participant rows; re-read them so
-      // the card's participant count reflects the backend, not the last page load.
-      await this.shelterData.loadParticipants(home.id);
-      await this.shelterData.loadConnectedHomes();
+      // The sync may have changed the home's participant rows AND its
+      // event registrations; re-read them so the card's participant
+      // count and the registration-count aggregate reflect the backend,
+      // not the last page load.
+      await this.shelterData.refreshAfterBulkSync([home.id]);
 
-      this.notifications.success(
-        `${home.homeName} synced`,
-        this.syncResultDetail(sync.data)
-      );
+      // Per-section sync outcome for this home (participants /
+      // registrations / home metadata), from the backend's own numbers.
+      this.syncSummary.set(this.toSyncSummary(
+        undefined,
+        sync.data,
+        this.shelterData.getParticipantsByHomeId(home.id).length
+      ));
+
+      // A partial failure (a failed section or a failed sheet read) is
+      // never reported as an unqualified success.
+      const detail = this.syncResultDetail(sync.data);
+
+      if (sync.data.succeeded === false) {
+        this.notifications.error(`${home.homeName} synced with issues`, detail);
+      } else {
+        this.notifications.success(`${home.homeName} synced`, detail);
+      }
     } finally {
       // The busy state always releases; the api client resolves every
       // failure, so this only guards truly unexpected throws.
@@ -626,6 +644,22 @@ export class Homes implements OnInit {
 
     if (data.warningCount != null) {
       parts.push(`${data.warningCount} warnings`);
+    }
+
+    if (data.createdRegistrationCount != null) {
+      parts.push(`${data.createdRegistrationCount} registrations added`);
+    }
+
+    if (data.removedRegistrationCount != null) {
+      parts.push(`${data.removedRegistrationCount} registrations removed or reconciled`);
+    }
+
+    if (data.unresolvedRegistrationCount != null && data.unresolvedRegistrationCount > 0) {
+      parts.push(`${data.unresolvedRegistrationCount} row(s) need attention`);
+    }
+
+    if (data.conflictRegistrationCount != null && data.conflictRegistrationCount > 0) {
+      parts.push(`${data.conflictRegistrationCount} unresolved conflict(s)`);
     }
 
     return parts.length ? parts.join(' · ') : data.status || 'Synced';
@@ -1113,6 +1147,16 @@ export class Homes implements OnInit {
     sync: SyncProgress | undefined,
     participantCount: number
   ): SyncSummary {
+    const sheetsProcessed: string[] = [];
+
+    if (sync?.participantSheetDetected) {
+      sheetsProcessed.push(sync.participantSheetDetected);
+    }
+
+    if (sync?.eventWiseSheetDetected) {
+      sheetsProcessed.push(sync.eventWiseSheetDetected);
+    }
+
     return {
       version: status?.versionNumber ?? sync?.versionNumber ?? sync?.importVersion?.versionNumber ?? null,
       recordsProcessed: status?.recordCount ?? sync?.recordCount ?? null,
@@ -1121,6 +1165,31 @@ export class Homes implements OnInit {
       validationErrors: status?.errorCount ?? sync?.errorCount ?? null,
       warnings: status?.warningCount ?? sync?.warningCount ?? null,
       syncStatus: status?.status ?? sync?.status ?? 'COMPLETED',
+      // The backend's clean-import verdict only; never assumed.
+      succeeded: sync?.succeeded ?? null,
+      sheetsProcessed,
+      participants: {
+        checked: sync?.recordCount ?? null,
+        added: sync?.createdParticipantCount ?? null,
+        updated: sync?.updatedParticipantCount ?? null,
+        unchanged: sync?.unchangedParticipantCount ?? null,
+        skippedLocked: sync?.skippedLockedParticipantCount ?? null,
+        rejected: sync?.rejectedParticipantCount ?? null,
+      },
+      registrations: {
+        added: sync?.createdRegistrationCount ?? null,
+        updated: sync?.updatedRegistrationCount ?? null,
+        removed: sync?.removedRegistrationCount ?? null,
+        unchanged: sync?.unchangedRegistrationCount ?? null,
+      },
+      rowsNeedingAttention: sync?.unresolvedRegistrationCount ?? null,
+      duplicateRows: sync?.duplicateEventParticipationCount ?? null,
+      retainedPendingWrites: sync?.retainedPendingWriteCount ?? null,
+      removalPassStatus: sync?.removalPassStatus ?? null,
+      conflicts: sync?.registrationConflicts ?? [],
+      participantSection: sync?.participantSection ?? null,
+      eventSection: sync?.eventSection ?? null,
+      homeSection: sync?.homeSection ?? null,
     };
   }
 
@@ -1185,6 +1254,37 @@ interface SyncSummary {
   validationErrors: number | null;
   warnings: number | null;
   syncStatus: string;
+  /**
+   * The backend's clean-import verdict; null when the backend did not
+   * report it (never assumed to be true).
+   */
+  succeeded: boolean | null;
+  /** Sheets the backend reported as processed in this sync. */
+  sheetsProcessed: string[];
+  participants: {
+    checked: number | null;
+    added: number | null;
+    updated: number | null;
+    unchanged: number | null;
+    skippedLocked: number | null;
+    rejected: number | null;
+  };
+  registrations: {
+    added: number | null;
+    updated: number | null;
+    removed: number | null;
+    unchanged: number | null;
+  };
+  /** Rows that could not be applied or reconciled and need attention. */
+  rowsNeedingAttention: number | null;
+  duplicateRows: number | null;
+  retainedPendingWrites: number | null;
+  removalPassStatus: string | null;
+  /** Unresolved source-vs-app conflicts, each naming the participant. */
+  conflicts: SyncRegistrationConflict[];
+  participantSection: SyncParticipantSectionOutcome | null;
+  eventSection: SyncEventSectionOutcome | null;
+  homeSection: SyncHomeSectionOutcome | null;
 }
 
 interface ConnectedHome {

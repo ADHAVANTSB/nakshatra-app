@@ -254,7 +254,7 @@ test.describe('event-day registration: home lock, check-in, competition registra
     await expect(card.getByRole('button', { name: 'Unlock for correction' })).toBeVisible();
 
     // --- 2. The locked home's participant now appears in the event-day queue.
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
     const section = eventDaySection(page);
     await expect(section).toBeVisible();
     await expect(section).toContainText('One check-in for the overall event day');
@@ -287,7 +287,7 @@ test.describe('event-day registration: home lock, check-in, competition registra
     // A full reload restores the check-in state from the persisted record
     // (the app boots to the dashboard, so navigate back to the queue).
     await page.reload();
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
     await expect(eventDaySection(page).locator('tr').filter({ hasText: 'Arun Kumar' })).toContainText('Checked in');
 
     // --- 3. Only now is the participant registrable for a competition.
@@ -321,7 +321,7 @@ test.describe('event-day registration: home lock, check-in, competition registra
     installFlow(backend, state);
 
     // The participant record is fully visible before any confirmation.
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
     await expect(page.locator('body')).toContainText('Arun Kumar');
     await expect(page.locator('body')).toContainText('Participant record exists');
     // No event-day queue may exist for a non-locked home.
@@ -476,7 +476,7 @@ test.describe('event-day bulk attendance: staged Present/Absent saved in ONE bat
 
     await signIn(page);
     installBulk(backend, state);
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
 
     const section = eventDaySection(page);
     await expect(section).toBeVisible();
@@ -514,7 +514,7 @@ test.describe('event-day bulk attendance: staged Present/Absent saved in ONE bat
 
     await signIn(page);
     installBulk(backend, state);
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
 
     const section = eventDaySection(page);
     await section.getByRole('button', { name: 'Select All Present' }).click();
@@ -553,7 +553,7 @@ test.describe('event-day bulk attendance: staged Present/Absent saved in ONE bat
 
     await signIn(page);
     installBulk(backend, state);
-    await page.goto('/#/participants');
+    await page.goto('/#/participants?section=checkin');
 
     const section = eventDaySection(page);
     const row = section.locator('tr').filter({ hasText: 'Arun Kumar' });

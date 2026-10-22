@@ -1,0 +1,20 @@
+﻿
+Running 15 tests using 4 workers
+
+  ok  1 [desktop-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:511:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ partial failure: successes preserved, per-record failure shown, retry sends ONLY the failed record (14.7s)
+  ok  4 [desktop-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:473:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ stages with no requests and saves the whole list in a single batch call (13.0s)
+  ok  3 [desktop-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:316:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ before the lock: records stay visible, but the queue and registration stay closed (14.9s)
+  ok  2 [desktop-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:239:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ lock -> check-in -> register for a competition, in that order (16.6s)
+  ok  5 [desktop-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:550:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ Reset Unsaved Changes restores the last backend-confirmed state with no request (6.0s)
+  ok  8 [mobile-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:473:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ stages with no requests and saves the whole list in a single batch call (13.4s)
+  ok  6 [mobile-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:239:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ lock -> check-in -> register for a competition, in that order (15.6s)
+  ok  7 [mobile-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:316:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ before the lock: records stay visible, but the queue and registration stay closed (13.9s)
+  ok  9 [mobile-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:511:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ partial failure: successes preserved, per-record failure shown, retry sends ONLY the failed record (13.2s)
+  ok 10 [mobile-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:550:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ Reset Unsaved Changes restores the last backend-confirmed state with no request (6.2s)
+  ok 11 [tablet-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:316:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ before the lock: records stay visible, but the queue and registration stay closed (14.3s)
+  ok 13 [tablet-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:473:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ stages with no requests and saves the whole list in a single batch call (13.1s)
+  ok 12 [tablet-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:239:7 ΓÇ║ event-day registration: home lock, check-in, competition registration ΓÇ║ lock -> check-in -> register for a competition, in that order (16.4s)
+  ok 14 [tablet-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:511:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ partial failure: successes preserved, per-record failure shown, retry sends ONLY the failed record (13.7s)
+  ok 15 [tablet-chromium] ΓÇ║ e2e\journeys\event-day-registration.spec.ts:550:7 ΓÇ║ event-day bulk attendance: staged Present/Absent saved in ONE batch ΓÇ║ Reset Unsaved Changes restores the last backend-confirmed state with no request (6.8s)
+
+  15 passed (2.0m)

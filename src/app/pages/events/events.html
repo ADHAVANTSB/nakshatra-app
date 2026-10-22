@@ -290,10 +290,12 @@
 
               <span class="event-card-registered">
 
-                @if (registrationLoadStatus(event.id) === 'LOADED') {
-                  Registered: {{ activeRegistrationCount(event.id) }}
+                @if (registrationCountsStatus() === 'LOADED') {
+                  Registered: {{ registrationCount(event.id) }}
+                } @else if (registrationCountsStatus() === 'ERROR') {
+                  Unable to load
                 } @else {
-                  Registered: —
+                  Loading…
                 }
 
               </span>
@@ -322,10 +324,12 @@
                   <div>
                     <span>Registered</span>
                     <strong>
-                      @if (registrationLoadStatus(event.id) === 'LOADED') {
-                        {{ activeRegistrationCount(event.id) }}
+                      @if (registrationCountsStatus() === 'LOADED') {
+                        {{ registrationCount(event.id) }}
+                      } @else if (registrationCountsStatus() === 'ERROR') {
+                        Unable to load
                       } @else {
-                        —
+                        Loading…
                       }
                     </strong>
                   </div>
@@ -612,9 +616,9 @@
                 @if (teamsListVisible()) {
                   {{ teamsForSelectedEvent().length }}
                 } @else if (teamsLoadState().status === 'ERROR') {
-                  —
+                  Unable to load
                 } @else {
-                  …
+                  Loading…
                 }
               </strong>
             </div>
@@ -848,9 +852,9 @@
               @if (registrationsReady()) {
                 {{ registeredCount() }}
               } @else if (registrationsFailed()) {
-                —
+                Unable to load
               } @else {
-                …
+                Loading…
               }
 
             </strong>
