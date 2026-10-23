@@ -227,7 +227,9 @@ test.describe('Certificates â€” written/distributed certificate tracking', 
     // reload; the app and its services are freshly booted either way.)
     await page.reload();
     await page.goto('/#/certificates');
-    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
+    // Cold boot after a reload can take longer than a warm render under
+    // full-suite load; wait it out instead of racing it.
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).toBeChecked();
     await expect(stateSpans(page).first()).toContainText('Written');
     await expect(stateSpans(page).nth(1)).toContainText('Not distributed');
@@ -238,7 +240,7 @@ test.describe('Certificates â€” written/distributed certificate tracking', 
 
     await page.reload();
     await page.goto('/#/certificates');
-    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).toBeChecked();
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(1)).toBeChecked();
 

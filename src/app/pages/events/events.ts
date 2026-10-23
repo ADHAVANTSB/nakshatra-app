@@ -114,6 +114,14 @@ export class Events implements OnInit {
   readonly events =
     this.eventService.events$;
 
+  /**
+   * Catalogue-migration state from the same backend read (null outside
+   * the official catalogue). Shown as a truthful banner while the sheet
+   * projection lags the 29 served records.
+   */
+  readonly catalogueMigration =
+    this.shelterData.catalogueMigration;
+
   private readonly eventBootstrapPending =
     signal(false);
 

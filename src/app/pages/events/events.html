@@ -92,6 +92,38 @@
 
 
   <!-- =====================================================
+       CATALOGUE MIGRATION PENDING (truthful state of the sheet)
+       ===================================================== -->
+
+  @if (catalogueMigration()?.pending) {
+    <div
+      class="catalogue-migration-banner"
+      role="status"
+      data-testid="catalogue-migration-pending">
+
+      <strong>Catalogue migration pending</strong>
+
+      <span>
+        The official event records below are served directly from the
+        catalogue, but the database sheet is not fully migrated yet:
+        @if (catalogueMigration()?.missingRecordCodes?.length) {
+          {{ catalogueMigration()?.missingRecordCodes?.length }} record(s)
+          are not yet projected into the Events sheet;
+        }
+        @if (catalogueMigration()?.levelBandPendingCodes?.length) {
+          {{ catalogueMigration()?.levelBandPendingCodes?.length }}
+          record(s) still carry merged level bands there.
+        }
+        Registration and scoring stay per record; an administrator must
+        run the event catalogue migration before the sheet can be
+        trusted on its own.
+      </span>
+
+    </div>
+  }
+
+
+  <!-- =====================================================
        FILTERS
        ===================================================== -->
 
@@ -280,7 +312,7 @@
                 </strong>
 
                 <small>
-                  {{ modeLabel(event.mode) }}
+                  {{ event.eventCode }} · {{ event.category }} · {{ event.status }} · {{ modeLabel(event.mode) }}
                   @if (event.eligibleLevels.length) {
                     • Levels: {{ eligibleLevelsLabel(event) }}
                   }

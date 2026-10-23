@@ -53,7 +53,7 @@
     <select id="result-event" [ngModel]="selectedEventId()" (ngModelChange)="setEvent($event)" [disabled]="loading() || eventsLoading()">
       <option value="">Select an event</option>
       @for (event of filteredEvents(); track event.id) {
-        <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} ({{ event.status }})</option>
+        <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} [{{ event.category }}] ({{ event.status }})</option>
       }
     </select>
 

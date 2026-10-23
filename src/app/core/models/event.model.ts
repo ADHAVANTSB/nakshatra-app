@@ -45,3 +45,54 @@ export interface Event {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Catalogue-migration state reported with the events list (null = not an official catalogue scope). */
+export interface CatalogueMigrationStatus {
+  pending: boolean;
+  missingRecordCodes: string[];
+  levelBandPendingCodes: string[];
+  blockedRecordCodes: string[];
+}
+
+/** Short level labels with their official codes (display only). */
+const LEVEL_DISPLAY: Record<ParticipantLevel, string> = {
+  SUB_JUNIOR: 'Sub Junior (SJ)',
+  JUNIOR: 'Junior (J)',
+  SENIOR: 'Senior (S)',
+  SUPER_SENIOR: 'Super Senior (SS)'
+};
+
+const EVENT_NAME_DISPLAY: Record<string, string> = {
+  'Greeting Card making': 'Greeting Card Making',
+  'Waste to wealth': 'Waste to Wealth'
+};
+
+/**
+ * Display labels for one backend catalogue read (NEVER identity: ids and
+ * codes stay the identity). Official-name spellings are normalized for
+ * display only, and a record whose display name REPEATS inside the
+ * catalogue - the level-split families - carries its level in the label
+ * so same-name entries never look merged ("Clay Modelling — Sub Junior
+ * (SJ)"). Multi-level records (COMMON, the two Quizzes) keep their name
+ * and show their levels where the level chips render.
+ */
+export function displayEventNames(events: readonly Event[]): Event[] {
+  const nameCounts = new Map<string, number>();
+
+  for (const event of events) {
+    nameCounts.set(event.name, (nameCounts.get(event.name) ?? 0) + 1);
+  }
+
+  return events.map(event => {
+    const repeatedName = (nameCounts.get(event.name) ?? 0) > 1;
+    const name = EVENT_NAME_DISPLAY[event.name] ?? event.name;
+
+    return {
+      ...event,
+      name:
+        repeatedName && event.eligibleLevels.length === 1
+          ? `${name} — ${LEVEL_DISPLAY[event.eligibleLevels[0]]}`
+          : name,
+    };
+  });
+}

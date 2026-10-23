@@ -142,6 +142,33 @@
 
 
 /* =========================
+   CATALOGUE MIGRATION PENDING
+   ========================= */
+
+.catalogue-migration-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fdf6e7;
+  border: 1px solid #e8d9ae;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+
+.catalogue-migration-banner strong {
+  color: #7a5c12;
+  font-size: 14px;
+}
+
+.catalogue-migration-banner span {
+  color: #6e6158;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+
+/* =========================
    FILTERS
    ========================= */
 

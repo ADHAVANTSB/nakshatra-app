@@ -1,7 +1,7 @@
 import { Attendance, AttendanceStatus } from './attendance.model';
 import { AccessStatus, ApplicationRole, ApplicationSession, ApplicationUser } from './auth.model';
 import { Team, TeamMember } from './team.model';
-import { Event } from './event.model';
+import { CatalogueMigrationStatus, Event } from './event.model';
 import { Gender, Participant } from './participant.model';
 import { ParticipantEvent } from './participant-event.model';
 import { Score } from './score.model';
@@ -552,6 +552,13 @@ export interface ListEventsData {
    * the same request; null when the caller may not read registrations.
    */
   registrationCounts?: Record<string, number> | null;
+  /**
+   * Truthful catalogue-migration state: the backend serves the official
+   * 29 records read-time merged with the Events sheet, and reports what
+   * is not yet projected there. null when the scope carries no official
+   * catalogue.
+   */
+  catalogueMigration?: CatalogueMigrationStatus | null;
 }
 
 export interface ListEventRegistrationsData {

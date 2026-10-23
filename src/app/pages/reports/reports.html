@@ -46,7 +46,7 @@
       <option value="">All events</option>
       @for (event of events(); track event.id) {
         @if (!category() || event.category === category()) {
-          <option [value]="event.id">{{ event.eventCode }} · {{ event.name }}</option>
+          <option [value]="event.id">{{ event.eventCode }} · {{ event.name }} [{{ event.category }}]</option>
         }
       }
     </select>

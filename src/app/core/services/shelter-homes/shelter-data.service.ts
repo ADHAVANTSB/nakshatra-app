@@ -1,12 +1,14 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
+  CatalogueMigrationStatus,
   ConnectedShelterHome,
   Event,
   ImportStatusEntry,
   Participant,
   ParticipantEvent,
   ValidationResult,
+  displayEventNames,
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
@@ -60,6 +62,8 @@ export class ShelterDataService {
   private readonly homesState = signal<ConnectedShelterHome[]>([]);
   private readonly participantsState = signal<Participant[]>([]);
   private readonly eventsState = signal<Event[]>([]);
+  private readonly catalogueMigrationState =
+    signal<CatalogueMigrationStatus | null>(null);
   private readonly registrationsState = signal<ParticipantEvent[]>([]);
   private readonly importsState = signal<ShelterImportRecord[]>([]);
   private readonly validationsState = signal<ValidationResult[]>([]);
@@ -100,6 +104,13 @@ export class ShelterDataService {
   readonly homes = this.homesState.asReadonly();
   readonly participants = this.participantsState.asReadonly();
   readonly events = this.eventsState.asReadonly();
+  /**
+   * Catalogue-migration state from the same listEvents read: the backend
+   * serves the official 29 records read-time merged with the sheet and
+   * reports what is not yet projected there. null = not an official
+   * catalogue scope.
+   */
+  readonly catalogueMigration = this.catalogueMigrationState.asReadonly();
   readonly registrations = this.registrationsState.asReadonly();
   readonly imports = this.importsState.asReadonly();
   readonly validations = this.validationsState.asReadonly();
@@ -204,8 +215,16 @@ export class ShelterDataService {
         return null;
       }
 
-      this.eventsState.set(response.data.events);
+      // Display projection only (official-name spelling + the level
+      // marker that keeps same-name records visibly distinct); identity
+      // is always the backend's stable id / eventCode.
+      const displayEvents = displayEventNames(response.data.events);
+
+      this.eventsState.set(displayEvents);
       this.eventsLoadedState.set(true);
+      this.catalogueMigrationState.set(
+        response.data.catalogueMigration ?? null
+      );
       this.clearErrors('EVENTS');
 
       const counts = response.data.registrationCounts;
@@ -218,7 +237,7 @@ export class ShelterDataService {
         this.registrationCountsStatusState.set('LOADED');
       }
 
-      return response.data.events;
+      return displayEvents;
     } finally {
       this.loadingEventsState.set(false);
     }

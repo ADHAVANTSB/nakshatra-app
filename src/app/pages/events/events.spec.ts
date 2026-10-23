@@ -75,12 +75,25 @@ describe('Events — category grouping and card details', () => {
   async function seedEvents(
     events: Event[],
     registrationCounts?: Record<string, number> | null,
+    catalogueMigration?: {
+      pending: boolean;
+      missingRecordCodes: string[];
+      levelBandPendingCodes: string[];
+      blockedRecordCodes: string[];
+    } | null,
   ): Promise<void> {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string };
       if (request.action === 'listEvents') {
         return Promise.resolve(new Response(
-          JSON.stringify({ success: true, data: { events, registrationCounts: registrationCounts ?? {} } }),
+          JSON.stringify({
+            success: true,
+            data: {
+              events,
+              registrationCounts: registrationCounts ?? {},
+              catalogueMigration: catalogueMigration ?? null,
+            },
+          }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ));
       }
@@ -849,5 +862,192 @@ describe('Events — registration candidates require home lock + event-day check
     await TestBed.inject(ParticipantEventService).loadEventDayRegistrations(undefined, true);
 
     expect(component.availableParticipants().map(participant => participant.id)).toEqual(before);
+  });
+});
+
+describe('Events — the official 29-record catalogue served by the backend', () => {
+  let component: Events;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Events],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    component = TestBed.createComponent(Events).componentInstance;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  async function seedEvents(
+    events: Event[],
+    catalogueMigration?: {
+      pending: boolean;
+      missingRecordCodes: string[];
+      levelBandPendingCodes: string[];
+      blockedRecordCodes: string[];
+    } | null,
+  ): Promise<void> {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      if (request.action === 'listEvents') {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              events,
+              registrationCounts: Object.fromEntries(events.map(e => [e.id, 0])),
+              catalogueMigration: catalogueMigration ?? null,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    await TestBed.inject(ShelterDataService).loadEvents();
+  }
+
+  const ALL = ['SUB_JUNIOR', 'JUNIOR', 'SENIOR', 'SUPER_SENIOR'] as const;
+
+  /** The official 29 records exactly as the backend serves them. */
+  const OFFICIAL: Array<[string, string, Event['category'], Event['mode'], string[]]> = [
+    ['LIT-001', 'Group Discussion', 'LITERARY', 'SOLO', ['SENIOR']],
+    ['LIT-001-SS', 'Group Discussion', 'LITERARY', 'SOLO', ['SUPER_SENIOR']],
+    ['LIT-002', 'Story Telling (Tamil/English)', 'LITERARY', 'SOLO', ['SUB_JUNIOR']],
+    ['LIT-002-J', 'Story Telling (Tamil/English)', 'LITERARY', 'SOLO', ['JUNIOR']],
+    ['LIT-003', 'Story Writing (Tamil/English)', 'LITERARY', 'SOLO', ['SENIOR']],
+    ['LIT-003-SS', 'Story Writing (Tamil/English)', 'LITERARY', 'SOLO', ['SUPER_SENIOR']],
+    ['LIT-004', 'Potpurri (Words Play)', 'LITERARY', 'GROUP', [...ALL]],
+    ['LIT-005', 'Quiz (SJ + J)', 'LITERARY', 'GROUP', ['SUB_JUNIOR', 'JUNIOR']],
+    ['LIT-006', 'Quiz (S + SS)', 'LITERARY', 'GROUP', ['SENIOR', 'SUPER_SENIOR']],
+    ['LIT-007', 'Block and Tackle', 'LITERARY', 'SOLO', ['SENIOR']],
+    ['LIT-007-SS', 'Block and Tackle', 'LITERARY', 'SOLO', ['SUPER_SENIOR']],
+    ['CUL-001', 'Group Song', 'CULTURAL', 'GROUP', [...ALL]],
+    ['CUL-002', 'Skit (Tamil)', 'CULTURAL', 'GROUP', [...ALL]],
+    ['CUL-003', 'Group Dance', 'CULTURAL', 'GROUP', [...ALL]],
+    ['CUL-004', 'Adapt Tune', 'CULTURAL', 'SOLO', ['SUB_JUNIOR']],
+    ['CUL-004-J', 'Adapt Tune', 'CULTURAL', 'SOLO', ['JUNIOR']],
+    ['CUL-004-S', 'Adapt Tune', 'CULTURAL', 'SOLO', ['SENIOR']],
+    ['CUL-004-SS', 'Adapt Tune', 'CULTURAL', 'SOLO', ['SUPER_SENIOR']],
+    ['ART-001', 'Clay Modelling', 'ARTS', 'SOLO', ['SUB_JUNIOR']],
+    ['ART-001-J', 'Clay Modelling', 'ARTS', 'SOLO', ['JUNIOR']],
+    ['ART-001-S', 'Clay Modelling', 'ARTS', 'SOLO', ['SENIOR']],
+    ['ART-001-SS', 'Clay Modelling', 'ARTS', 'SOLO', ['SUPER_SENIOR']],
+    ['ART-002', 'Rangoli', 'ARTS', 'GROUP', [...ALL]],
+    ['ART-003', 'Greeting Card making', 'ARTS', 'SOLO', ['SUB_JUNIOR']],
+    ['ART-003-J', 'Greeting Card making', 'ARTS', 'SOLO', ['JUNIOR']],
+    ['ART-003-S', 'Greeting Card making', 'ARTS', 'SOLO', ['SENIOR']],
+    ['ART-003-SS', 'Greeting Card making', 'ARTS', 'SOLO', ['SUPER_SENIOR']],
+    ['ART-004', 'Waste to wealth', 'ARTS', 'GROUP', [...ALL]],
+    ['ART-005', 'String Art', 'ARTS', 'GROUP', [...ALL]],
+  ];
+
+  function officialEvents(): Event[] {
+    return OFFICIAL.map(([eventCode, name, category, mode, levels], index) =>
+      event({
+        id: 'EVT-' + String(index + 1).padStart(4, '0'),
+        eventCode,
+        name,
+        category,
+        mode,
+        eligibleLevels: levels as Event['eligibleLevels'],
+      }));
+  }
+
+  it('renders exactly the 29 backend records with the 11/7/11 category totals (no hardcoded list)', async () => {
+    await seedEvents(officialEvents());
+
+    expect(component.totalEvents()).toBe(29);
+    expect(component.groupedEvents().map(group => [group.category, group.events.length]))
+      .toEqual([
+        ['ARTS', 11],
+        ['LITERARY', 11],
+        ['CULTURAL', 7],
+      ]);
+    expect(component.events().map(e => e.eventCode)).toEqual(
+      officialEvents().map(e => e.eventCode),
+    );
+  });
+
+  it('shows every record the backend sends - the catalogue is never consolidated or seeded locally', async () => {
+    const arbitrary = [
+      event({ id: 'x-1', eventCode: 'ZZ-1', name: 'Zebra Dance', category: 'CULTURAL', eligibleLevels: ['JUNIOR'] }),
+      event({ id: 'x-2', eventCode: 'ZZ-2', name: 'Yodel Solo', category: 'ARTS', eligibleLevels: ['SENIOR'] }),
+      event({ id: 'x-3', eventCode: 'ZZ-3', name: 'Quiz (SJ + J)', category: 'LITERARY', eligibleLevels: ['SUB_JUNIOR', 'JUNIOR'] }),
+    ];
+
+    await seedEvents(arbitrary);
+
+    expect(component.events().map(e => [e.id, e.name]))
+      .toEqual([['x-1', 'Zebra Dance'], ['x-2', 'Yodel Solo'], ['x-3', 'Quiz (SJ + J)']]);
+  });
+
+  it('keeps same-name records separate and shows the level prominently on each', async () => {
+    await seedEvents(officialEvents());
+
+    const clay = component.events().filter(e => e.eventCode.startsWith('ART-001'));
+
+    expect(clay.map(e => e.name)).toEqual([
+      'Clay Modelling — Sub Junior (SJ)',
+      'Clay Modelling — Junior (J)',
+      'Clay Modelling — Senior (S)',
+      'Clay Modelling — Super Senior (SS)',
+    ]);
+    expect(new Set(clay.map(e => e.id)).size).toBe(4);
+  });
+
+  it('normalizes official display names without touching identity', async () => {
+    await seedEvents(officialEvents());
+
+    const greeting = component.events().find(e => e.eventCode === 'ART-003-J');
+    const waste = component.events().find(e => e.eventCode === 'ART-004');
+
+    expect(greeting?.name).toBe('Greeting Card Making — Junior (J)');
+    expect(greeting?.eventCode).toBe('ART-003-J');
+    expect(waste?.name).toBe('Waste to Wealth');
+  });
+
+  it('surfaces the catalogue migration state from the same backend read', async () => {
+    await seedEvents(officialEvents(), {
+      pending: true,
+      missingRecordCodes: ['ART-001-J', 'ART-001-S', 'ART-001-SS'],
+      levelBandPendingCodes: ['ART-001'],
+      blockedRecordCodes: [],
+    });
+
+    expect(component.catalogueMigration()?.pending).toBe(true);
+    expect(component.catalogueMigration()?.missingRecordCodes.length).toBe(3);
+    expect(component.catalogueMigration()?.levelBandPendingCodes).toEqual(['ART-001']);
+  });
+
+  it('reports no migration state outside the official catalogue scope', async () => {
+    await seedEvents([event({ id: 'z-1', eventCode: 'ART-Z1', name: 'Zone Contest' })]);
+
+    expect(component.catalogueMigration()).toBeNull();
+    expect(component.totalEvents()).toBe(1);
   });
 });

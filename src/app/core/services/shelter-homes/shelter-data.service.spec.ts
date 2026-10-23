@@ -182,6 +182,55 @@ describe('ShelterDataService', () => {
     expect(service.eventsLoaded()).toBe(true);
   });
 
+  it('loadEvents keeps every backend record distinct - display labels never consolidate or re-identify', async () => {
+    stubBackend({
+      listEvents: {
+        events: [
+          { ...EVENT, id: 'EVT-0024', eventCode: 'ART-001-J', name: 'Clay Modelling', eligibleLevels: ['JUNIOR'] },
+          { ...EVENT, id: 'EVT-0025', eventCode: 'ART-001-S', name: 'Clay Modelling', eligibleLevels: ['SENIOR'] },
+          { ...EVENT, id: 'EVT-0004', eventCode: 'ART-004', name: 'Waste to wealth', eligibleLevels: ['SUB_JUNIOR', 'JUNIOR', 'SENIOR', 'SUPER_SENIOR'] },
+        ],
+      },
+    });
+
+    await service.loadEvents();
+
+    // Same-name siblings keep their own identity and show their level.
+    expect(service.events().map(e => [e.id, e.eventCode, e.name])).toEqual([
+      ['EVT-0024', 'ART-001-J', 'Clay Modelling — Junior (J)'],
+      ['EVT-0025', 'ART-001-S', 'Clay Modelling — Senior (S)'],
+      ['EVT-0004', 'ART-004', 'Waste to Wealth'],
+    ]);
+  });
+
+  it('loadEvents surfaces the catalogue migration state from the same read', async () => {
+    stubBackend({
+      listEvents: {
+        events: [EVENT],
+        catalogueMigration: {
+          pending: true,
+          missingRecordCodes: ['ART-001-J'],
+          levelBandPendingCodes: ['ART-001'],
+          blockedRecordCodes: [],
+        },
+      },
+    });
+
+    await service.loadEvents();
+
+    expect(service.catalogueMigration()).toEqual({
+      pending: true,
+      missingRecordCodes: ['ART-001-J'],
+      levelBandPendingCodes: ['ART-001'],
+      blockedRecordCodes: [],
+    });
+
+    stubBackend({ listEvents: { events: [EVENT] } });
+    await service.loadEvents(true);
+
+    expect(service.catalogueMigration()).toBeNull();
+  });
+
   it('ensureLoaded re-fires the full load after a failed load so navigation can recover', async () => {
     // Nothing is stubbed: every action returns the failure envelope.
     stubBackend({});
