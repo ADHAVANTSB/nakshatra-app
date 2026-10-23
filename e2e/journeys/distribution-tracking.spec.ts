@@ -1,4 +1,4 @@
-import {
+﻿import {
   adminUser,
   certificateTeamUser,
   expect,
@@ -10,7 +10,7 @@ import {
 import type { BackendStub, StubUser } from '../stubs/backend';
 
 /**
- * Physical distribution tracking journey (Certificates page) — MOCKED.
+ * Physical distribution tracking journey (Certificates page) â€” MOCKED.
  *
  * The stub backend answers the same actions the real Apps Script backend
  * serves (listWinners / listDistributionTracking / saveDistributionStatus)
@@ -80,7 +80,7 @@ interface TrackingFixture {
   saves: Array<Record<string, unknown>>;
 }
 
-const AWARDS = ['MEDAL', 'CERTIFICATE'];
+const AWARDS = ['MEDAL', 'CERTIFICATE_WRITTEN', 'CERTIFICATE'];
 
 function defaultEntry(scoreId: string, awardType: string): Record<string, unknown> {
   return {
@@ -135,6 +135,25 @@ function installTracking(
 
     const key = `${payload.scoreId}|${payload.awardType}`;
     const previous = store.get(key);
+
+    // The real backend rule: a certificate is distributed only after it
+    // has been written.
+    if (
+      payload.awardType === 'CERTIFICATE' &&
+      payload.distributed &&
+      store.get(`${payload.scoreId}|CERTIFICATE_WRITTEN`)?.['distributed'] !== true
+    ) {
+      return {
+        body: {
+          success: false,
+          error: {
+            code: 'CERTIFICATE_NOT_WRITTEN',
+            message: 'Mark the certificate as written before recording its distribution.',
+          },
+        },
+      };
+    }
+
     const entry: Record<string, unknown> = {
       id: previous ? previous['id'] : `dist-${key}`,
       scoreId: payload.scoreId,
@@ -166,8 +185,8 @@ const firstRow = (page: import('@playwright/test').Page) => page.locator('tbody 
 const stateSpans = (page: import('@playwright/test').Page) =>
   firstRow(page).locator('.distribution-state');
 
-test.describe('Certificates — physical distribution tracking', () => {
-  test('records a medal hand-over, reloads with its timestamp, persists the certificate separately, and corrects a status', async ({
+test.describe('Certificates â€” written/distributed certificate tracking', () => {
+  test('records certificate written then distributed, reloads with timestamps, and corrects a status', async ({
     page,
     backend,
   }) => {
@@ -181,21 +200,25 @@ test.describe('Certificates — physical distribution tracking', () => {
     await signIn(page, { user: certificateTeamUser, backend });
     await page.goto('/#/certificates');
 
-    // Winners load first, independently of distribution tracking.
-    await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
-    await expect(page.getByRole('cell', { name: 'Ana', exact: true })).toBeVisible();
+    // Winners load first, independently of certificate status tracking.
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Ana', { exact: true }).first()).toBeVisible();
 
-    const medal = firstRow(page).getByTestId('distribution-toggle').nth(0);
-    const certificate = firstRow(page).getByTestId('distribution-toggle').nth(1);
+    const written = firstRow(page).getByTestId('distribution-toggle').nth(0);
+    const distributed = firstRow(page).getByTestId('distribution-toggle').nth(1);
 
-    // Mark the medal: the status text only appears after the backend confirms.
-    await medal.check();
+    // A certificate is NOT distributed before it is written: the
+    // distributed toggle is disabled until the written toggle is saved.
+    await expect(distributed).toBeDisabled();
+
+    // Mark written: the status text only appears after the backend confirms.
+    await written.check();
     await expect(stateSpans(page).first()).toContainText(
-      /Distributed — \d{1,2} Oct 2026, \d{1,2}:\d{2} [AP]M by Certificate Team \(E2E\)/,
+      /Written .{1,3} \d{1,2} Oct 2026, \d{1,2}:\d{2} [AP]M by Certificate Team \(E2E\)/,
     );
-    await expect(page.locator('.nk-toast')).toContainText('Medal Distributed recorded for Ana.');
+    await expect(page.locator('.nk-toast')).toContainText('Certificate Written recorded for Ana.');
     expect(tracking.saves).toEqual([
-      { scoreId: 'score-1', awardType: 'MEDAL', distributed: true, expectedVersion: 0 },
+      { scoreId: 'score-1', awardType: 'CERTIFICATE_WRITTEN', distributed: true, expectedVersion: 0 },
     ]);
 
     // Reload restores exactly what the backend stored. (A cold boot of a
@@ -204,18 +227,18 @@ test.describe('Certificates — physical distribution tracking', () => {
     // reload; the app and its services are freshly booted either way.)
     await page.reload();
     await page.goto('/#/certificates');
-    await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).toBeChecked();
-    await expect(stateSpans(page).first()).toContainText('Distributed —');
+    await expect(stateSpans(page).first()).toContainText('Written');
     await expect(stateSpans(page).nth(1)).toContainText('Not distributed');
 
-    // The certificate is tracked separately from the medal.
+    // Now the certificate can be handed over.
     await firstRow(page).getByTestId('distribution-toggle').nth(1).check();
-    await expect(stateSpans(page).nth(1)).toContainText('Distributed —');
+    await expect(stateSpans(page).nth(1)).toContainText('Distributed');
 
     await page.reload();
     await page.goto('/#/certificates');
-    await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).toBeChecked();
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(1)).toBeChecked();
 
@@ -223,23 +246,23 @@ test.describe('Certificates — physical distribution tracking', () => {
     // the previous who/when evidence on the record (the real backend also
     // writes the DISTIBUTION_CORRECTED audit entry - backend suite).
     await firstRow(page).getByTestId('distribution-toggle').nth(0).uncheck();
-    await expect(stateSpans(page).first()).toContainText('Not distributed');
-    await expect(page.locator('.nk-toast')).toContainText('Medal Distributed corrected');
+    await expect(stateSpans(page).first()).toContainText('Not written');
+    await expect(page.locator('.nk-toast')).toContainText('Certificate Written corrected');
     expect(tracking.saves[tracking.saves.length - 1]).toMatchObject({
       scoreId: 'score-1',
-      awardType: 'MEDAL',
+      awardType: 'CERTIFICATE_WRITTEN',
       distributed: false,
     });
-    expect(tracking.store.get('score-1|MEDAL')?.['distributedAt']).toBeTruthy();
-    // The certificate record survives the medal correction untouched.
-    await expect(stateSpans(page).nth(1)).toContainText('Distributed —');
+    expect(tracking.store.get('score-1|CERTIFICATE_WRITTEN')?.['distributedAt']).toBeTruthy();
+    // The distributed record survives the written correction untouched.
+    await expect(stateSpans(page).nth(1)).toContainText('Distributed');
 
-    // Print List shows backend-confirmed status text (never the interactive
-    // checkbox state of an unsaved toggle).
+    // Print shows backend-confirmed status text (never the interactive
+    // checkbox state of an unsaved toggle) and printing records nothing.
     await page.emulateMedia({ media: 'print' });
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(1)).toBeHidden();
-    await expect(stateSpans(page).first()).toContainText('Not distributed');
-    await expect(stateSpans(page).nth(1)).toContainText('Distributed —');
+    await expect(stateSpans(page).first()).toContainText('Not written');
+    await expect(stateSpans(page).nth(1)).toContainText('Distributed');
     await page.emulateMedia({ media: null });
 
     // The existing certificate issuance workflow stays untouched: this page
@@ -298,13 +321,13 @@ test.describe('Certificates — physical distribution tracking', () => {
 
     await signIn(page, { user: certificateTeamUser, backend });
     await page.goto('/#/certificates');
-    await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
 
     await firstRow(page).getByTestId('distribution-toggle').nth(0).click();
     await expect(firstRow(page).locator('.distribution-error')).toContainText('changed by someone else');
     // The checkbox is restored to the last confirmed state - no false success.
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).not.toBeChecked();
-    await expect(stateSpans(page).first()).toContainText('Not distributed');
+    await expect(stateSpans(page).first()).toContainText('Not written');
     await expect(page.locator('.nk-toast--success')).toHaveCount(0);
 
     // Rule rejection: a Retry cannot succeed, so none is offered.
@@ -345,14 +368,14 @@ test.describe('Certificates — physical distribution tracking', () => {
     await page.goto('/#/certificates');
 
     // Winners always load, even with tracking storage missing.
-    await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
-    await expect(page.getByRole('cell', { name: 'Ana', exact: true })).toBeVisible();
+    await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Ana', { exact: true }).first()).toBeVisible();
 
     // The missing table and the exact migration step are named; the page
-    // never claims "no distributions recorded" for a missing table.
-    await expect(page.getByText('Distribution tracking storage is missing.')).toBeVisible();
+    // never claims "no statuses recorded" for a missing table.
+    await expect(page.getByText('Certificate status storage is missing.')).toBeVisible();
     await expect(page.getByText(/Create the sheet "DistributionTracking"/)).toBeVisible();
-    await expect(page.getByText('No distributions recorded yet')).toHaveCount(0);
+    await expect(page.getByText('No statuses recorded yet')).toHaveCount(0);
     await expect(stateSpans(page).first()).toContainText('Unavailable');
     await expect(firstRow(page).getByTestId('distribution-toggle').nth(0)).toBeDisabled();
     expect(pageErrors).toEqual([]);
@@ -382,9 +405,9 @@ test.describe('Certificates — physical distribution tracking', () => {
       await signIn(page, { user: adminUser, backend, scope: scope.seed });
       await page.goto('/#/certificates');
 
-      await expect(page.getByRole('heading', { name: 'Quiz (S+SS)' })).toBeVisible();
-      await expect(page.getByRole('cell', { name: scope.own, exact: true })).toBeVisible();
-      await expect(page.getByRole('cell', { name: scope.other, exact: true })).toHaveCount(0);
+      await expect(page.getByText('Quiz (S+SS)', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(scope.own, { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(scope.other, { exact: true })).toHaveCount(0);
       expect(pageErrors).toEqual([]);
     });
   }

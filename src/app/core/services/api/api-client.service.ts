@@ -84,6 +84,7 @@ import {
   ListUsersData,
   LogoutData,
   OperationalCounts,
+  WorkflowSummary,
   Participant,
   ParticipantEvent,
   ParticipantEventSummariesData,
@@ -1300,6 +1301,53 @@ export class ApiClientService {
         generated: this.readCount(certificates['generated']) ?? 0,
         issued: this.readCount(certificates['issued']) ?? 0,
       },
+      workflow: this.readWorkflowSummary(source['workflow']),
+    };
+  }
+
+  /**
+   * Workflow figures for the Reports dashboard. A figure is accepted as
+   * a finite number or as null ("Not available"); anything else becomes
+   * null - never a fabricated zero.
+   */
+  private readWorkflowSummary(value: unknown): WorkflowSummary | undefined {
+    if (typeof value !== 'object' || value === null) {
+      return undefined;
+    }
+
+    const source = value as Record<string, unknown>;
+    const nullable = (key: string): number | null =>
+      source[key] === null ? null : this.readCount(source[key]);
+    const distribution = (key: string): Record<string, number> => {
+      const raw = typeof source[key] === 'object' && source[key] !== null
+        ? (source[key] as Record<string, unknown>)
+        : {};
+      const out: Record<string, number> = {};
+      for (const [name, count] of Object.entries(raw)) {
+        out[name] = this.readCount(count) ?? 0;
+      }
+      return out;
+    };
+
+    return {
+      uniqueParticipantsRegistered: nullable('uniqueParticipantsRegistered') ?? 0,
+      registrations: nullable('registrations') ?? 0,
+      registrationsWithoutAttendance: nullable('registrationsWithoutAttendance') ?? 0,
+      registrationsByCategory: distribution('registrationsByCategory'),
+      levelDistribution: distribution('levelDistribution'),
+      genderDistribution: distribution('genderDistribution'),
+      eventsWithJudges: nullable('eventsWithJudges') ?? 0,
+      judgeSubmissionsPending: nullable('judgeSubmissionsPending') ?? 0,
+      eventsAwaitingFinalization: nullable('eventsAwaitingFinalization') ?? 0,
+      finalizedEvents: nullable('finalizedEvents') ?? 0,
+      resultsAwaitingApproval: nullable('resultsAwaitingApproval') ?? 0,
+      approvedResults: nullable('approvedResults') ?? 0,
+      returnedResults: nullable('returnedResults') ?? 0,
+      eligibleWinners: nullable('eligibleWinners'),
+      certificatesWritten: nullable('certificatesWritten'),
+      certificatesDistributed: nullable('certificatesDistributed'),
+      certificatesPendingWriting: nullable('certificatesPendingWriting'),
+      certificatesPendingDistribution: nullable('certificatesPendingDistribution'),
     };
   }
 

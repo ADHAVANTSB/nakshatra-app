@@ -26,6 +26,8 @@
     <button type="button" [class.active]="tab() === 'HOMES'" (click)="setTab('HOMES')">Homes</button>
     <button type="button" [class.active]="tab() === 'EVENTS'" (click)="setTab('EVENTS')">Events</button>
     <button type="button" [class.active]="tab() === 'PARTICIPANTS'" (click)="setTab('PARTICIPANTS')">Participants</button>
+    <button type="button" [class.active]="tab() === 'WINNERS'" (click)="setTab('WINNERS')">Winners</button>
+    <button type="button" [class.active]="tab() === 'CATEGORY_LEVEL'" (click)="setTab('CATEGORY_LEVEL')">Category &amp; Level</button>
     <button type="button" [class.active]="tab() === 'WARNINGS'" (click)="setTab('WARNINGS')">Warnings</button>
   </div>
 
@@ -54,6 +56,14 @@
       <option value="">All homes</option>
       @for (home of homes(); track home.id) {
         <option [value]="home.id">{{ home.homeName }}</option>
+      }
+    </select>
+
+    <label for="report-level">Level</label>
+    <select id="report-level" [ngModel]="level()" (ngModelChange)="setLevel($event)">
+      <option value="">All levels</option>
+      @for (level of levelOptions; track level) {
+        <option [value]="level">{{ levelLabel(level) }}</option>
       }
     </select>
 
@@ -116,6 +126,69 @@
         </div>
       </div>
 
+      <!-- Workflow figures (A): unique participants vs registrations,
+           distributions, judging/finalization/approvals, certificate
+           states. null renders as "Not available", never as zero. -->
+      @if (counts.workflow; as workflow) {
+        <div class="metric-grid">
+          <div class="metric">
+            <span>Unique participants registered</span>
+            <strong>{{ workflow.uniqueParticipantsRegistered }}</strong>
+            <small>{{ workflow.registrations }} registrations (a participant may register for several events)</small>
+          </div>
+          <div class="metric">
+            <span>Registrations by category</span>
+            <strong>{{ workflow.registrationsByCategory['ARTS'] || 0 }} / {{ workflow.registrationsByCategory['LITERARY'] || 0 }} / {{ workflow.registrationsByCategory['CULTURAL'] || 0 }}</strong>
+            <small>Arts / Literary / Cultural</small>
+          </div>
+          <div class="metric">
+            <span>Level distribution</span>
+            <strong>{{ workflow.levelDistribution['SUB_JUNIOR'] || 0 }} / {{ workflow.levelDistribution['JUNIOR'] || 0 }} / {{ workflow.levelDistribution['SENIOR'] || 0 }} / {{ workflow.levelDistribution['SUPER_SENIOR'] || 0 }}</strong>
+            <small>SJ / J / S / SS (registered participants)</small>
+          </div>
+          <div class="metric">
+            <span>Gender distribution</span>
+            <strong>{{ workflow.genderDistribution['MALE'] || 0 }} / {{ workflow.genderDistribution['FEMALE'] || 0 }}</strong>
+            <small>Boys / girls (registered participants)</small>
+          </div>
+          <div class="metric">
+            <span>Attendance gaps</span>
+            <strong>{{ workflow.registrationsWithoutAttendance }}</strong>
+            <small>Registrations with no attendance marked ({{ counts.attendance.present }} present · {{ counts.attendance.absent }} absent)</small>
+          </div>
+          <div class="metric">
+            <span>Judging</span>
+            <strong>{{ workflow.eventsWithJudges }}</strong>
+            <small>Events with judges · {{ workflow.judgeSubmissionsPending }} with pending submissions</small>
+          </div>
+          <div class="metric">
+            <span>Finalization</span>
+            <strong>{{ workflow.finalizedEvents }}</strong>
+            <small>Finalized events · {{ workflow.eventsAwaitingFinalization }} awaiting finalization</small>
+          </div>
+          <div class="metric">
+            <span>Result approvals</span>
+            <strong>{{ workflow.approvedResults }}</strong>
+            <small>Approved · {{ workflow.resultsAwaitingApproval }} awaiting approval · {{ workflow.returnedResults }} returned</small>
+          </div>
+          <div class="metric">
+            <span>Eligible winners</span>
+            <strong>{{ figureOrNull(workflow.eligibleWinners) }}</strong>
+            <small>Top-three of finalized events</small>
+          </div>
+          <div class="metric">
+            <span>Certificates written</span>
+            <strong>{{ figureOrNull(workflow.certificatesWritten) }}</strong>
+            <small>Pending writing: {{ figureOrNull(workflow.certificatesPendingWriting) }}</small>
+          </div>
+          <div class="metric">
+            <span>Certificates distributed</span>
+            <strong>{{ figureOrNull(workflow.certificatesDistributed) }}</strong>
+            <small>Written but not distributed: {{ figureOrNull(workflow.certificatesPendingDistribution) }}</small>
+          </div>
+        </div>
+      }
+
       <p>The summary covers every home and event; the filters above apply to the Homes, Events and Participants tabs.</p>
 
       @if (counts.homes === 0) {
@@ -150,7 +223,7 @@
     } @else if (homesView() === 'EMPTY' || homesView() === 'FILTERED') {
       <div class="empty-state">
         <h3>No rows for this scope.</h3>
-        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
+        <p>Change the Category, Event, Home or Level filter above to report on a different scope.</p>
       </div>
     } @else {
       <div class="report-card table-wrapper">
@@ -225,7 +298,7 @@
     } @else if (eventsView() === 'EMPTY') {
       <div class="empty-state">
         <h3>No rows for this scope.</h3>
-        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
+        <p>Change the Category, Event, Home or Level filter above to report on a different scope.</p>
       </div>
     } @else if (eventsView() === 'FILTERED') {
       <div class="empty-state">
@@ -314,7 +387,7 @@
     } @else if (participantsView() === 'EMPTY') {
       <div class="empty-state">
         <h3>No rows for this scope.</h3>
-        <p>Change the Category, Event or Home filter above to report on a different scope.</p>
+        <p>Change the Category, Event, Home or Level filter above to report on a different scope.</p>
       </div>
     } @else if (participantsView() === 'FILTERED') {
       <div class="empty-state">
@@ -362,6 +435,174 @@
         <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
       </div>
     }
+  } @else if (tab() === 'WINNERS') {
+
+    <!-- =========================================================
+         WINNERS (B: by event · C: by shelter home)
+         Only valid finalized official results (official DENSE_RANK);
+         a non-finalized event never appears here.
+         ========================================================= -->
+    @if (winnersLoading()) {
+      <div class="empty-state" role="status">
+        <h3>Loading winners…</h3>
+      </div>
+    } @else if (winnersError()) {
+      <div class="empty-state" role="alert">
+        <h3>Unable to load reports.</h3>
+        <p>{{ winnersError() }}</p>
+        <p><button type="button" class="secondary-button" (click)="reload()">Retry</button></p>
+      </div>
+    } @else {
+      <p>
+        Only valid finalized official results are listed (official DENSE_RANK per
+        record; ties share a position). An event that is not finalized shows no
+        provisional winners here.
+      </p>
+      <div class="table-actions">
+        <button type="button" class="secondary-button" (click)="exportCsv('winners')">Export winners (CSV)</button>
+        <button type="button" class="secondary-button" (click)="exportCsv('winners-by-home')">Export by home (CSV)</button>
+        <button type="button" class="secondary-button" (click)="reload()">Reload</button>
+      </div>
+
+      <h3>Winners by event</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Category</th>
+              <th>Rank</th>
+              <th>Winner / team</th>
+              <th>Shelter home</th>
+              <th>Level</th>
+              <th>Final score</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of winnerRows(); track row.eventCode + '-' + row.position + '-' + row.name) {
+              <tr>
+                <td>{{ row.eventName }} <small>({{ row.eventCode }})</small></td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.position }}</td>
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.shelterHomeName || '—' }}</td>
+                <td>{{ row.level || '—' }}</td>
+                <td>{{ figure(row.score) }}</td>
+                <td>Finalized</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="8">
+                  <div class="empty-state">
+                    <h3>No finalized results for this scope</h3>
+                    <p>Winners appear once an event's scores are finalized.</p>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Winners by shelter home</h3>
+      <p>
+        Factual totals per home (winner entries and participation counts).
+        No home ranking or champion is computed.
+      </p>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Shelter home</th>
+              <th>Winner entries</th>
+              <th>Participation (registrations)</th>
+              <th>Wins (event · rank · score)</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (group of winnersByHome(); track group.home) {
+              <tr>
+                <td><strong>{{ group.home }}</strong></td>
+                <td>{{ group.winnerCount }}</td>
+                <td>{{ homeParticipation(group.home) }}</td>
+                <td>
+                  @for (row of group.rows; track row.eventCode + '-' + row.position + '-' + row.name) {
+                    <div>{{ row.eventName }} ({{ row.eventCode }}) · {{ row.position }} · {{ figure(row.score) }} — {{ row.name }}</div>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="4">
+                  <div class="empty-state">
+                    <h3>No winners for this scope</h3>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  } @else if (tab() === 'CATEGORY_LEVEL') {
+
+    <!-- =========================================================
+         CATEGORY / LEVEL REPORT (D): ARTS, LITERARY, CULTURALS and
+         SJ, J, S, SS via the existing level mappings.
+         ========================================================= -->
+    <div class="table-actions">
+      <button type="button" class="secondary-button" (click)="exportCsv('category-level')">Export (CSV)</button>
+      <button type="button" class="secondary-button" (click)="reload()">Reload</button>
+    </div>
+
+    <h3>By category</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Registrations</th>
+            <th>Winner entries</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of categoryLevelReport().categories; track row.category) {
+            <tr>
+              <td>{{ row.category }}</td>
+              <td>{{ figureOrNull(row.registrations) }}</td>
+              <td>{{ row.winners }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <h3>By level</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Registered participants</th>
+            <th>Winner entries</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of categoryLevelReport().levels; track row.level) {
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ figureOrNull(row.participants) }}</td>
+              <td>{{ row.winners }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p>Registrations are counted per record; unique participants are counted once in the Summary tab.</p>
+
   } @else {
 
     <!-- =========================================================

@@ -34,6 +34,12 @@ export interface Event {
   venue?: string;
   /** Absent rows are treated as PENDING: scoring opens only on official criteria. */
   scoringMode?: EventScoringMode;
+  /**
+   * SINGLE mode only: the official scale of the one overall score per judge
+   * (Potpurri (Words Play) is out of 20; other SINGLE events keep 10).
+   * null/absent for CRITERIA and PENDING events.
+   */
+  singleScoreMax?: number | null;
   /** Official judging criteria; only rendered where the backend supplies them. */
   criteria?: EventCriterion[];
   createdAt: string;

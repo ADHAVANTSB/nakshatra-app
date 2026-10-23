@@ -1,5 +1,5 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ApplicationRole, Participant, ParticipantEvent, Event } from '../../core/models';
@@ -1490,6 +1490,11 @@ describe('Participants — event-day check-in', () => {
       imports: [Participants],
       providers: [provideRouter([])],
     }).compileComponents();
+
+    // The check-in flow self-navigates to /participants, which the empty
+    // spec router cannot match (NG04002 rejects the discarded promise and
+    // vitest reports it as an unhandled error). Stub the navigation out.
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
   });
 
   afterEach(() => {

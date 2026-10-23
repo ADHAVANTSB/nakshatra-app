@@ -132,13 +132,13 @@ export class App implements OnInit {
       icon: '✓', section: 'ATTENDANCE'
     },
     {
-      label: 'Scoring',
-      route: '/scoring',
+      label: 'Judging',
+      route: '/judging',
       icon: '★', section: 'SCORING'
     },
     {
-      label: 'Judging',
-      route: '/judging',
+      label: 'Scoring',
+      route: '/scoring',
       icon: '★', section: 'SCORING'
     },
     {

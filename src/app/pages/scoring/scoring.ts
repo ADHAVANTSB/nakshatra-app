@@ -38,6 +38,11 @@ import { formatScore } from '../../shared/score-format';
 /** The exact inline rejection text for any value outside 0–10 in 0.5 steps. */
 export const SCORE_VALIDATION_MESSAGE = 'Scores must be 0–10 in increments of 0.5';
 
+/** The inline rejection text for one score scale (0–max in 0.5 steps). */
+export function scoreValidationMessage(max: number): string {
+  return max === 10 ? SCORE_VALIDATION_MESSAGE : `Scores must be 0–${max} in increments of 0.5`;
+}
+
 /** The finalization gate message while judge submissions are missing. */
 export const JUDGES_INCOMPLETE_MESSAGE =
   'Every judge must submit final scores before this event can be finalized.';
@@ -70,16 +75,18 @@ export interface TeamScoringRow {
 }
 
 /**
- * Validates one raw score input: empty, a 0–10 value in 0.5 steps, or the
- * single inline rejection message. Anything else — negative, above 10, or a
- * non-0.5 increment — is rejected before it can reach the backend.
+ * Validates one raw score input: empty, a 0–max value in 0.5 steps (max 10
+ * unless the event's official scale says otherwise, e.g. Potpurri /20), or
+ * the single inline rejection message. Anything else — negative, above the
+ * maximum, or a non-0.5 increment — is rejected before it can reach the
+ * backend.
  */
-export function validateJudgeScore(raw: string): ScoreValidation {
+export function validateJudgeScore(raw: string, max = 10): ScoreValidation {
   const trimmed = raw.trim();
   if (!trimmed) return { empty: true };
   const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0 || value > 10 || !Number.isInteger(value * 2)) {
-    return { error: SCORE_VALIDATION_MESSAGE };
+  if (!Number.isFinite(value) || value < 0 || value > max || !Number.isInteger(value * 2)) {
+    return { error: scoreValidationMessage(max) };
   }
   return { value };
 }
@@ -586,8 +593,20 @@ export class Scoring implements OnInit {
     return ['Overall'];
   });
 
+  /**
+   * The judge total's scale: the criteria sum in CRITERIA mode, otherwise
+   * the event's official single-score scale (Potpurri (Words Play) is out
+   * of 20; other SINGLE events keep 10).
+   */
   readonly maxJudgeOverall = computed(() =>
-    this.scoringMode() === 'CRITERIA' ? this.judgeScoreFields().length * 10 : 10
+    this.scoringMode() === 'CRITERIA'
+      ? this.judgeScoreFields().length * 10
+      : this.selectedEvent()?.singleScoreMax || 10
+  );
+
+  /** Validation max of one judge-score cell (criterion cells stay 0–10). */
+  private readonly judgeEntryMax = computed(() =>
+    this.scoringMode() === 'CRITERIA' ? 10 : this.maxJudgeOverall()
   );
 
   /** Registered participants of the selected event (any registration state). */
@@ -751,12 +770,13 @@ export class Scoring implements OnInit {
 
   /** Inline rejection message for one cell; empty when the value is usable. */
   judgeFieldError(participantId: string, field: string): string {
-    const result = validateJudgeScore(this.judgeScoreValue(participantId, field));
+    const result = validateJudgeScore(this.judgeScoreValue(participantId, field), this.judgeEntryMax());
     return 'error' in result ? result.error : '';
   }
 
   private judgeRowValues(participantId: string): ScoreValidation[] {
-    return this.judgeScoreFields().map(field => validateJudgeScore(this.judgeScoreValue(participantId, field)));
+    return this.judgeScoreFields().map(field =>
+      validateJudgeScore(this.judgeScoreValue(participantId, field), this.judgeEntryMax()));
   }
 
   /** Per-participant total for the selected judge; incomplete rows say so. */
@@ -771,7 +791,7 @@ export class Scoring implements OnInit {
   /** Per-criterion (column) totals for the selected judge. */
   judgeColumnTotal(field: string): number {
     return this.eligibleRowKeys().reduce((sum, rowKey) => {
-      const result = validateJudgeScore(this.judgeScoreValue(rowKey, field));
+      const result = validateJudgeScore(this.judgeScoreValue(rowKey, field), this.judgeEntryMax());
       return sum + ('value' in result ? result.value : 0);
     }, 0);
   }
@@ -855,7 +875,10 @@ export class Scoring implements OnInit {
     const group = this.isGroupEvent();
 
     for (const rowKey of this.eligibleRowKeys()) {
-      const values = fields.map(field => ({ field, result: validateJudgeScore(this.judgeScoreValue(rowKey, field)) }));
+      const values = fields.map(field => ({
+        field,
+        result: validateJudgeScore(this.judgeScoreValue(rowKey, field), this.judgeEntryMax()),
+      }));
       invalid += values.filter(value => 'error' in value.result).length;
 
       const entered = values.filter(
@@ -919,7 +942,10 @@ export class Scoring implements OnInit {
     const { entries, invalid, scored } = this.buildJudgeEntries();
 
     if (invalid) {
-      this.notify.error('Fix invalid scores first.', `${invalid} value(s) — ${SCORE_VALIDATION_MESSAGE}`);
+      this.notify.error(
+        'Fix invalid scores first.',
+        `${invalid} value(s) — ${scoreValidationMessage(this.judgeEntryMax())}`
+      );
       return;
     }
 

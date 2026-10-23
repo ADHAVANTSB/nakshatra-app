@@ -5,8 +5,11 @@
     <p class="certificates-kicker">CERTIFICATE WORKFLOW</p>
     <h1>Certificates</h1>
     <p class="certificates-lede">
-      Winners of every finalized event — the certificate team writes the
-      certificates from this list. Print it or copy the names as needed.
+      Winners of every finalized event. Each row tracks exactly two states —
+      <strong>Certificate Written</strong> (prepared) and
+      <strong>Certificate Distributed</strong> (handed over). A certificate
+      is distributed only after it is written; printing or exporting never
+      records a status.
     </p>
   </div>
 
@@ -38,103 +41,202 @@
       </div>
     }
 
-    <div class="certificates-summary">
-      <span><strong>{{ events().length }}</strong> finalized event(s)</span>
-      <span><strong>{{ totalWinners() }}</strong> winner entries</span>
-      @if (trackingLoading()) {
-        <span class="distribution-summary" role="status">Loading distribution statuses…</span>
-      } @else if (noDistributionsRecorded()) {
-        <span class="distribution-summary" role="status">No distributions recorded yet</span>
-      }
-      <button type="button" class="print" (click)="print()">Print list</button>
+    <!-- Summary cards: authoritative counts, each winner counted once. -->
+    <div class="summary-cards" data-testid="certificate-summary">
+      <div class="summary-card">
+        <strong>{{ summary().eligible }}</strong>
+        <span>Eligible winners</span>
+      </div>
+      <div class="summary-card">
+        <strong>{{ summary().written }}</strong>
+        <span>Certificates written</span>
+      </div>
+      <div class="summary-card">
+        <strong>{{ summary().distributed }}</strong>
+        <span>Certificates distributed</span>
+      </div>
+      <div class="summary-card">
+        <strong>{{ summary().pendingWriting }}</strong>
+        <span>Pending writing</span>
+      </div>
+      <div class="summary-card">
+        <strong>{{ summary().writtenNotDistributed }}</strong>
+        <span>Written but not distributed</span>
+      </div>
     </div>
 
-    @for (group of events(); track group.eventId) {
-      <section class="winner-group" aria-labelledby="winners-{{ group.eventId }}">
-        <div class="winner-group-head">
-          <h2 id="winners-{{ group.eventId }}">{{ group.eventName }}</h2>
-          <span class="winner-group-meta">
-            {{ group.eventCode }} · {{ group.category }} ·
-            {{ group.mode === 'GROUP' ? 'Team event' : 'Individual event' }}
-          </span>
-        </div>
+    <!-- Filters -->
+    <div class="certificate-filters" data-testid="certificate-filters">
+      <label>
+        Event
+        <select [ngModel]="eventFilter()" (ngModelChange)="setEvent($event)">
+          <option value="">All events</option>
+          @for (event of filterEvents(); track event.key) {
+            <option [value]="event.key">{{ event.label }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Category
+        <select [ngModel]="categoryFilter()" (ngModelChange)="setCategory($event)">
+          <option value="">All categories</option>
+          @for (category of filterCategories(); track category) {
+            <option [value]="category">{{ category }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Shelter home
+        <select [ngModel]="homeFilter()" (ngModelChange)="setHome($event)">
+          <option value="">All homes</option>
+          @for (home of filterHomes(); track home) {
+            <option [value]="home">{{ home }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Position
+        <select [ngModel]="positionFilter()" (ngModelChange)="setPosition($event)">
+          <option value="">All positions</option>
+          <option value="1">1st</option>
+          <option value="2">2nd</option>
+          <option value="3">3rd</option>
+        </select>
+      </label>
+      <label>
+        Written status
+        <select [ngModel]="writtenFilter()" (ngModelChange)="setWrittenFilter($event)">
+          <option value="">All</option>
+          <option value="WRITTEN">Written</option>
+          <option value="NOT_WRITTEN">Not written</option>
+        </select>
+      </label>
+      <label>
+        Distributed status
+        <select [ngModel]="distributedFilter()" (ngModelChange)="setDistributedFilter($event)">
+          <option value="">All</option>
+          <option value="DISTRIBUTED">Distributed</option>
+          <option value="NOT_DISTRIBUTED">Not distributed</option>
+        </select>
+      </label>
+    </div>
 
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th>Name</th>
-                <th>Class</th>
-                <th>Level</th>
-                <th>Shelter home</th>
-                <th>Medal distributed</th>
-                <th>Certificate distributed</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (winner of group.winners; track winner.position + '-' + winner.name) {
-                <tr>
-                  <td>
-                    <span class="medal"
-                      [class.gold]="winner.position === 1"
-                      [class.silver]="winner.position === 2"
-                      [class.bronze]="winner.position === 3">
-                      {{ winner.position === 1 ? '🥇 1st' : winner.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
-                    </span>
-                  </td>
-                  <td>
-                    <strong>{{ winner.name }}</strong>
-                  </td>
-                  <td>{{ winner.className || '—' }}</td>
-                  <td>{{ winner.level || '—' }}</td>
-                  <td>{{ winner.shelterHomeName || '—' }}</td>
-                  @for (award of awards; track award) {
-                    <td class="distribution-cell">
-                      <label class="distribution-toggle">
-                        <input
-                          type="checkbox"
-                          data-testid="distribution-toggle"
-                          [checked]="stateFor(winner, award).checked"
-                          [disabled]="!canEditDistribution() || !trackingAvailable() || stateFor(winner, award).saving"
-                          [attr.aria-describedby]="'distribution-state-' + winner.scoreId + '-' + award"
-                          (change)="toggleDistribution(winner, award, $any($event.target))" />
-                        <span class="distribution-toggle-label">{{ awardLabel(award) }}</span>
-                      </label>
-                      <span
-                        class="distribution-state"
-                        [class.pending]="stateFor(winner, award).saving"
-                        [id]="'distribution-state-' + winner.scoreId + '-' + award">
-                        {{ distributionLabel(winner, award) }}
-                      </span>
-                      @if (stateFor(winner, award).saving) {
-                        <span class="distribution-saving" role="status">Saving…</span>
-                      }
-                      @if (stateFor(winner, award).error) {
-                        <span class="distribution-error" role="alert">
-                          {{ stateFor(winner, award).error }}
-                          @if (canRetry(winner, award)) {
-                            <button
-                              type="button"
-                              class="distribution-retry"
-                              data-testid="distribution-retry"
-                              (click)="retryDistribution(winner, award)">
-                              Retry
-                            </button>
-                          }
-                        </span>
-                      }
-                    </td>
+    <!-- Views -->
+    <div class="certificate-views" role="tablist" data-testid="certificate-views">
+      @for (tab of views; track tab.id) {
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="view() === tab.id"
+          [class.active]="view() === tab.id"
+          (click)="setView(tab.id)">
+          {{ tab.label }}
+        </button>
+      }
+    </div>
+
+    <div class="certificates-summary">
+      <span><strong>{{ filteredRows().length }}</strong> row(s) in this view</span>
+      @if (trackingLoading()) {
+        <span class="distribution-summary" role="status">Loading certificate statuses…</span>
+      } @else if (noDistributionsRecorded()) {
+        <span class="distribution-summary" role="status">No statuses recorded yet</span>
+      }
+      <button type="button" class="print" (click)="print()">Print this view</button>
+      <button type="button" class="print" (click)="exportCsv(false)">Export this view (CSV)</button>
+      <button type="button" class="print" (click)="exportCsv(true)">Overall certificate status report (CSV)</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table data-testid="certificate-table">
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Winner</th>
+            <th>Class &amp; level</th>
+            <th>Shelter home</th>
+            <th>Position</th>
+            <th>Certificate Written</th>
+            <th>Certificate Distributed</th>
+            <th>Last status update</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of filteredRows(); track row.scoreId) {
+            <tr>
+              <td>
+                <strong>{{ row.eventName }}</strong>
+                <small> · {{ row.eventCode }} · {{ row.category }}</small>
+              </td>
+              <td>
+                <strong>{{ row.winnerName }}</strong>
+                <small class="winner-score">{{ formatScore(row.score) }}</small>
+              </td>
+              <td>{{ row.classAndLevel }}</td>
+              <td>{{ row.shelterHomeName }}</td>
+              <td>
+                <span class="medal"
+                  [class.gold]="row.position === 1"
+                  [class.silver]="row.position === 2"
+                  [class.bronze]="row.position === 3">
+                  {{ row.position === 1 ? '🥇 1st' : row.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
+                </span>
+              </td>
+              @for (state of states; track state) {
+                <td class="distribution-cell">
+                  <label class="distribution-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="distribution-toggle"
+                      [checked]="stateFor(row, state).checked"
+                      [disabled]="!canToggle(row, state) || stateFor(row, state).saving"
+                      [attr.aria-describedby]="'distribution-state-' + row.scoreId + '-' + state"
+                      (change)="toggleDistribution(row, state, $any($event.target))" />
+                    <span class="distribution-toggle-label">{{ awardLabel(state) }}</span>
+                  </label>
+                  @if (state === 'CERTIFICATE' && !stateFor(row, 'CERTIFICATE_WRITTEN').checked) {
+                    <span class="distribution-hint">Written first</span>
                   }
-                  <td>{{ formatScore(winner.score) }}</td>
-                </tr>
+                  <span
+                    class="distribution-state"
+                    [class.pending]="stateFor(row, state).saving"
+                    [id]="'distribution-state-' + row.scoreId + '-' + state">
+                    {{ distributionLabel(row, state) }}
+                  </span>
+                  @if (stateFor(row, state).saving) {
+                    <span class="distribution-saving" role="status">Saving…</span>
+                  }
+                  @if (stateFor(row, state).error) {
+                    <span class="distribution-error" role="alert">
+                      {{ stateFor(row, state).error }}
+                      @if (canRetry(row, state)) {
+                        <button
+                          type="button"
+                          class="distribution-retry"
+                          data-testid="distribution-retry"
+                          (click)="retryDistribution(row, state)">
+                          Retry
+                        </button>
+                      }
+                    </span>
+                  }
+                </td>
               }
-            </tbody>
-          </table>
-        </div>
-      </section>
-    }
+              <td>{{ row.lastUpdate }}</td>
+            </tr>
+          } @empty {
+            <tr class="empty-row">
+              <td colspan="8">
+                <span class="certificates-empty" role="status">
+                  <strong>No rows in this view.</strong>
+                  <span>Adjust the filters or pick another view.</span>
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
 
   }
 

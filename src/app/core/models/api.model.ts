@@ -941,6 +941,34 @@ export interface OperationalCounts {
   attendance: AttendanceCounts;
   finalizedScores: number;
   certificates: CertificateCounts;
+  /** Reports dashboard workflow figures (additive); null = "Not available". */
+  workflow?: WorkflowSummary;
+}
+
+/**
+ * Workflow progress figures for the Reports dashboard. A null figure is
+ * "Not available" (it could not be computed reliably) - never zero and
+ * never invented.
+ */
+export interface WorkflowSummary {
+  uniqueParticipantsRegistered: number;
+  registrations: number;
+  registrationsWithoutAttendance: number;
+  registrationsByCategory: Record<string, number>;
+  levelDistribution: Record<string, number>;
+  genderDistribution: Record<string, number>;
+  eventsWithJudges: number;
+  judgeSubmissionsPending: number;
+  eventsAwaitingFinalization: number;
+  finalizedEvents: number;
+  resultsAwaitingApproval: number;
+  approvedResults: number;
+  returnedResults: number;
+  eligibleWinners: number | null;
+  certificatesWritten: number | null;
+  certificatesDistributed: number | null;
+  certificatesPendingWriting: number | null;
+  certificatesPendingDistribution: number | null;
 }
 
 export interface AttendanceCounts {

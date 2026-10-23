@@ -1,5 +1,6 @@
 import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 
 import { WinnersEventGroup, WinnersService, WinnerRow } from '../../core/services/certificates/winners.service';
 import {
@@ -13,7 +14,7 @@ import { canEditModule } from '../../core/permissions/role-matrix';
 import { persistenceUnconfirmed } from '../../core/permissions/friendly-error';
 import { formatScore } from '../../shared/score-format';
 
-/** One winner's toggle view state for one award type. */
+/** One winner's toggle view state for one certificate-workflow state. */
 interface DistributionUiState {
   /** Checkbox view state (the requested target while a save is running). */
   checked: boolean;
@@ -32,25 +33,51 @@ interface TrackingNotice {
   retryable: boolean;
 }
 
+/** The two certificate-workflow states, in workflow order. */
+type CertificateState = 'CERTIFICATE_WRITTEN' | 'CERTIFICATE';
+
+/** Which rows the active view shows. */
+type CertificateView = 'ALL' | 'WRITTEN_DISTRIBUTED' | 'PENDING_DISTRIBUTION' | 'PENDING_WRITING';
+
+/** One flattened winner row joined with its certificate-workflow state. */
+export interface CertificateRow {
+  scoreId: string;
+  eventName: string;
+  eventCode: string;
+  category: string;
+  winnerName: string;
+  /** "5A · Junior" - class and level together, never a raw id. */
+  classAndLevel: string;
+  shelterHomeName: string;
+  position: number;
+  score: number;
+  written: boolean;
+  writtenLabel: string;
+  distributed: boolean;
+  distributedLabel: string;
+  /** Timestamp + user of the most recent confirmed status change. */
+  lastUpdate: string;
+}
+
 /**
- * Winners report for the Certificate Team.
+ * Certificate workflow for the Certificate Team.
  *
  * Every finalized event in the session's programme/environment is listed
- * automatically with its top-three ranked entries — individual winners show
- * name, class, level and shelter home; team winners show the team name and
- * its member names. Certificates are written by hand from this list; this
- * page generates nothing and has no event filter.
+ * automatically with its top-three ranked entries. Each winner row tracks
+ * exactly TWO certificate-workflow states - **Certificate Written**
+ * (prepared) and **Certificate Distributed** (handed over) - and nothing
+ * else: medals are a separate operation and never appear here. A
+ * certificate can only be marked distributed AFTER it is written (the
+ * backend enforces this too); a certificate is never written or
+ * distributed merely because a winner exists, a box was clicked, or a
+ * list was printed or exported - print/export/view never record anything.
  *
- * Each winner row also carries the PHYSICAL distribution toggles ("Medal
- * Distributed" / "Certificate Distributed"). This is a separate, later
- * stage than the app's certificate generation/issuance workflow: a toggle
- * records that a physical item reached the winner. Statuses are only ever
- * what the backend confirmed (server timestamp + recording user), so the
- * Print List can never show an unsaved checkbox state.
+ * Statuses are only ever what the backend confirmed (server timestamp +
+ * recording user), so no view can show an unsaved checkbox state.
  */
 @Component({
   selector: 'nk-certificates',
-  imports: [ViewOnlyBannerComponent, ],
+  imports: [ViewOnlyBannerComponent, FormsModule],
   templateUrl: './certificates.html',
   styleUrl: './certificates.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,7 +86,7 @@ export class Certificates implements OnInit {
   /** Official score display rule: one decimal where necessary — "21.5", never "21.0". */
   readonly formatScore = formatScore;
 
-  readonly awards: DistributionAwardType[] = ['MEDAL', 'CERTIFICATE'];
+  readonly states: CertificateState[] = ['CERTIFICATE_WRITTEN', 'CERTIFICATE'];
 
   private readonly winnersService = inject(WinnersService);
   private readonly distributionService = inject(DistributionService);
@@ -78,7 +105,7 @@ export class Certificates implements OnInit {
 
   private readonly uiStates = signal<Record<string, DistributionUiState>>({});
 
-  /** Physical distribution is edited by Support/Admin + the certificates role. */
+  /** Certificate statuses are edited by Support/Admin + the certificates role. */
   readonly canEditDistribution = computed(() =>
     canEditModule(this.auth.currentUser()?.role ?? null, 'DISTRIBUTION'),
   );
@@ -92,7 +119,7 @@ export class Certificates implements OnInit {
     if (readError) {
       return {
         kind: 'read-error',
-        title: 'Distribution statuses could not be read.',
+        title: 'Certificate statuses could not be read.',
         message: readError.message,
         retryable: persistenceUnconfirmed(readError.code),
       };
@@ -104,15 +131,15 @@ export class Certificates implements OnInit {
     return storage.status === 'TABLE_MISSING'
       ? {
           kind: 'missing',
-          title: 'Distribution tracking storage is missing.',
+          title: 'Certificate status storage is missing.',
           message:
             `The "${storage.table}" sheet has not been created yet. Migration step: ${storage.migrationStep} ` +
-            'Winners load normally, but distribution statuses cannot be saved until an administrator applies this migration.',
+            'Winners load normally, but written/distributed statuses cannot be saved until an administrator applies this migration.',
           retryable: false,
         }
       : {
           kind: 'incompatible',
-          title: 'Distribution tracking storage is out of date.',
+          title: 'Certificate status storage is out of date.',
           message:
             `The "${storage.table}" sheet does not match the expected layout (${storage.reason}). ` +
             `Migration step: ${storage.migrationStep}`,
@@ -128,6 +155,139 @@ export class Certificates implements OnInit {
       this.distributionService.recordedCount() === 0,
   );
 
+  /* ------------------------------------------------------------------
+     ROWS, SUMMARY, FILTERS, VIEWS
+     ------------------------------------------------------------------ */
+
+  /** Every eligible winner flattened with its confirmed certificate state. */
+  readonly rows = computed<CertificateRow[]>(() => {
+    const events = this.events();
+    const rows: CertificateRow[] = [];
+
+    for (const group of events) {
+      const groupWinners: WinnerRow[] = group.winners;
+
+      for (const winner of groupWinners) {
+        const written = this.confirmedEntry(winner.scoreId, 'CERTIFICATE_WRITTEN');
+        const distributed = this.confirmedEntry(winner.scoreId, 'CERTIFICATE');
+
+        rows.push({
+          scoreId: winner.scoreId,
+          eventName: group.eventName,
+          eventCode: group.eventCode,
+          category: group.category,
+          winnerName: winner.name,
+          classAndLevel: [winner.className, winner.level].filter(part => !!part).join(' · ') || '—',
+          shelterHomeName: winner.shelterHomeName || '—',
+          position: winner.position,
+          score: winner.score,
+          written: !!written?.distributed,
+          writtenLabel: this.stateLabel(written, 'Written', 'Not written'),
+          distributed: !!distributed?.distributed,
+          distributedLabel: this.stateLabel(distributed, 'Distributed', 'Not distributed'),
+          lastUpdate: this.lastUpdateOf(written, distributed),
+        });
+      }
+    }
+
+    return rows;
+  });
+
+  /** Summary cards: one row is counted exactly once per figure. */
+  readonly summary = computed(() => {
+    const rows = this.rows();
+    return {
+      eligible: rows.length,
+      written: rows.filter(row => row.written).length,
+      distributed: rows.filter(row => row.distributed).length,
+      pendingWriting: rows.filter(row => !row.written).length,
+      writtenNotDistributed: rows.filter(row => row.written && !row.distributed).length,
+    };
+  });
+
+  /** Filter option lists derived from the loaded rows. */
+  readonly filterCategories = computed(() => [...new Set(this.rows().map(row => row.category))].sort());
+  readonly filterHomes = computed(() => [...new Set(this.rows().map(row => row.shelterHomeName))].sort());
+  readonly filterEvents = computed(() =>
+    [...new Map(this.rows().map(row => [row.eventCode + '|' + row.eventName, row])).values()]
+      .map(row => ({ key: row.eventCode + '|' + row.eventName, label: `${row.eventName} (${row.eventCode})` }))
+      .sort((a, b) => a.label.localeCompare(b.label)));
+
+  readonly view = signal<CertificateView>('ALL');
+  readonly categoryFilter = signal('');
+  readonly eventFilter = signal('');
+  readonly homeFilter = signal('');
+  readonly positionFilter = signal<'' | '1' | '2' | '3'>('');
+  readonly writtenFilter = signal<'' | 'WRITTEN' | 'NOT_WRITTEN'>('');
+  readonly distributedFilter = signal<'' | 'DISTRIBUTED' | 'NOT_DISTRIBUTED'>('');
+
+  readonly views: Array<{ id: CertificateView; label: string }> = [
+    { id: 'ALL', label: 'All certificates' },
+    { id: 'WRITTEN_DISTRIBUTED', label: 'Written & Distributed' },
+    { id: 'PENDING_DISTRIBUTION', label: 'Pending Distribution' },
+    { id: 'PENDING_WRITING', label: 'Pending Writing' },
+  ];
+
+  /** Rows narrowed by the view first, then by every active filter. */
+  readonly filteredRows = computed<CertificateRow[]>(() => {
+    const view = this.view();
+    const category = this.categoryFilter();
+    const event = this.eventFilter();
+    const home = this.homeFilter();
+    const position = this.positionFilter();
+    const written = this.writtenFilter();
+    const distributed = this.distributedFilter();
+
+    return this.rows().filter(row => {
+      if (view === 'WRITTEN_DISTRIBUTED' && !(row.written && row.distributed)) return false;
+      if (view === 'PENDING_DISTRIBUTION' && !(row.written && !row.distributed)) return false;
+      if (view === 'PENDING_WRITING' && row.written) return false;
+
+      if (category && row.category !== category) return false;
+      if (event && `${row.eventCode}|${row.eventName}` !== event) return false;
+      if (home && row.shelterHomeName !== home) return false;
+      if (position && row.position !== Number(position)) return false;
+      if (written === 'WRITTEN' && !row.written) return false;
+      if (written === 'NOT_WRITTEN' && row.written) return false;
+      if (distributed === 'DISTRIBUTED' && !row.distributed) return false;
+      if (distributed === 'NOT_DISTRIBUTED' && row.distributed) return false;
+
+      return true;
+    });
+  });
+
+  setView(view: CertificateView): void {
+    this.view.set(view);
+  }
+
+  setCategory(value: string): void {
+    this.categoryFilter.set(value);
+  }
+
+  setEvent(value: string): void {
+    this.eventFilter.set(value);
+  }
+
+  setHome(value: string): void {
+    this.homeFilter.set(value);
+  }
+
+  setPosition(value: '' | '1' | '2' | '3'): void {
+    this.positionFilter.set(value);
+  }
+
+  setWrittenFilter(value: '' | 'WRITTEN' | 'NOT_WRITTEN'): void {
+    this.writtenFilter.set(value);
+  }
+
+  setDistributedFilter(value: '' | 'DISTRIBUTED' | 'NOT_DISTRIBUTED'): void {
+    this.distributedFilter.set(value);
+  }
+
+  /* ------------------------------------------------------------------
+     LIFECYCLE
+     ------------------------------------------------------------------ */
+
   ngOnInit(): void {
     void this.load();
   }
@@ -142,8 +302,45 @@ export class Certificates implements OnInit {
     this.logStorageDiagnostics();
   }
 
+  /** Prints the CURRENT view exactly as filtered; printing records nothing. */
   print(): void {
     window.print();
+  }
+
+  /**
+   * CSV export of the current view (or every row for the overall status
+   * report). Exporting records nothing: it only reads confirmed states.
+   */
+  exportCsv(overall = false): void {
+    const rows = overall ? this.rows() : this.filteredRows();
+    const header = [
+      'Event', 'Winner', 'Class & Level', 'Shelter home', 'Position',
+      'Certificate Written', 'Certificate Distributed', 'Last status update',
+    ];
+    const lines = [header, ...rows.map(row => [
+      `${row.eventName} (${row.eventCode})`,
+      row.winnerName,
+      row.classAndLevel,
+      row.shelterHomeName,
+      String(row.position),
+      row.writtenLabel,
+      row.distributedLabel,
+      row.lastUpdate || '—',
+    ])];
+
+    const csv = lines
+      .map(line => line.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = overall
+      ? 'certificate-status-report.csv'
+      : `certificate-${this.view().toLowerCase()}-view.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   private async load(force = false): Promise<void> {
@@ -161,7 +358,7 @@ export class Certificates implements OnInit {
   private logStorageDiagnostics(): void {
     const storage = this.trackingStorage();
     if (storage && !storage.available) {
-      console.warn('[nakshatra] distribution tracking unavailable', {
+      console.warn('[nakshatra] certificate status tracking unavailable', {
         table: storage.table,
         status: storage.status,
         reason: storage.reason,
@@ -170,7 +367,7 @@ export class Certificates implements OnInit {
     }
     const readError = this.trackingReadError();
     if (readError) {
-      console.warn('[nakshatra] distribution tracking read failed', {
+      console.warn('[nakshatra] certificate status tracking read failed', {
         code: readError.code,
         message: readError.message,
       });
@@ -178,27 +375,28 @@ export class Certificates implements OnInit {
   }
 
   // ---------------------------------------------------------
-  // DISTRIBUTION TOGGLES (one row = one winner + one award type)
+  // CERTIFICATE WRITTEN / DISTRIBUTED TOGGLES
+  // (one row = one winner + one workflow state)
   // ---------------------------------------------------------
 
-  private stateKey(winner: WinnerRow, awardType: DistributionAwardType): string {
-    return `${winner.scoreId}|${awardType}`;
+  private stateKey(scoreId: string, state: CertificateState): string {
+    return `${scoreId}|${state}`;
   }
 
   private confirmedEntry(
-    winner: WinnerRow,
-    awardType: DistributionAwardType,
+    scoreId: string,
+    state: CertificateState,
   ): DistributionTrackingEntry | null {
-    return this.distributionService.entryFor(winner.scoreId, awardType);
+    return this.distributionService.entryFor(scoreId, state);
   }
 
-  stateFor(winner: WinnerRow, awardType: DistributionAwardType): DistributionUiState {
-    const stored = this.uiStates()[this.stateKey(winner, awardType)];
+  stateFor(row: CertificateRow, state: CertificateState): DistributionUiState {
+    const stored = this.uiStates()[this.stateKey(row.scoreId, state)];
     if (stored) {
       return stored;
     }
     return {
-      checked: this.confirmedEntry(winner, awardType)?.distributed ?? false,
+      checked: this.confirmedEntry(row.scoreId, state)?.distributed ?? false,
       saving: false,
       error: null,
       errorCode: null,
@@ -206,26 +404,33 @@ export class Certificates implements OnInit {
     };
   }
 
-  awardLabel(awardType: DistributionAwardType): string {
-    return awardType === 'MEDAL' ? 'Medal Distributed' : 'Certificate Distributed';
+  awardLabel(state: CertificateState): string {
+    return state === 'CERTIFICATE_WRITTEN' ? 'Certificate Written' : 'Certificate Distributed';
   }
 
   /**
-   * Backend-confirmed state text: "Distributed — 25 Oct 2026, 11:42 AM by
-   * Praveen" or "Not distributed" — never a checkbox state that has not
+   * Backend-confirmed state text: "Written — 25 Oct 2026, 11:42 AM by
+   * Praveen" or "Not written" — never a checkbox state that has not
    * been confirmed by the backend.
    */
-  distributionLabel(winner: WinnerRow, awardType: DistributionAwardType): string {
+  distributionLabel(row: CertificateRow, state: CertificateState): string {
     if (!this.trackingAvailable()) {
       return 'Unavailable';
     }
-    const entry = this.confirmedEntry(winner, awardType);
-    if (!entry?.distributed) {
-      return 'Not distributed';
+    const entry = this.confirmedEntry(row.scoreId, state);
+    return this.stateLabel(entry, state === 'CERTIFICATE_WRITTEN' ? 'Written' : 'Distributed',
+      state === 'CERTIFICATE_WRITTEN' ? 'Not written' : 'Not distributed');
+  }
+
+  /** The DISTRIBUTED toggle is disabled until the certificate is written. */
+  canToggle(row: CertificateRow, state: CertificateState): boolean {
+    if (!this.canEditDistribution() || !this.trackingAvailable()) {
+      return false;
     }
-    const timestamp = Certificates.formatTimestamp(entry.distributedAt);
-    const recorder = entry.recordedByName || entry.recordedBy;
-    return `Distributed${timestamp ? ` — ${timestamp}` : ''}${recorder ? ` by ${recorder}` : ''}`;
+    if (state === 'CERTIFICATE') {
+      return this.stateFor(row, 'CERTIFICATE_WRITTEN').checked;
+    }
+    return true;
   }
 
   /**
@@ -237,35 +442,36 @@ export class Certificates implements OnInit {
    * rewrites the DOM.
    */
   async toggleDistribution(
-    winner: WinnerRow,
-    awardType: DistributionAwardType,
+    row: CertificateRow,
+    state: CertificateState,
     input: HTMLInputElement,
   ): Promise<void> {
-    await this.saveDistribution(winner, awardType, input.checked, input);
+    await this.saveDistribution(row, state, input.checked, input);
   }
 
   /** Re-attempts the save that failed (safe: the backend upsert is idempotent). */
-  async retryDistribution(winner: WinnerRow, awardType: DistributionAwardType): Promise<void> {
-    const state = this.stateFor(winner, awardType);
-    if (state.failedTarget === null) {
+  async retryDistribution(row: CertificateRow, state: CertificateState): Promise<void> {
+    const ui = this.stateFor(row, state);
+    if (ui.failedTarget === null) {
       return;
     }
-    await this.saveDistribution(winner, awardType, state.failedTarget);
+    await this.saveDistribution(row, state, ui.failedTarget);
   }
 
   private async saveDistribution(
-    winner: WinnerRow,
-    awardType: DistributionAwardType,
+    row: CertificateRow,
+    state: CertificateState,
     checked: boolean,
     input?: HTMLInputElement,
   ): Promise<void> {
-    const key = this.stateKey(winner, awardType);
-    const state = this.stateFor(winner, awardType);
+    const key = this.stateKey(row.scoreId, state);
+    const ui = this.stateFor(row, state);
 
-    if (!this.canEditDistribution() || !this.trackingAvailable() || state.saving) {
-      // A click during a save (or an unauthorized attempt) changes nothing.
+    if (!this.canToggle(row, state) || ui.saving) {
+      // A click during a save (or an unauthorized / out-of-order attempt)
+      // changes nothing.
       if (input) {
-        input.checked = state.checked;
+        input.checked = ui.checked;
       }
       return;
     }
@@ -278,10 +484,10 @@ export class Certificates implements OnInit {
       failedTarget: checked,
     });
 
-    const confirmed = this.confirmedEntry(winner, awardType);
+    const confirmed = this.confirmedEntry(row.scoreId, state);
     const result = await this.distributionService.save(
-      winner.scoreId,
-      awardType,
+      row.scoreId,
+      state,
       checked,
       confirmed?.version,
     );
@@ -300,8 +506,8 @@ export class Certificates implements OnInit {
       }
       this.notifications.success(
         checked
-          ? `${this.awardLabel(awardType)} recorded for ${winner.name}.`
-          : `${this.awardLabel(awardType)} corrected: now not distributed for ${winner.name}.`,
+          ? `${this.awardLabel(state)} recorded for ${row.winnerName}.`
+          : `${this.awardLabel(state)} corrected: now not ${state === 'CERTIFICATE_WRITTEN' ? 'written' : 'distributed'} for ${row.winnerName}.`,
       );
       return;
     }
@@ -323,12 +529,12 @@ export class Certificates implements OnInit {
     if (input) {
       input.checked = restored;
     }
-    this.notifications.error(`${this.awardLabel(awardType)} was not saved.`, message);
+    this.notifications.error(`${this.awardLabel(state)} was not saved.`, message);
   }
 
-  canRetry(winner: WinnerRow, awardType: DistributionAwardType): boolean {
-    const state = this.stateFor(winner, awardType);
-    return !!state.errorCode && persistenceUnconfirmed(state.errorCode);
+  canRetry(row: CertificateRow, state: CertificateState): boolean {
+    const ui = this.stateFor(row, state);
+    return !!ui.errorCode && persistenceUnconfirmed(ui.errorCode);
   }
 
   private patchState(key: string, patch: Partial<DistributionUiState>): void {
@@ -342,6 +548,42 @@ export class Certificates implements OnInit {
       };
       return { ...current, [key]: { ...existing, ...patch } };
     });
+  }
+
+  /** Confirmed-state label with its server timestamp and recorder. */
+  private stateLabel(
+    entry: DistributionTrackingEntry | null,
+    doneLabel: string,
+    undoneLabel: string,
+  ): string {
+    if (!entry?.distributed) {
+      return undoneLabel;
+    }
+    const timestamp = Certificates.formatTimestamp(entry.distributedAt);
+    const recorder = entry.recordedByName || entry.recordedBy;
+    return `${doneLabel}${timestamp ? ` — ${timestamp}` : ''}${recorder ? ` by ${recorder}` : ''}`;
+  }
+
+  /** Timestamp + recorder of the most recent confirmed status change. */
+  private lastUpdateOf(
+    written: DistributionTrackingEntry | null,
+    distributed: DistributionTrackingEntry | null,
+  ): string {
+    const entries = [written, distributed].filter(
+      (entry): entry is DistributionTrackingEntry => !!entry?.distributed,
+    );
+
+    if (!entries.length) {
+      return '—';
+    }
+
+    const latest = entries.sort(
+      (a, b) => new Date(b.distributedAt).getTime() - new Date(a.distributedAt).getTime(),
+    )[0];
+    const timestamp = Certificates.formatTimestamp(latest.distributedAt);
+    const recorder = latest.recordedByName || latest.recordedBy;
+
+    return `${timestamp || '—'}${recorder ? ` by ${recorder}` : ''}`;
   }
 
   /** "25 Oct 2026, 11:42 AM" — the format shown on rows and printouts. */

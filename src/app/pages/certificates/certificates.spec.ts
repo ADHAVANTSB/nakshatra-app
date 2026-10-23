@@ -90,19 +90,20 @@ describe('Certificates — official score display', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const cells = Array.from(host.querySelectorAll('tbody tr'))
-      .map(row => (row.querySelector('td:last-child')?.textContent ?? '').trim());
-    expect(cells).toEqual(['21.3', '21']);
+    const scores = Array.from(host.querySelectorAll('.winner-score'))
+      .map(span => (span.textContent ?? '').trim());
+    expect(scores).toEqual(['21.3', '21']);
     expect(host.textContent).not.toContain('21.25');
     expect(host.textContent).not.toContain('21.0');
   });
 });
 
 // =====================================================================
-// Physical distribution tracking (medals and certificates handed to
-// winners). Every status shown is backend-confirmed (server timestamp +
-// recording user); a failed save never shows false success and never
-// invents a "not distributed" default for a broken backend.
+// Certificate workflow tracking: Certificate WRITTEN (prepared) and
+// Certificate DISTRIBUTED (handed over). Every status shown is
+// backend-confirmed (server timestamp + recording user); a failed save
+// never shows false success; distribution before written is rejected;
+// print/export/view never record a status.
 // =====================================================================
 
 interface RecordedRequest {
@@ -162,7 +163,7 @@ const WINNERS_DATA = {
 
 const flush = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
 
-describe('Certificates — physical distribution tracking', () => {
+describe('Certificates — written/distributed workflow tracking', () => {
   let requests: RecordedRequest[];
 
   function stubBackend(handler: (body: RecordedRequest) => StubResponse | Promise<StubResponse>): void {
@@ -179,7 +180,12 @@ describe('Certificates — physical distribution tracking', () => {
     });
   }
 
-  /** A stub store so saves persist across the list reads (and reloads). */
+  /**
+   * A stub store with the REAL backend rules: three award types per
+   * winner (MEDAL, CERTIFICATE_WRITTEN, CERTIFICATE - the page shows
+   * only the two certificate states and ignores MEDAL) and the
+   * written-before-distributed rejection.
+   */
   function stubWithStore(): { saved: Record<string, Record<string, unknown>> } {
     const saved: Record<string, Record<string, unknown>> = {};
 
@@ -190,7 +196,7 @@ describe('Certificates — physical distribution tracking', () => {
       }
       if (body.action === 'listDistributionTracking') {
         const distributions = ['score-1', 'score-2'].flatMap(scoreId =>
-          ['MEDAL', 'CERTIFICATE'].map(awardType => {
+          ['MEDAL', 'CERTIFICATE_WRITTEN', 'CERTIFICATE'].map(awardType => {
             const key = `${scoreId}|${awardType}`;
             return saved[key] ?? distributionEntry(scoreId, awardType);
           }),
@@ -209,7 +215,18 @@ describe('Certificates — physical distribution tracking', () => {
           distributed: boolean;
         };
         const key = `${payload.scoreId}|${payload.awardType}`;
+        const writtenKey = `${payload.scoreId}|CERTIFICATE_WRITTEN`;
         const previous = saved[key];
+
+        // The real backend rule: distributed only after written.
+        if (
+          payload.awardType === 'CERTIFICATE' &&
+          payload.distributed &&
+          saved[writtenKey]?.['distributed'] !== true
+        ) {
+          return fail('CERTIFICATE_NOT_WRITTEN', 'Mark the certificate as written before recording its distribution.');
+        }
+
         const entry = distributionEntry(payload.scoreId, payload.awardType, {
           id: (previous?.['id'] as string) ?? `dist-${payload.scoreId}-${payload.awardType}`,
           distributed: payload.distributed,
@@ -249,8 +266,13 @@ describe('Certificates — physical distribution tracking', () => {
   }
 
   function rowCheckboxes(host: HTMLElement, rowIndex = 0): HTMLInputElement[] {
-    const rows = Array.from(host.querySelectorAll('tbody tr'));
+    const rows = Array.from(host.querySelectorAll('tbody tr:not(.empty-row)'));
     return Array.from(rows[rowIndex].querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+  }
+
+  /** Data rows only (the empty-state row is not a winner row). */
+  function dataRows(host: HTMLElement): Element[] {
+    return Array.from(host.querySelectorAll('tbody tr:not(.empty-row)'));
   }
 
   afterEach(() => {
@@ -268,7 +290,7 @@ describe('Certificates — physical distribution tracking', () => {
       return ok({
         storage: AVAILABLE_STORAGE,
         distributions: [
-          distributionEntry('score-1', 'MEDAL', {
+          distributionEntry('score-1', 'CERTIFICATE_WRITTEN', {
             distributed: true,
             distributedAt: '2026-10-25T11:42:00.000Z',
             recordedBy: 'user-praveen',
@@ -276,7 +298,7 @@ describe('Certificates — physical distribution tracking', () => {
             version: 1,
           }),
           distributionEntry('score-1', 'CERTIFICATE'),
-          distributionEntry('score-2', 'MEDAL'),
+          distributionEntry('score-2', 'CERTIFICATE_WRITTEN'),
           distributionEntry('score-2', 'CERTIFICATE'),
         ],
         recordedCount: 1,
@@ -290,20 +312,53 @@ describe('Certificates — physical distribution tracking', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const [medal, certificate] = rowCheckboxes(host);
+    const [written, distributed] = rowCheckboxes(host);
 
-    expect(medal.checked).toBe(true);
-    expect(certificate.checked).toBe(false);
+    expect(written.checked).toBe(true);
+    expect(distributed.checked).toBe(false);
 
     const stateText = host.textContent ?? '';
-    expect(stateText).toContain('Distributed —');
+    expect(stateText).toContain('Written —');
     expect(stateText).toMatch(/\d{1,2} Oct 2026, \d{1,2}:\d{2} [AP]M/);
     expect(stateText).toContain('by Praveen (E2E)');
     expect(stateText).toContain('Not distributed');
+    expect(stateText).toContain('Not written');
     expect(stateText).not.toContain('Unavailable');
   });
 
-  it('persists medal and certificate independently and toasts only after the backend confirms', async () => {
+  it('a certificate cannot be distributed before it is written (UI gate + backend rejection)', async () => {
+    stubWithStore();
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const [written, distributed] = rowCheckboxes(host);
+
+    // UI gate: the distributed checkbox is disabled while not written.
+    expect(distributed.disabled).toBe(true);
+    expect(host.textContent).toContain('Written first');
+
+    // Belt-and-braces: even a forced change sends nothing while the
+    // ordering rule is unmet, and the backend rejects it too.
+    distributed.checked = true;
+    distributed.dispatchEvent(new Event('change'));
+    await flush();
+    fixture.detectChanges();
+
+    expect(requests.some(item => item.action === 'saveDistributionStatus')).toBe(false);
+
+    // Writing first unlocks distribution.
+    written.click();
+    await flush();
+    fixture.detectChanges();
+
+    expect(rowCheckboxes(host)[1].disabled).toBe(false);
+  });
+
+  it('persists written and distributed independently and toasts only after the backend confirms', async () => {
     stubWithStore();
 
     const fixture = await setupPage();
@@ -313,46 +368,43 @@ describe('Certificates — physical distribution tracking', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const [medal, certificate] = rowCheckboxes(host);
+    const [written, distributed] = rowCheckboxes(host);
 
     // A slow backend confirms nothing yet: no success toast while pending.
-    medal.click();
+    written.click();
     fixture.detectChanges();
     expect(notifications.notifications().filter(item => item.tone === 'success')).toHaveLength(0);
-    expect((host.textContent ?? '').includes('Saving…') || medal.disabled).toBe(true);
+    expect((host.textContent ?? '').includes('Saving…') || written.disabled).toBe(true);
 
     await flush();
     fixture.detectChanges();
 
-    const medalRequest = requests.find(item => item.action === 'saveDistributionStatus');
-    expect(medalRequest?.payload).toMatchObject({
+    const writtenRequest = requests.find(item => item.action === 'saveDistributionStatus');
+    expect(writtenRequest?.payload).toMatchObject({
       scoreId: 'score-1',
-      awardType: 'MEDAL',
+      awardType: 'CERTIFICATE_WRITTEN',
       distributed: true,
       expectedVersion: 0,
     });
     expect(notifications.notifications().some(item => item.tone === 'success')).toBe(true);
-    expect(medal.checked).toBe(true);
+    expect(written.checked).toBe(true);
     expect((host.textContent ?? '')).toContain('by Test User');
 
-    // The certificate row is untouched by the medal save (independent).
-    expect(certificate.checked).toBe(false);
-
     // Rapid repeat clicks while saving cannot duplicate the request.
-    certificate.click();
-    certificate.click();
+    distributed.click();
+    distributed.click();
     await flush();
     fixture.detectChanges();
 
     const saves = requests.filter(item => item.action === 'saveDistributionStatus');
     expect(saves).toHaveLength(2);
     expect(saves[1].payload).toMatchObject({ scoreId: 'score-1', awardType: 'CERTIFICATE', distributed: true });
-    expect(certificate.checked).toBe(true);
+    expect(rowCheckboxes(host)[1].checked).toBe(true);
 
-    // The medal record survived the certificate save untouched.
-    const lastSave = TestBed.inject(DistributionService);
-    expect(lastSave.entryFor('score-1', 'MEDAL')?.distributed).toBe(true);
-    expect(lastSave.entryFor('score-1', 'CERTIFICATE')?.distributed).toBe(true);
+    // The written record survived the distributed save untouched.
+    const service = TestBed.inject(DistributionService);
+    expect(service.entryFor('score-1', 'CERTIFICATE_WRITTEN')?.distributed).toBe(true);
+    expect(service.entryFor('score-1', 'CERTIFICATE')?.distributed).toBe(true);
   });
 
   it('a reload restores the persisted statuses from the backend', async () => {
@@ -377,9 +429,9 @@ describe('Certificates — physical distribution tracking', () => {
     reloaded.detectChanges();
 
     const host = reloaded.nativeElement as HTMLElement;
-    const [medal, certificate] = rowCheckboxes(host);
-    expect(medal.checked).toBe(true);
-    expect(certificate.checked).toBe(false);
+    const [written, distributed] = rowCheckboxes(host);
+    expect(written.checked).toBe(true);
+    expect(distributed.checked).toBe(false);
     expect(host.textContent).toContain('by Test User');
   });
 
@@ -393,16 +445,16 @@ describe('Certificates — physical distribution tracking', () => {
         return ok({
           storage: AVAILABLE_STORAGE,
           distributions: [
-            distributionEntry('score-1', 'MEDAL'),
+            distributionEntry('score-1', 'CERTIFICATE_WRITTEN'),
             distributionEntry('score-1', 'CERTIFICATE'),
-            distributionEntry('score-2', 'MEDAL'),
+            distributionEntry('score-2', 'CERTIFICATE_WRITTEN'),
             distributionEntry('score-2', 'CERTIFICATE'),
           ],
           recordedCount: 0,
           totalWinners: 2,
         });
       }
-      return fail('VERSION_CONFLICT', 'This distribution status was changed by someone else. Reload and try again.');
+      return fail('VERSION_CONFLICT', 'This certificate status was changed by someone else. Reload and try again.');
     });
 
     const fixture = await setupPage();
@@ -412,14 +464,14 @@ describe('Certificates — physical distribution tracking', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const [medal] = rowCheckboxes(host);
+    const [written] = rowCheckboxes(host);
 
-    medal.click();
+    written.click();
     await flush();
     fixture.detectChanges();
 
     // No false success: the checkbox is restored to the confirmed state.
-    expect(medal.checked).toBe(false);
+    expect(written.checked).toBe(false);
     expect(notifications.notifications().some(item => item.tone === 'success')).toBe(false);
     expect(notifications.notifications().some(item => item.tone === 'error')).toBe(true);
     expect(host.textContent).toContain('changed by someone else');
@@ -438,9 +490,9 @@ describe('Certificates — physical distribution tracking', () => {
         return ok({
           storage: AVAILABLE_STORAGE,
           distributions: [
-            distributionEntry('score-1', 'MEDAL'),
+            distributionEntry('score-1', 'CERTIFICATE_WRITTEN'),
             distributionEntry('score-1', 'CERTIFICATE'),
-            distributionEntry('score-2', 'MEDAL'),
+            distributionEntry('score-2', 'CERTIFICATE_WRITTEN'),
             distributionEntry('score-2', 'CERTIFICATE'),
           ],
           recordedCount: 0,
@@ -449,7 +501,7 @@ describe('Certificates — physical distribution tracking', () => {
       }
       if (saveFails) return fail('NETWORK_ERROR', 'Unable to reach the server. Please try again.');
       return ok({
-        distribution: distributionEntry('score-1', 'MEDAL', {
+        distribution: distributionEntry('score-1', 'CERTIFICATE_WRITTEN', {
           distributed: true,
           distributedAt: '2026-10-25T11:42:00.000Z',
           recordedBy: 'spec-user',
@@ -465,14 +517,14 @@ describe('Certificates — physical distribution tracking', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    const [medal] = rowCheckboxes(host);
+    const [written] = rowCheckboxes(host);
 
-    medal.click();
+    written.click();
     await flush();
     fixture.detectChanges();
 
     // Unconfirmed: the change is clearly marked as not saved, with Retry.
-    expect(medal.checked).toBe(false);
+    expect(written.checked).toBe(false);
     expect(host.textContent).toContain('not confirmed');
     expect(host.querySelector('[data-testid="distribution-retry"]')).not.toBeNull();
 
@@ -481,13 +533,13 @@ describe('Certificates — physical distribution tracking', () => {
     await flush();
     fixture.detectChanges();
 
-    expect(medal.checked).toBe(true);
+    expect(rowCheckboxes(host)[0].checked).toBe(true);
     expect(host.textContent).toContain('by Test User');
     expect(TestBed.inject(NotificationService).notifications().some(item => item.tone === 'success')).toBe(true);
   });
 
   for (const role of ['LIAISON_TEAM', 'EVENTS_TEAM']) {
-    it(`${role} cannot edit distribution (view-only, writes rejected in the UI)`, async () => {
+    it(`${role} cannot edit certificate statuses (view-only, writes rejected in the UI)`, async () => {
       stubWithStore();
 
       const fixture = await setupPage(role);
@@ -503,14 +555,14 @@ describe('Certificates — physical distribution tracking', () => {
       }
 
       // An attempted toggle (even a forced one) never sends a write.
-      const [medal] = rowCheckboxes(host);
-      medal.dispatchEvent(new Event('change'));
+      const [written] = rowCheckboxes(host);
+      written.dispatchEvent(new Event('change'));
       await flush();
       fixture.detectChanges();
 
       expect(requests.some(item => item.action === 'saveDistributionStatus')).toBe(false);
-      expect(medal.checked).toBe(false);
-      expect(host.textContent).toContain('Not distributed');
+      expect(written.checked).toBe(false);
+      expect(host.textContent).toContain('Not written');
     });
   }
 
@@ -545,15 +597,15 @@ describe('Certificates — physical distribution tracking', () => {
     const host = fixture.nativeElement as HTMLElement;
 
     // The winners list loads regardless of the tracking failure.
-    expect(host.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(dataRows(host)).toHaveLength(2);
     expect(host.textContent).toContain('Quiz (S+SS)');
 
     // The missing storage is named, with the exact migration step.
-    expect(host.textContent).toContain('Distribution tracking storage is missing.');
+    expect(host.textContent).toContain('Certificate status storage is missing.');
     expect(host.textContent).toContain('DistributionTracking');
     expect(host.textContent).toContain('Create the sheet');
     // Never misread as "nothing recorded" and never a false default.
-    expect(host.textContent).not.toContain('No distributions recorded yet');
+    expect(host.textContent).not.toContain('No statuses recorded yet');
     expect(host.textContent).toContain('Unavailable');
     for (const checkbox of rowCheckboxes(host)) {
       expect(checkbox.disabled).toBe(true);
@@ -592,21 +644,183 @@ describe('Certificates — physical distribution tracking', () => {
     const host = fixture.nativeElement as HTMLElement;
     expect(host.textContent).toContain('does not match the expected layout');
     expect(host.textContent).toContain('scoreId');
-    expect(host.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(dataRows(host)).toHaveLength(2);
 
     // A failed read is its own retryable state - not "nothing recorded".
     mode = 'read-error';
     await fixture.componentInstance.retryTracking();
     fixture.detectChanges();
 
-    expect(host.textContent).toContain('Distribution statuses could not be read.');
-    expect(host.textContent).not.toContain('No distributions recorded yet');
+    expect(host.textContent).toContain('Certificate statuses could not be read.');
+    expect(host.textContent).not.toContain('No statuses recorded yet');
     expect(
       Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Retry'),
     ).toBe(true);
   });
 
-  it('keeps winners, scores and the Print List intact and adds no generation actions', async () => {
+  it('the medal award type is never shown on the certificate page', async () => {
+    stubWithStore();
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).not.toContain('Medal');
+    expect(host.textContent).toContain('Certificate Written');
+    expect(host.textContent).toContain('Certificate Distributed');
+    expect(requests.filter(item => item.action === 'saveDistributionStatus')).toHaveLength(0);
+  });
+
+  it('summary cards count each winner once (eligible / written / distributed / pending)', async () => {
+    stubWithStore();
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const summary = host.querySelector('[data-testid="certificate-summary"]');
+    expect(summary?.textContent).toContain('2'); // 2 eligible winners
+    expect(summary?.textContent).toContain('Pending writing');
+
+    // Mark one written: summary moves one from pending writing to
+    // written-but-not-distributed.
+    rowCheckboxes(host)[0].click();
+    await flush();
+    fixture.detectChanges();
+
+    const after = host.querySelector('[data-testid="certificate-summary"]')?.textContent ?? '';
+    expect(after).toContain('Certificates written');
+    expect(after).toContain('Written but not distributed');
+  });
+
+  it('the views separate written & distributed, pending distribution and pending writing', async () => {
+    const { saved } = stubWithStore();
+    saved['score-1|CERTIFICATE_WRITTEN'] = distributionEntry('score-1', 'CERTIFICATE_WRITTEN', {
+      distributed: true,
+      distributedAt: '2026-10-25T11:42:00.000Z',
+      recordedBy: 'spec-user',
+      recordedByName: 'Test User',
+      version: 1,
+    });
+    saved['score-1|CERTIFICATE'] = distributionEntry('score-1', 'CERTIFICATE', {
+      distributed: true,
+      distributedAt: '2026-10-25T11:43:00.000Z',
+      recordedBy: 'spec-user',
+      recordedByName: 'Test User',
+      version: 1,
+    });
+    saved['score-2|CERTIFICATE_WRITTEN'] = distributionEntry('score-2', 'CERTIFICATE_WRITTEN', {
+      distributed: true,
+      distributedAt: '2026-10-25T11:44:00.000Z',
+      recordedBy: 'spec-user',
+      recordedByName: 'Test User',
+      version: 1,
+    });
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="certificate-views"] button'));
+    const clickView = (label: string) => {
+      buttons.find(button => button.textContent?.trim() === label)?.click();
+    };
+
+    clickView('Written & Distributed');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(1);
+    expect(host.textContent).toContain('Ana');
+
+    clickView('Pending Distribution');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(1);
+    expect(host.textContent).toContain('Bhavana');
+
+    clickView('Pending Writing');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(0);
+
+    clickView('All certificates');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(2);
+  });
+
+  it('filters narrow by position and written status without touching other rows', async () => {
+    stubWithStore();
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const component = fixture.componentInstance;
+
+    component.setPosition('1');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(1);
+    expect(host.textContent).toContain('Ana');
+
+    component.setPosition('');
+    component.setWrittenFilter('WRITTEN');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(0);
+
+    component.setWrittenFilter('NOT_WRITTEN');
+    fixture.detectChanges();
+    expect(dataRows(host)).toHaveLength(2);
+  });
+
+  it('print and export never record a status (no write, no auto-mark)', async () => {
+    stubWithStore();
+    vi.stubGlobal('print', vi.fn());
+    let createdBlob: Blob | null = null;
+    const originalCreate = (URL as unknown as Record<string, unknown>)['createObjectURL'];
+    const originalRevoke = (URL as unknown as Record<string, unknown>)['revokeObjectURL'];
+    (URL as unknown as Record<string, unknown>)['createObjectURL'] = (blob: Blob) => {
+      createdBlob = blob;
+      return 'blob:spec';
+    };
+    (URL as unknown as Record<string, unknown>)['revokeObjectURL'] = vi.fn();
+
+    const fixture = await setupPage();
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    fixture.componentInstance.print();
+    fixture.componentInstance.exportCsv(false);
+    fixture.componentInstance.exportCsv(true);
+    await flush();
+    fixture.detectChanges();
+
+    expect(requests.some(item => item.action === 'saveDistributionStatus')).toBe(false);
+    // Every status stays exactly as confirmed - nothing auto-marked.
+    const [written, distributed] = rowCheckboxes(host);
+    expect(written.checked).toBe(false);
+    expect(distributed.checked).toBe(false);
+    expect(host.textContent).toContain('Not written');
+
+    // The CSV export is real and carries readable columns only.
+    expect(createdBlob).not.toBeNull();
+    const csv = await (createdBlob as unknown as Blob).text();
+    expect(csv).toContain('Event');
+    expect(csv).toContain('Certificate Written');
+    expect(csv).not.toContain('score-1');
+    expect(csv).not.toContain('participant-');
+
+    (URL as unknown as Record<string, unknown>)['createObjectURL'] = originalCreate;
+    (URL as unknown as Record<string, unknown>)['revokeObjectURL'] = originalRevoke;
+  });
+
+  it('keeps winners and the print control and adds no generation actions', async () => {
     stubWithStore();
 
     const fixture = await setupPage();
@@ -617,14 +831,14 @@ describe('Certificates — physical distribution tracking', () => {
     const host = fixture.nativeElement as HTMLElement;
 
     // Scores stay in the row exactly as before (one-decimal rule).
-    const cells = Array.from(host.querySelectorAll('tbody tr'))
-      .map(row => (row.querySelector('td:last-child')?.textContent ?? '').trim());
-    expect(cells).toEqual(['21.3', '21']);
+    const scores = Array.from(host.querySelectorAll('.winner-score'))
+      .map(span => (span.textContent ?? '').trim());
+    expect(scores).toEqual(['21.3', '21']);
 
-    // Event grouping and the Print List control are unchanged.
+    // Event identity and the print/export controls are present.
     expect(host.textContent).toContain('Quiz (S+SS)');
     expect(host.textContent).toContain('LIT-006');
-    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Print list')).toBe(true);
+    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Print this view')).toBe(true);
 
     // No certificate generation/issuance controls or actions appear.
     expect(host.textContent).not.toMatch(/generate|issue certificate/i);

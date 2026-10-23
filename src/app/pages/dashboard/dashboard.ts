@@ -147,6 +147,11 @@ export class Dashboard implements OnInit {
       description: 'Record event attendance',
     },
     {
+      label: 'Judging',
+      path: '/judging',
+      description: 'Configure judges and criteria',
+    },
+    {
       label: 'Scoring',
       path: '/scoring',
       description: 'Capture and finalize scores',
@@ -155,6 +160,11 @@ export class Dashboard implements OnInit {
       label: 'Results',
       path: '/results',
       description: 'Review published results',
+    },
+    {
+      label: 'Certificates',
+      path: '/certificates',
+      description: 'Write and distribute certificates',
     },
     {
       label: 'Reports',

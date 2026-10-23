@@ -132,7 +132,11 @@ describe('Events — category grouping and card details', () => {
 
   it('labels eligible levels for the collapsed card from backend data', () => {
     expect(component.eligibleLevelsLabel(event({ id: 'event-1', eligibleLevels: ['JUNIOR', 'SENIOR'] })))
-      .toBe('Juniors, Seniors');
+      .toBe('Juniors + Seniors');
+    // A record open to all four levels is labelled COMMON (not a 5th level).
+    expect(component.eligibleLevelsLabel(
+      event({ id: 'event-3', eligibleLevels: ['SUB_JUNIOR', 'JUNIOR', 'SENIOR', 'SUPER_SENIOR'] })))
+      .toBe('COMMON · all levels');
     expect(component.eligibleLevelsLabel(event({ id: 'event-2', eligibleLevels: [] })))
       .toBe('—');
   });

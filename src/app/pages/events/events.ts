@@ -271,14 +271,21 @@ export class Events implements OnInit {
 
   /**
    * Collapsed-card label for the backend's eligible levels; an event with no
-   * levels configured renders an em dash, never an invented list.
+   * levels configured renders an em dash, never an invented list. A record
+   * open to all four levels is labelled COMMON (never a fifth level); a
+   * level-split record shows its one eligible level, so same-name records
+   * are distinguishable at a glance and never merged.
    */
   eligibleLevelsLabel(event: Event): string {
     if (!event.eligibleLevels.length) {
       return '—';
     }
 
-    return event.eligibleLevels.map(level => this.levelLabel(level)).join(', ');
+    if (event.eligibleLevels.length === 4) {
+      return 'COMMON · all levels';
+    }
+
+    return event.eligibleLevels.map(level => this.levelLabel(level)).join(' + ');
   }
 
   readonly activeEvents = computed(() =>

@@ -6,11 +6,17 @@ import { Router } from '@angular/router';
 import {
   EventCategory,
   EventStatus,
+  ParticipantLevel,
   ReportScopePayload,
   ValidationSummarySource,
   ValidationWarning,
 } from '../../core/models';
 import { ApiClientService } from '../../core/services/api/api-client.service';
+import {
+  WinnersEventGroup,
+  WinnersService,
+  WinnerRow,
+} from '../../core/services/certificates/winners.service';
 import {
   AttendanceSummary,
   CertificateSummary,
@@ -22,7 +28,7 @@ import {
 } from '../../core/services/reports/report.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 
-type ReportTab = 'SUMMARY' | 'HOMES' | 'EVENTS' | 'PARTICIPANTS' | 'WARNINGS';
+type ReportTab = 'SUMMARY' | 'HOMES' | 'EVENTS' | 'PARTICIPANTS' | 'WINNERS' | 'CATEGORY_LEVEL' | 'WARNINGS';
 
 /**
  * What a rows tab renders:
@@ -66,12 +72,15 @@ export class Reports implements OnInit {
   private readonly reportService = inject(ReportService);
   private readonly shelterData = inject(ShelterDataService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly winnersService = inject(WinnersService);
   private readonly router = inject(Router);
 
   readonly tab = signal<ReportTab>('SUMMARY');
   readonly category = signal<EventCategory | ''>('');
   readonly eventId = signal('');
   readonly homeId = signal('');
+  /** Page-only level filter (SJ/J/S/SS); "" is "All levels" and changes nothing. */
+  readonly level = signal<ParticipantLevel | ''>('');
   readonly eventStatus = signal<EventStatus | ''>('');
   readonly participantSearch = signal('');
 
@@ -162,10 +171,15 @@ export class Reports implements OnInit {
   /** Participant rows; the search box is page-only and matches readable labels. */
   readonly participantRows = computed<NormalizedParticipantReport[]>(() => {
     const homeId = this.homeId();
+    const level = this.level();
     const query = this.participantSearch().trim().toLowerCase();
 
     return (this.rows()?.participants ?? []).filter(row => {
       if (homeId && row.shelterHomeId && row.shelterHomeId !== homeId) {
+        return false;
+      }
+
+      if (level && row.level && row.level !== level) {
         return false;
       }
 
@@ -198,6 +212,158 @@ export class Reports implements OnInit {
   readonly busy = computed(
     () => this.reportService.summaryLoading() || this.reportService.reportsLoading()
   );
+
+  /* ---------------- WINNERS (finalized official results only) ---------------- */
+
+  /** Winners report state (loaded lazily by the Winners tabs). */
+  readonly winnersGroups = signal<WinnersEventGroup[]>([]);
+  readonly winnersLoading = signal(false);
+  readonly winnersError = signal('');
+
+  /** Winners rows narrowed by the active event/category/level filters. */
+  readonly winnerRows = computed(() => {
+    const category = this.category();
+    const eventId = this.eventId();
+    const level = this.level();
+    const rows: Array<WinnerRow & { eventName: string; eventCode: string; category: string }> = [];
+
+    for (const group of this.winnersGroups()) {
+      if (eventId && group.eventId !== eventId) continue;
+      if (category && group.category !== category) continue;
+
+      for (const winner of group.winners) {
+        if (level && winner.level && winner.level.toUpperCase() !== level) continue;
+
+        rows.push({
+          ...winner,
+          eventName: group.eventName,
+          eventCode: group.eventCode,
+          category: group.category,
+        });
+      }
+    }
+
+    return rows;
+  });
+
+  /**
+   * Winners grouped by shelter home - factual rows and counts ONLY.
+   * No ranking between homes and no champion formula is computed.
+   */
+  readonly winnersByHome = computed(() => {
+    const grouped = new Map<string, Array<(WinnerRow & { eventName: string; eventCode: string; category: string })>>();
+
+    for (const row of this.winnerRows()) {
+      const home = row.shelterHomeName || 'Unknown home';
+      const rows = grouped.get(home) ?? [];
+      rows.push(row);
+      grouped.set(home, rows);
+    }
+
+    return [...grouped.entries()]
+      .map(([home, rows]) => ({ home, rows, winnerCount: rows.length }))
+      .sort((a, b) => a.home.localeCompare(b.home));
+  });
+
+  /** Category/level report (ARTS, LITERARY, CULTURALS / SJ, J, S, SS). */
+  readonly categoryLevelReport = computed(() => {
+    const workflow = this.summary()?.workflow ?? null;
+    const rows = this.winnerRows();
+
+    const categories: Array<{ category: string; registrations: number | null; winners: number }> = [
+      'ARTS', 'LITERARY', 'CULTURAL',
+    ].map(category => ({
+      category,
+      registrations: workflow
+        ? workflow.registrationsByCategory[category] ?? 0
+        : null,
+      winners: rows.filter(row => row.category === category).length,
+    }));
+
+    const levels: Array<{ level: string; label: string; participants: number | null; winners: number }> =
+      this.levelOptions.map(level => ({
+      level,
+      label: this.levelLabel(level),
+      participants: workflow ? workflow.levelDistribution[level] ?? 0 : null,
+      winners: rows.filter(row => (row.level || '').toUpperCase() === level).length,
+    }));
+
+    return { categories, levels };
+  });
+
+  /** Level filter options, in SJ/J/S/SS report order. */
+  readonly levelOptions: readonly ParticipantLevel[] = [
+    'SUB_JUNIOR', 'JUNIOR', 'SENIOR', 'SUPER_SENIOR',
+  ];
+
+  /** "SJ — Sub Junior" style label for the category/level report. */
+  levelLabel(level: string): string {
+    switch (level) {
+      case 'SUB_JUNIOR': return 'SJ — Sub Junior';
+      case 'JUNIOR': return 'J — Junior';
+      case 'SENIOR': return 'S — Senior';
+      case 'SUPER_SENIOR': return 'SS — Super Senior';
+      default: return level || '—';
+    }
+  }
+
+  /** Renders a nullable counter; null is "Not available", never zero. */
+  figureOrNull(value: number | null): string {
+    return value === null ? 'Not available' : String(value);
+  }
+
+  /** Participation (registrations) of one home, from the reports rows. */
+  homeParticipation(homeName: string): string {
+    const row = this.homeRows().find(home => home.name === homeName);
+    return row ? this.figure(row.registrations) : '—';
+  }
+
+  /** CSV export of the active winners/category-level view (read-only). */
+  exportCsv(kind: 'winners' | 'winners-by-home' | 'category-level'): void {
+    let lines: string[][];
+
+    if (kind === 'winners-by-home') {
+      lines = [
+        ['Shelter home', 'Event', 'Category', 'Winner', 'Position', 'Final score'],
+        ...this.winnersByHome().flatMap(group =>
+          group.rows.map(row => [
+            group.home, `${row.eventName} (${row.eventCode})`, row.category,
+            row.name, String(row.position), this.figure(row.score),
+          ]),
+        ),
+      ];
+    } else if (kind === 'category-level') {
+      const report = this.categoryLevelReport();
+      lines = [
+        ['Dimension', 'Name', 'Registrations / participants', 'Winners'],
+        ...report.categories.map(row => [
+          'Category', row.category, this.figureOrNull(row.registrations), String(row.winners),
+        ]),
+        ...report.levels.map(row => [
+          'Level', row.label, this.figureOrNull(row.participants), String(row.winners),
+        ]),
+      ];
+    } else {
+      lines = [
+        ['Event', 'Category', 'Winner', 'Shelter home', 'Level', 'Position', 'Final score'],
+        ...this.winnerRows().map(row => [
+          `${row.eventName} (${row.eventCode})`, row.category, row.name,
+          row.shelterHomeName || '—', row.level || '—', String(row.position), this.figure(row.score),
+        ]),
+      ];
+    }
+
+    const csv = lines
+      .map(line => line.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `reports-${kind}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   ngOnInit(): void {
     this.loadFilterOptions();
@@ -305,6 +471,11 @@ export class Reports implements OnInit {
 
     if (this.tab() === 'SUMMARY') {
       void this.reportService.getBackendSummary();
+    } else if (this.tab() === 'WINNERS' || this.tab() === 'CATEGORY_LEVEL') {
+      void this.loadWinners(true);
+      if (this.tab() === 'CATEGORY_LEVEL') {
+        void this.reportService.getBackendSummary();
+      }
     } else {
       void this.reportService.loadReports(this.scope(), true);
     }
@@ -339,6 +510,10 @@ export class Reports implements OnInit {
   setHome(homeId: string): void {
     this.homeId.set(homeId);
     this.ensureTabData();
+  }
+
+  setLevel(level: ParticipantLevel | ''): void {
+    this.level.set(level);
   }
 
   setEventStatus(status: EventStatus | ''): void {
@@ -399,7 +574,45 @@ export class Reports implements OnInit {
       return;
     }
 
+    if (this.tab() === 'WINNERS' || this.tab() === 'CATEGORY_LEVEL') {
+      void this.loadWinners();
+      void this.reportService.loadReports(this.scope());
+
+      if (this.tab() === 'CATEGORY_LEVEL' && this.reportService.summaryState().status === 'IDLE') {
+        void this.reportService.getBackendSummary();
+      }
+
+      return;
+    }
+
     void this.reportService.loadReports(this.scope());
+  }
+
+  /**
+   * Winners report (finalized official results only). Loading it is
+   * read-only: it never marks, approves or changes anything.
+   */
+  private async loadWinners(force = false): Promise<void> {
+    if (this.winnersLoading()) {
+      return;
+    }
+
+    if (!force && this.winnersGroups().length) {
+      return;
+    }
+
+    this.winnersLoading.set(true);
+    this.winnersError.set('');
+
+    const report = await this.winnersService.load(force);
+
+    if (report) {
+      this.winnersGroups.set(report.events);
+    } else {
+      this.winnersError.set('The winners report could not be read.');
+    }
+
+    this.winnersLoading.set(false);
   }
 
   /** Reads the filter option lists only when the shared store lacks them. */

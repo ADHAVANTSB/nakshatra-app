@@ -119,7 +119,7 @@ const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
   // must create the table (rule rejection — no Retry).
   DISTRIBUTION_TRACKING_TABLE_MISSING: {
     message:
-      'Medal and certificate distribution tracking is not set up in the database yet. An administrator must create the DistributionTracking sheet (see the distribution tracking migration proposal) before distribution statuses can be saved.',
+      'Certificate written/distributed tracking is not set up in the database yet. An administrator must create the DistributionTracking sheet (see the distribution tracking migration proposal) before certificate statuses can be saved.',
     retryable: false,
   },
   DISTRIBUTION_TRACKING_SCHEMA_INCOMPATIBLE: {

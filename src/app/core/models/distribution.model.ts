@@ -8,7 +8,7 @@
  * implied by generation or issuance.
  */
 
-export type DistributionAwardType = 'MEDAL' | 'CERTIFICATE';
+export type DistributionAwardType = 'MEDAL' | 'CERTIFICATE_WRITTEN' | 'CERTIFICATE';
 
 export interface ListDistributionTrackingPayload {
   eventId?: string;
