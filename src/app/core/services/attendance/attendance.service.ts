@@ -9,6 +9,7 @@ import { ApiClientService } from '../api/api-client.service';
 import { EventService } from '../events/event.service';
 import { ParticipantEventService } from '../events/participant-event.service';
 import { ParticipantService } from '../participants/participant.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { TeamService } from '../teams/team.service';
 
 export interface AttendanceResult {
@@ -37,12 +38,23 @@ export class AttendanceService {
   private readonly participantEventService = inject(ParticipantEventService);
   private readonly participantService = inject(ParticipantService);
   private readonly teamService = inject(TeamService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly records = signal<Attendance[]>([]);
   /** Events whose persisted attendance has been read at least once. */
   private readonly loadedEvents = new Set<string>();
   /** In-flight reads, keyed by event id, so concurrent callers share one request. */
   private readonly pendingLoads = new Map<string, Promise<boolean>>();
+
+  constructor() {
+    // Attendance rows belong to one programme/zone scope: a scope switch
+    // drops them so no old-zone mark can ever be displayed again.
+    this.programContext.onScopeChange(() => {
+      this.records.set([]);
+      this.loadedEvents.clear();
+      this.pendingLoads.clear();
+    });
+  }
 
   readonly records$ = this.records.asReadonly();
 
@@ -81,7 +93,13 @@ export class AttendanceService {
   }
 
   private async requestEventAttendance(eventId: string): Promise<boolean> {
+    const scopeVersion = this.programContext.scopeVersion();
     const response = await this.apiClient.listAttendance({ eventId });
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // Scope changed while this read was in flight: never land old-zone rows.
+      return false;
+    }
 
     if (!response.success) {
       // A failed read must not clear records that are already displayed.
@@ -110,6 +128,8 @@ export class AttendanceService {
 
     const existing = this.getByParticipantEvent(participantId, eventId);
 
+    const scopeVersion = this.programContext.scopeVersion();
+
     const response = await this.apiClient.markAttendance({
       eventId,
       participantId,
@@ -117,6 +137,15 @@ export class AttendanceService {
       ...(teamId ? { teamId } : {}),
       ...(existing ? { expectedVersion: existing.version } : {}),
     });
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // The programme/zone changed while the mark was in flight: the
+      // backend accepted it, but it belongs to the previous scope and is
+      // never cached here.
+      return response.success
+        ? { success: true, attendance: response.data.attendance, errors: [] }
+        : { success: false, errors: [response.error.message], errorCode: response.error.code };
+    }
 
     if (!response.success) {
       if (response.error.code === 'VERSION_CONFLICT') {

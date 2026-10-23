@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 
 import { Score } from '../../models';
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 
 export interface ScoreLoadState {
   status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR';
@@ -48,10 +49,21 @@ export interface ReopenEventResult {
 @Injectable({ providedIn: 'root' })
 export class ScoringService {
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly scores = signal<Score[]>([]);
   private readonly loadStates = signal<Record<string, ScoreLoadState>>({});
   private readonly pending = new Map<string, Promise<boolean>>();
+
+  constructor() {
+    // Scores belong to one programme/zone scope; a switch drops them so a
+    // previous zone's rows can never be displayed or aggregated again.
+    this.programContext.onScopeChange(() => {
+      this.scores.set([]);
+      this.loadStates.set({});
+      this.pending.clear();
+    });
+  }
 
   readonly scores$ = this.scores.asReadonly();
 
@@ -84,9 +96,15 @@ export class ScoringService {
   }
 
   private async fetchScores(eventId: string): Promise<boolean> {
+    const scopeVersion = this.programContext.scopeVersion();
     this.setLoadState(eventId, { status: 'LOADING', error: '' });
 
     const response = await this.apiClient.listScores(eventId);
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // Scope changed while this read was in flight: never land old-zone rows.
+      return false;
+    }
 
     if (!response.success) {
       this.setLoadState(eventId, { status: 'ERROR', error: response.error.message });

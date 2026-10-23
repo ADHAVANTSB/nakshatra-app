@@ -398,41 +398,79 @@
       </div>
     } @else {
       <div class="report-card table-wrapper">
+        <p>
+          <button type="button" class="secondary-button" (click)="exportCsv('participants')">
+            Export participants (CSV)
+          </button>
+        </p>
         <table>
           <thead>
             <tr>
-              <th>Participant</th>
-              <th>Home</th>
-              <th>Level</th>
-              <th>Registrations</th>
+              <th>S.No</th>
+              <th>Unique Code</th>
+              <th>Home Name</th>
+              <th>Participant Name</th>
+              <th>Gender</th>
+              <th>Age</th>
+              <th>Standard</th>
+              <th>Category</th>
+              <th>Overall Events</th>
+              <th>Arts</th>
+              <th>Literary</th>
+              <th>Culturals</th>
+              @for (label of eventSlotLabels; track label) {
+                <th>{{ label }}</th>
+              }
               <th>Attendance</th>
               <th>Finalized SOLO scores</th>
               <th>Certificates</th>
             </tr>
           </thead>
           <tbody>
-            @for (row of participantRows(); track row.key) {
+            @for (item of participantTableRows(); track item.row.key) {
               <tr>
+                <td>{{ item.sno }}</td>
+                <td>{{ item.row.participantCode }}</td>
                 <td>
-                  <strong>{{ row.fullName }}</strong>
-                  <small class="participant-code">{{ row.participantCode }}</small>
+                  <strong>{{ item.row.homeName }}</strong>
+                  <small>{{ item.row.homeCode }}</small>
                 </td>
                 <td>
-                  <strong>{{ row.homeName }}</strong>
+                  <strong>{{ item.row.fullName }}</strong>
+                  @if (item.row.dataIssues.length) {
+                    <small
+                      class="data-issue"
+                      [title]="item.row.dataIssues.map(issue => issue.code).join(', ')">
+                      data issue
+                    </small>
+                  }
                 </td>
-                <td>{{ row.level ?? '—' }}</td>
-                <td>{{ figure(row.registrations) }}</td>
+                <td>{{ item.row.gender || '—' }}</td>
+                <td>{{ item.row.age === null ? '—' : item.row.age }}</td>
+                <td>{{ item.row.standard === null ? '—' : item.row.standard }}</td>
+                <td>{{ item.categoryLabel }}</td>
+                <td>{{ figure(item.row.registrations) }}</td>
+                <td>{{ item.row.categoryCounts.arts }}</td>
+                <td>{{ item.row.categoryCounts.literary }}</td>
+                <td>{{ item.row.categoryCounts.cultural }}</td>
+                @for (slot of item.eventSlots; track $index) {
+                  <td>{{ slot || '—' }}</td>
+                }
                 <td>
-                  {{ figure(attendanceOf(row.attendance).recorded) }} recorded
-                  <small>{{ attendanceBreakdown(row.attendance) }}</small>
+                  {{ figure(attendanceOf(item.row.attendance).recorded) }} recorded
+                  <small>{{ attendanceBreakdown(item.row.attendance) }}</small>
                 </td>
-                <td>{{ figure(row.finalizedSoloScores) }}</td>
-                <td>{{ figure(row.certificates) }}</td>
+                <td>{{ figure(item.row.finalizedSoloScores) }}</td>
+                <td>{{ figure(item.row.certificates) }}</td>
               </tr>
             }
           </tbody>
         </table>
-        <p>Backend report rows for the filters currently applied. A dash means the backend row did not include that figure.</p>
+        <p>
+          Backend report rows for the filters currently applied. S.No is the sequence of
+          this filtered report only; event slots list distinct active registrations in the
+          backend's order. A dash means the value is not resolved — never invented.
+        </p>
       </div>
     }
   } @else if (tab() === 'WINNERS') {

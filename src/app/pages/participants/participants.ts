@@ -1070,6 +1070,19 @@ export class Participants implements OnInit {
     });
   }
 
+  /**
+   * Participant business table: the registered event names in the backend's
+   * deterministic order, padded to the six Event columns (empty string when
+   * a slot has no registration). Identity is the stable event id - names are
+   * display only and never used for matching.
+   */
+  eventSlots(participantId: string): string[] {
+    const entry = this.participantEventService.summaryFor(participantId);
+    const events = entry?.events ?? [];
+
+    return Array.from({ length: 6 }, (_, slot) => events[slot]?.eventName ?? '');
+  }
+
   /** Rows with more than this many events stay compact until expanded. */
   private static readonly COMPACT_EVENT_LIMIT = 4;
 

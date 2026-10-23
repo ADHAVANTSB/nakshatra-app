@@ -5,6 +5,7 @@ import {
   DistributionTrackingStorage,
 } from '../../models';
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 
 export interface DistributionSaveResult {
   success: boolean;
@@ -26,11 +27,23 @@ export interface DistributionReadError {
 @Injectable({ providedIn: 'root' })
 export class DistributionService {
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly entriesState = signal<DistributionTrackingEntry[]>([]);
   private readonly storageState = signal<DistributionTrackingStorage | null>(null);
   private readonly loadingState = signal(false);
   private readonly readErrorState = signal<DistributionReadError | null>(null);
+
+  constructor() {
+    // Distribution records belong to one programme/zone scope; a switch
+    // drops them so another zone's hand-overs are never displayed.
+    this.programContext.onScopeChange(() => {
+      this.entriesState.set([]);
+      this.storageState.set(null);
+      this.loadingState.set(false);
+      this.readErrorState.set(null);
+    });
+  }
 
   readonly entries$ = this.entriesState.asReadonly();
   readonly storage$ = this.storageState.asReadonly();
@@ -67,7 +80,14 @@ export class DistributionService {
     this.readErrorState.set(null);
 
     try {
+      const scopeVersion = this.programContext.scopeVersion();
       const response = await this.apiClient.listDistributionTracking();
+
+      if (this.programContext.scopeVersion() !== scopeVersion) {
+        // Scope changed while this read was in flight: never land rows
+        // read for the previous programme/zone.
+        return false;
+      }
 
       if (!response.success) {
         this.readErrorState.set({
@@ -118,6 +138,8 @@ export class DistributionService {
     distributed: boolean,
     expectedVersion?: number,
   ): Promise<DistributionSaveResult> {
+    const scopeVersion = this.programContext.scopeVersion();
+
     const response = await this.apiClient.saveDistributionStatus({
       scoreId,
       awardType,
@@ -146,13 +168,18 @@ export class DistributionService {
       };
     }
 
-    this.entriesState.update(current => [
-      ...current.filter(
-        existing =>
-          !(existing.scoreId === entry.scoreId && existing.awardType === entry.awardType),
-      ),
-      entry,
-    ]);
+    if (this.programContext.scopeVersion() === scopeVersion) {
+      // A scope switch during the write means the entry belongs to the
+      // previous scope; the backend result is still returned honestly but
+      // never cached here.
+      this.entriesState.update(current => [
+        ...current.filter(
+          existing =>
+            !(existing.scoreId === entry.scoreId && existing.awardType === entry.awardType),
+        ),
+        entry,
+      ]);
+    }
 
     return { success: true, entry };
   }

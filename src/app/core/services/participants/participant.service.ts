@@ -13,6 +13,7 @@ import {
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { ShelterDataService } from '../shelter-homes/shelter-data.service';
 
 /**
@@ -29,6 +30,7 @@ import { ShelterDataService } from '../shelter-homes/shelter-data.service';
 export class ParticipantService {
   private readonly shelterData = inject(ShelterDataService);
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
 
   readonly participants$ = this.shelterData.participants;
 
@@ -205,6 +207,8 @@ export class ParticipantService {
       return { success: false, errors };
     }
 
+    const scopeVersion = this.programContext.scopeVersion();
+
     const response = await this.apiClient.updateParticipant({
       participantId: participant.id,
       expectedVersion: participant.version,
@@ -218,7 +222,12 @@ export class ParticipantService {
       return { success: false, errors: [response.error.message], errorCode: response.error.code };
     }
 
-    this.replaceParticipant(response.data.participant);
+    // A programme/zone switch during the write means this record now
+    // belongs to the previous scope: the backend result is still returned
+    // honestly, but it is never cached into the new scope.
+    if (this.programContext.scopeVersion() === scopeVersion) {
+      this.replaceParticipant(response.data.participant);
+    }
 
     return {
       success: true,

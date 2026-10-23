@@ -12,6 +12,7 @@ import { ApiClientService } from '../api/api-client.service';
 import { EventService } from '../events/event.service';
 import { ParticipantEventService } from '../events/participant-event.service';
 import { ParticipantService } from '../participants/participant.service';
+import { ProgramContextService } from '../program/program-context.service';
 
 export type TeamLoadStatus = 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR';
 
@@ -48,6 +49,7 @@ export class TeamService {
   private readonly eventService = inject(EventService);
   private readonly participantService = inject(ParticipantService);
   private readonly participantEventService = inject(ParticipantEventService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly teams = signal<Team[]>([]);
   private readonly teamMembers = signal<TeamMember[]>([]);
@@ -55,6 +57,17 @@ export class TeamService {
 
   /** In-flight reads, so concurrent callers share one request per event. */
   private readonly pending = new Map<string, Promise<boolean>>();
+
+  constructor() {
+    // Teams belong to one programme/zone scope; a switch drops every
+    // cached team and roster so no old-zone row is ever displayed again.
+    this.programContext.onScopeChange(() => {
+      this.teams.set([]);
+      this.teamMembers.set([]);
+      this.loadStates.set({});
+      this.pending.clear();
+    });
+  }
 
   readonly teams$ = this.teams.asReadonly();
   readonly teamMembers$ = this.teamMembers.asReadonly();
@@ -97,7 +110,13 @@ export class TeamService {
 
   /** Re-reads one team from the backend and replaces it in the cache. */
   async refreshTeam(teamId: string): Promise<boolean> {
+    const scopeVersion = this.programContext.scopeVersion();
     const response = await this.apiClient.getTeam(teamId);
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // Scope changed while this read was in flight: never land old-zone rows.
+      return false;
+    }
 
     if (!response.success) {
       return false;
@@ -108,9 +127,15 @@ export class TeamService {
   }
 
   private async fetchTeams(eventId: string): Promise<boolean> {
+    const scopeVersion = this.programContext.scopeVersion();
     this.setLoadState(eventId, { status: 'LOADING', error: '' });
 
     const response = await this.apiClient.listTeams(eventId);
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // Scope changed while this read was in flight: never land old-zone rows.
+      return false;
+    }
 
     if (!response.success) {
       this.setLoadState(eventId, { status: 'ERROR', error: response.error.message });

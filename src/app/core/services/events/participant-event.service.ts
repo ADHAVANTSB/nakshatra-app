@@ -104,6 +104,22 @@ export class ParticipantEventService {
   /** In-flight summary read per home: concurrent callers share one request. */
   private pendingSummaries = new Map<string, Promise<boolean>>();
 
+  constructor() {
+    // Every cached registration/summary/event-day row belongs to exactly
+    // one programme/zone scope and is dropped the moment that scope
+    // changes; in-flight responses are discarded (see the scopeVersion
+    // guards) instead of repopulating the cache.
+    this.programContext.onScopeChange(() => {
+      this.summaryEntriesState.set({});
+      this.summaryIssuesState.set([]);
+      this.summaryHomeStates.set({});
+      this.pendingSummaries.clear();
+      this.eventDayEntriesState.set([]);
+      this.eventDayLoadingState.set(false);
+      this.eventDayScopeVersion = -1;
+    });
+  }
+
   readonly summaryIssues = this.summaryIssuesState.asReadonly();
 
   /**
@@ -142,10 +158,17 @@ export class ParticipantEventService {
   }
 
   private async readSummariesForHome(homeId: string): Promise<boolean> {
+    const scopeVersion = this.programContext.scopeVersion();
     this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'LOADING' }));
 
     try {
       const response = await this.apiClient.getParticipantEventSummaries({ shelterHomeId: homeId });
+
+      if (this.programContext.scopeVersion() !== scopeVersion) {
+        // The programme/zone changed while this read was in flight: the
+        // payload belongs to the previous scope and must never land.
+        return false;
+      }
 
       if (!response.success) {
         this.summaryHomeStates.update(states => ({ ...states, [homeId]: 'FAILED' }));
@@ -303,6 +326,12 @@ export class ParticipantEventService {
       const response = await this.apiClient.listEventDayRegistrations(
         shelterHomeId ? { shelterHomeId } : undefined
       );
+
+      if (this.programContext.scopeVersion() !== scopeVersion) {
+        // Scope changed while this read was in flight: never land rows
+        // read for the previous programme/zone.
+        return null;
+      }
 
       if (!response.success) {
         return null;

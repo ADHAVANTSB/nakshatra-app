@@ -133,6 +133,23 @@ describe('App', () => {
       .toBe('CERTIFICATE TEAM');
   });
 
+  it('shows the header line flow: greeting, brand, section', async () => {
+    signIn(CERTIFICATE_TEAM_USER);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const context = (fixture.nativeElement as HTMLElement).querySelector('.nk-header-context');
+    expect(context).not.toBeNull();
+    const text = context!.textContent ?? '';
+    const greeting = text.indexOf('Happy Volunteering');
+    const brand = text.indexOf('Nakshatra 2026');
+    const section = text.indexOf('Event Management');
+    expect(greeting).toBeGreaterThanOrEqual(0);
+    expect(brand).toBeGreaterThan(greeting);
+    expect(section).toBeGreaterThan(brand);
+  });
+
   it('limits sidebar navigation to the sections the current role can access', async () => {
     signIn(CERTIFICATE_TEAM_USER);
     const fixture = TestBed.createComponent(App);

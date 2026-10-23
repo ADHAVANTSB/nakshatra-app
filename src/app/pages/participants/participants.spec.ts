@@ -683,9 +683,36 @@ describe('Participants � participant table presentation', () => {
     // Home codes stay out of the table — only participant codes are shown.
     expect(tbody!.textContent).not.toContain('H-01');
     // The name is emphasized and its stable participant code sits under it.
-    const identityCell = tbody!.querySelector('td');
+    const identityCell = tbody!.querySelector('td.cell-identity');
     expect(identityCell?.textContent).toContain('Test Participant');
     expect(identityCell?.textContent).toContain('P-0001');
+  });
+
+  it('renders the participant business table columns (S.No + Event 1..6)', async () => {
+    await renderWith([TABLE_SUMMARY_ENTRY]);
+
+    const host = fixture.nativeElement as HTMLElement;
+    const headers = Array.from(host.querySelectorAll('th'))
+      .map(th => (th.textContent ?? '').trim());
+
+    // S.No is a display sequence for the filtered list only; the six event
+    // slots come from the backend's authoritative registration summary.
+    expect(headers[0]).toBe('S.No');
+    for (let slot = 1; slot <= 6; slot++) {
+      expect(headers).toContain(`Event ${slot}`);
+    }
+
+    const firstRow = host.querySelector('tbody tr')!;
+    const cells = Array.from(firstRow.querySelectorAll('td'))
+      .map(td => (td.textContent ?? '').trim());
+    expect(cells[0]).toBe('1');
+
+    // Event slots list the registered event names, empty slots render a dash.
+    const slots = Array.from(firstRow.querySelectorAll('td.cell-event-slot'))
+      .map(td => (td.textContent ?? '').trim());
+    expect(slots).toHaveLength(6);
+    expect(slots).toContain('Clay Modelling');
+    expect(slots).toContain('—');
   });
 
   it('renders real event names grouped by category with authoritative counts', async () => {

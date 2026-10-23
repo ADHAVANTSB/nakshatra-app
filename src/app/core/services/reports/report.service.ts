@@ -11,6 +11,7 @@ import {
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { ShelterDataService } from '../shelter-homes/shelter-data.service';
 
 /* ================================================================
@@ -94,6 +95,27 @@ export interface NormalizedEventReport {
   readonly certificates: CertificateSummary | null;
 }
 
+/** One registered event slot of a participant business-table row. */
+export interface ParticipantReportEvent {
+  readonly eventId: string;
+  readonly eventName: string;
+  readonly eventCategory: string;
+}
+
+/** Per-category distinct registration counts (event categories). */
+export interface ParticipantReportCategoryCounts {
+  readonly arts: number;
+  readonly literary: number;
+  readonly cultural: number;
+}
+
+/** Data-quality issue reported by the backend for one business-table row. */
+export interface ParticipantReportDataIssue {
+  readonly code: string;
+  readonly eventId?: string;
+  readonly count?: number;
+}
+
 /** A `participants` row of `getReports`, normalized. */
 export interface NormalizedParticipantReport {
   readonly key: string;
@@ -103,8 +125,16 @@ export interface NormalizedParticipantReport {
   readonly shelterHomeId: string;
   readonly homeName: string;
   readonly homeCode: string;
+  readonly gender: string;
+  readonly age: number | null;
+  readonly standard: number | null;
   readonly level: ParticipantLevel | null;
+  /** Distinct ACTIVE registrations (business-table "Overall Events"). */
   readonly registrations: number | null;
+  /** Registered events in the backend's deterministic order. */
+  readonly events: readonly ParticipantReportEvent[];
+  readonly categoryCounts: ParticipantReportCategoryCounts;
+  readonly dataIssues: readonly ParticipantReportDataIssue[];
   readonly attendance: AttendanceSummary | null;
   readonly finalizedSoloScores: number | null;
   readonly certificates: number | null;
@@ -158,9 +188,20 @@ const IDLE_REPORTS: ReportsRequestState = {
 export class ReportService {
   private readonly apiClient = inject(ApiClientService);
   private readonly shelterData = inject(ShelterDataService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly summaryStateSignal = signal<ReportRequestState<OperationalCounts>>(IDLE_SUMMARY);
   private readonly reportsStateSignal = signal<ReportsRequestState>(IDLE_REPORTS);
+
+  constructor() {
+    // Report rows and dashboard counters belong to one programme/zone
+    // scope; a switch drops them so no combined/previous-zone figures are
+    // ever displayed (an empty scope renders the empty state).
+    this.programContext.onScopeChange(() => {
+      this.summaryStateSignal.set(IDLE_SUMMARY);
+      this.reportsStateSignal.set(IDLE_REPORTS);
+    });
+  }
 
   /** The in-flight summary read, so parallel callers share one request. */
   private summaryPending: Promise<OperationalCounts | null> | null = null;
@@ -332,9 +373,16 @@ export class ReportService {
      ================================================================ */
 
   private async fetchSummary(): Promise<OperationalCounts | null> {
+    const scopeVersion = this.programContext.scopeVersion();
     this.summaryStateSignal.set({ status: 'LOADING', data: null, error: '' });
 
     const response = await this.apiClient.getDashboardSummary();
+
+    if (this.programContext.scopeVersion() !== scopeVersion) {
+      // The programme/zone changed while this read was in flight: its
+      // counters belong to the previous scope and must never be shown.
+      return null;
+    }
 
     if (!response.success) {
       this.summaryStateSignal.set({
@@ -482,12 +530,101 @@ export class ReportService {
       // can never surface a raw shelter home id.
       homeName: this.readString(value, 'homeName', 'shelterHomeName') ?? this.getHomeName(shelterHomeId),
       homeCode: this.readString(value, 'homeCode', 'shelterHomeCode') ?? this.getHomeCode(shelterHomeId),
+      gender: this.readString(value, 'gender') ?? '',
+      age: this.readNumber(value, 'age'),
+      standard: this.readNumber(value, 'standard'),
       level: this.readEnum<ParticipantLevel>(value, 'level', PARTICIPANT_LEVELS),
       registrations: this.readNumber(value, 'registrations', 'registrationCount'),
+      events: this.readParticipantEvents(value),
+      categoryCounts: this.readParticipantCategoryCounts(value),
+      dataIssues: this.readParticipantDataIssues(value),
       attendance: this.readAttendance(value),
       finalizedSoloScores: this.readNumber(value, 'finalizedSoloScores', 'finalizedScores'),
       certificates: this.readNumber(value, 'certificates', 'certificateCount'),
     };
+  }
+
+  /** Registered event slots of a business-table row (never fabricated). */
+  private readParticipantEvents(
+    value: Record<string, unknown>
+  ): readonly ParticipantReportEvent[] {
+    const rows = value['events'];
+
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    const events: ParticipantReportEvent[] = [];
+
+    for (const row of rows) {
+      const entry = asRecord(row);
+
+      if (!entry) {
+        continue;
+      }
+
+      const eventId = this.readString(entry, 'eventId', 'id') ?? '';
+      const eventName = this.readString(entry, 'eventName', 'name');
+
+      if (!eventId && !eventName) {
+        continue;
+      }
+
+      events.push({
+        eventId,
+        eventName: eventName ?? '',
+        eventCategory: this.readString(entry, 'eventCategory', 'category') ?? '',
+      });
+    }
+
+    return events;
+  }
+
+  /** Per-category registration counts (0 when the backend omitted them). */
+  private readParticipantCategoryCounts(
+    value: Record<string, unknown>
+  ): ParticipantReportCategoryCounts {
+    const counts = asRecord(value['categoryCounts']);
+
+    return {
+      arts: counts ? (this.readNumber(counts, 'arts') ?? 0) : 0,
+      literary: counts ? (this.readNumber(counts, 'literary') ?? 0) : 0,
+      cultural: counts ? (this.readNumber(counts, 'cultural') ?? 0) : 0,
+    };
+  }
+
+  /** Backend-reported data-quality issues; never inferred on the client. */
+  private readParticipantDataIssues(
+    value: Record<string, unknown>
+  ): readonly ParticipantReportDataIssue[] {
+    const rows = value['dataIssues'];
+
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    const issues: ParticipantReportDataIssue[] = [];
+
+    for (const row of rows) {
+      const entry = asRecord(row);
+      const code = entry ? this.readString(entry, 'code') : null;
+
+      if (!entry || !code) {
+        continue;
+      }
+
+      issues.push({
+        code,
+        ...(this.readString(entry, 'eventId') !== null
+          ? { eventId: this.readString(entry, 'eventId') as string }
+          : {}),
+        ...(this.readNumber(entry, 'count') !== null
+          ? { count: this.readNumber(entry, 'count') as number }
+          : {}),
+      });
+    }
+
+    return issues;
   }
 
   /** A collection is present only when the payload actually holds an array. */

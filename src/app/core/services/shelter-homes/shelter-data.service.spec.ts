@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService } from '../auth/auth.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { ShelterDataService } from './shelter-data.service';
 
 /**
@@ -313,5 +314,153 @@ describe('ShelterDataService', () => {
     // The stores are populated from the single response.
     expect(service.homes().length).toBe(1);
     expect(service.participants().length).toBe(1);
+  });
+});
+
+/**
+ * Zone-switch isolation: every cached collection belongs to exactly one
+ * programme/zone scope. A switch drops it synchronously and in-flight
+ * responses for the previous scope are discarded instead of repopulating
+ * the store (the live-zone leakage regression test).
+ */
+describe('ShelterDataService · programme/zone scope isolation', () => {
+  let service: ShelterDataService;
+  let scope: ProgramContextService;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    service = TestBed.inject(ShelterDataService);
+    scope = TestBed.inject(ProgramContextService);
+    clearCalls();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+    TestBed.resetTestingModule();
+  });
+
+  it('a zone switch drops every cached collection and forces a scoped reload', async () => {
+    stubBackend(PAGE_DATA_ROUTES);
+
+    await service.refresh();
+    expect(service.participants().length).toBe(1);
+    expect(service.homes().length).toBe(1);
+    expect(service.loaded()).toBe(true);
+
+    scope.selectProgram('ARTS');
+    scope.selectZone('ZONE_1');
+
+    // Nothing from the previous scope survives the switch.
+    expect(service.participants()).toEqual([]);
+    expect(service.homes()).toEqual([]);
+    expect(service.events()).toEqual([]);
+    expect(service.registrations()).toEqual([]);
+    expect(service.loaded()).toBe(false);
+    expect(service.eventsLoaded()).toBe(false);
+
+    // The next navigation re-reads from the backend for the new scope.
+    stubBackend(PAGE_DATA_ROUTES);
+    clearCalls();
+    await service.ensureLoaded();
+
+    expect(calls['getPageData']).toBe(1);
+  });
+
+  it('an in-flight read for the previous scope never lands after a zone switch', async () => {
+    let releasePageData!: (value: Response) => void;
+    const pageDataGate = new Promise<Response>(resolve => {
+      releasePageData = resolve;
+    });
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      if (request.action === 'getPageData') {
+        return pageDataGate;
+      }
+
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: true, data: { events: [EVENT] } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const inFlight = service.refresh();
+
+    // Rapid zone switching while the previous scope's read is still open.
+    scope.selectProgram('ARTS');
+    scope.selectZone('ZONE_1');
+
+    releasePageData(new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          shelterHomes: [HOME],
+          participants: [PARTICIPANT],
+          imports: [],
+          validationResults: [],
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await inFlight;
+
+    // The stale response was discarded: no old-zone row, no "loaded" state.
+    expect(service.participants()).toEqual([]);
+    expect(service.homes()).toEqual([]);
+    expect(service.loaded()).toBe(false);
+  });
+
+  it('in-flight registrations of the previous scope are discarded on switch', async () => {
+    let releaseRegs!: (value: Response) => void;
+    const regsGate = new Promise<Response>(resolve => {
+      releaseRegs = resolve;
+    });
+
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+
+      return request.action === 'listEventRegistrations'
+        ? regsGate
+        : Promise.resolve(new Response(
+            JSON.stringify({ success: true, data: { events: [EVENT] } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ));
+    });
+
+    const inFlight = service.loadEventRegistrations('event-1');
+
+    scope.selectProgram('SPORTS');
+    scope.selectZone('ZONE_2');
+
+    releaseRegs(new Response(
+      JSON.stringify({ success: true, data: { participantEvents: [REGISTRATION] } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await inFlight;
+
+    expect(service.registrations()).toEqual([]);
   });
 });

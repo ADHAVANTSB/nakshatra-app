@@ -127,4 +127,48 @@ describe('ProgramContextService', () => {
     expect(restored.zone()).toBeNull();
     expect(restored.hasCompleteScope()).toBe(false);
   });
+
+  it('notifies scope-change listeners SYNCHRONOUSLY on every scope change', () => {
+    const seen: number[] = [];
+    const unsubscribe = service.onScopeChange(() => seen.push(service.scopeVersion()));
+
+    service.selectProgram('ARTS');
+    service.selectZone('ZONE_1');
+    service.selectZone('ZONE_2');
+    service.clearZone();
+    service.clear();
+
+    // One notification per real scope change, delivered before the caller
+    // continues: cache owners must drop state before any new-scope render.
+    expect(seen.length).toBe(5);
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+
+    unsubscribe();
+    service.selectProgram('SPORTS');
+    expect(seen.length).toBe(5);
+  });
+
+  it('re-selecting the same zone does not notify listeners', () => {
+    service.selectProgram('ARTS');
+    service.selectZone('ZONE_1');
+
+    let notifications = 0;
+    service.onScopeChange(() => notifications++);
+
+    service.selectZone('ZONE_1');
+    expect(notifications).toBe(0);
+  });
+
+  it('restoreFromBackend notifies only when it actually changes the scope', () => {
+    service.restoreFromBackend('ARTS', 'ZONE_1');
+
+    let notifications = 0;
+    service.onScopeChange(() => notifications++);
+
+    service.restoreFromBackend('ARTS', 'ZONE_1');
+    expect(notifications).toBe(0);
+
+    service.restoreFromBackend('ARTS', 'ZONE_2');
+    expect(notifications).toBe(1);
+  });
 });

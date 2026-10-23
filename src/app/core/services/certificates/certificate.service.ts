@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Certificate, Score } from '../../models';
 import { EventService } from '../events/event.service';
+import { ProgramContextService } from '../program/program-context.service';
 import { ScoringService } from '../scoring/scoring.service';
 
 export interface CertificateResult {
@@ -13,7 +14,14 @@ export interface CertificateResult {
 export class CertificateService {
   private readonly eventService = inject(EventService);
   private readonly scoringService = inject(ScoringService);
+  private readonly programContext = inject(ProgramContextService);
   private readonly certificates = signal<Certificate[]>([]);
+
+  constructor() {
+    // Certificates belong to one programme/zone scope; a scope switch
+    // drops them so a previous zone's certificates are never displayed.
+    this.programContext.onScopeChange(() => this.certificates.set([]));
+  }
 
   readonly certificates$ = this.certificates.asReadonly();
   readonly workflowConfigured = signal(false).asReadonly();

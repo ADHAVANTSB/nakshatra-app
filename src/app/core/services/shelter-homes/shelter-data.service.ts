@@ -12,6 +12,7 @@ import {
 } from '../../models';
 
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 
 /**
  * An import status entry projected into the frontend read model.
@@ -58,6 +59,7 @@ export interface ShelterDataResult {
 @Injectable({ providedIn: 'root' })
 export class ShelterDataService {
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
 
   private readonly homesState = signal<ConnectedShelterHome[]>([]);
   private readonly participantsState = signal<Participant[]>([]);
@@ -100,6 +102,63 @@ export class ShelterDataService {
   private readonly pendingParticipants = new Map<string, Promise<Participant[] | null>>();
   private readonly pendingImports = new Map<string, Promise<ImportStatusEntry[] | null>>();
   private readonly pendingValidations = new Map<string, Promise<ValidationResult[] | null>>();
+
+  /**
+   * Scope generation every cached collection belongs to.
+   *
+   * A programme/zone switch drops the caches synchronously and stamps a
+   * new generation. A response that was in flight for the previous scope
+   * is discarded on arrival (its generation is stale), so rapid zone
+   * switching can never let old-zone rows repopulate the store.
+   */
+  private scopeGeneration = 0;
+
+  constructor() {
+    this.programContext.onScopeChange(() => this.dropScopeCaches());
+  }
+
+  /** True while a response still belongs to the active programme/zone. */
+  private isCurrentScope(generation: number): boolean {
+    return generation === this.scopeGeneration;
+  }
+
+  /** Drops every cached collection and in-flight coalescing on scope change. */
+  private dropScopeCaches(): void {
+    this.scopeGeneration++;
+
+    this.homesState.set([]);
+    this.participantsState.set([]);
+    this.eventsState.set([]);
+    this.catalogueMigrationState.set(null);
+    this.registrationsState.set([]);
+    this.importsState.set([]);
+    this.validationsState.set([]);
+    this.errorsState.set([]);
+    this.registrationErrorsState.set({});
+    this.registrationCountsState.set({});
+    this.registrationCountsStatusState.set('LOADING');
+
+    this.loadingState.set(false);
+    this.loadedState.set(false);
+    this.eventsLoadedState.set(false);
+    this.loadingEventsState.set(false);
+    this.loadingRegistrationsState.set(false);
+    this.lastLoadHadErrors = false;
+
+    this.loadedEventRegistrations.clear();
+    this.loadedParticipantRegistrations.clear();
+
+    // In-flight requests belong to the previous scope: never coalesce a
+    // new-scope load onto them, and their responses are discarded below.
+    this.pending = null;
+    this.pendingEvents = null;
+    this.pendingHomes = null;
+    this.pendingEventRegistrations.clear();
+    this.pendingParticipantRegistrations.clear();
+    this.pendingParticipants.clear();
+    this.pendingImports.clear();
+    this.pendingValidations.clear();
+  }
 
   readonly homes = this.homesState.asReadonly();
   readonly participants = this.participantsState.asReadonly();
@@ -193,6 +252,8 @@ export class ShelterDataService {
   }
 
   private async requestEvents(): Promise<Event[] | null> {
+    const generation = this.scopeGeneration;
+
     // A refetch over an already-loaded catalogue keeps the current list
     // on screen (responsive while loading); only the initial read drives
     // the page-level loading state.
@@ -206,6 +267,10 @@ export class ShelterDataService {
 
     try {
       const response = await this.apiClient.listEvents();
+
+      if (!this.isCurrentScope(generation)) {
+        return null;
+      }
 
       if (!response.success) {
         this.recordError({ scope: 'EVENTS', message: response.error.message });
@@ -298,10 +363,15 @@ export class ShelterDataService {
   }
 
   private async requestEventRegistrations(eventId: string): Promise<ParticipantEvent[] | null> {
+    const generation = this.scopeGeneration;
     this.loadingRegistrationsState.set(true);
 
     try {
       const response = await this.apiClient.listEventRegistrations(eventId);
+
+      if (!this.isCurrentScope(generation)) {
+        return null;
+      }
 
       if (!response.success) {
         this.setRegistrationError(eventId, response.error.message);
@@ -349,10 +419,15 @@ export class ShelterDataService {
   }
 
   private async requestParticipantEvents(participantId: string): Promise<ParticipantEvent[] | null> {
+    const generation = this.scopeGeneration;
     this.loadingRegistrationsState.set(true);
 
     try {
       const response = await this.apiClient.listParticipantEvents(participantId);
+
+      if (!this.isCurrentScope(generation)) {
+        return null;
+      }
 
       if (!response.success) {
         this.setRegistrationError(participantId, response.error.message);
@@ -425,7 +500,12 @@ export class ShelterDataService {
   }
 
   private async requestConnectedHomes(): Promise<boolean> {
+    const generation = this.scopeGeneration;
     const response = await this.apiClient.listShelterHomes();
+
+    if (!this.isCurrentScope(generation)) {
+      return false;
+    }
 
     if (!response.success) {
       this.recordError({ scope: 'HOMES', message: response.error.message });
@@ -463,7 +543,12 @@ export class ShelterDataService {
   }
 
   private async requestParticipants(shelterHomeId: string): Promise<Participant[] | null> {
+    const generation = this.scopeGeneration;
     const response = await this.apiClient.listParticipants(shelterHomeId);
+
+    if (!this.isCurrentScope(generation)) {
+      return null;
+    }
 
     if (!response.success) {
       this.recordError({
@@ -504,10 +589,15 @@ export class ShelterDataService {
     shelterHomeId: string,
     importVersionId?: string
   ): Promise<ImportStatusEntry[] | null> {
+    const generation = this.scopeGeneration;
     const response = await this.apiClient.getImportStatus({
       shelterHomeId,
       importVersionId,
     });
+
+    if (!this.isCurrentScope(generation)) {
+      return null;
+    }
 
     if (!response.success) {
       this.recordError({
@@ -553,10 +643,15 @@ export class ShelterDataService {
     shelterHomeId: string,
     importVersionId?: string
   ): Promise<ValidationResult[] | null> {
+    const generation = this.scopeGeneration;
     const response = await this.apiClient.getValidationResults({
       shelterHomeId,
       importVersionId,
     });
+
+    if (!this.isCurrentScope(generation)) {
+      return null;
+    }
 
     if (!response.success) {
       this.recordError({
@@ -635,6 +730,7 @@ export class ShelterDataService {
   }
 
   private async loadAll(): Promise<ShelterDataResult> {
+    const generation = this.scopeGeneration;
     this.loadingState.set(true);
     this.errorsState.set([]);
 
@@ -644,6 +740,12 @@ export class ShelterDataService {
       // connected home = 3N+2 HTTP requests), which dominated page-load time
       // on mobile networks. The backend scopes every collection server-side.
       const response = await this.apiClient.getPageData();
+
+      if (!this.isCurrentScope(generation)) {
+        // The programme/zone changed while this read was in flight: the
+        // payload is scoped to the previous scope and must never land.
+        return { success: false, errors: [] };
+      }
 
       if (!response.success) {
         this.recordError({ scope: 'HOMES', message: response.error.message });
@@ -678,8 +780,10 @@ export class ShelterDataService {
       this.lastLoadHadErrors = errors.length > 0;
       return { success: errors.length === 0, errors };
     } finally {
-      this.loadingState.set(false);
-      this.loadedState.set(true);
+      if (this.isCurrentScope(generation)) {
+        this.loadingState.set(false);
+        this.loadedState.set(true);
+      }
     }
   }
 

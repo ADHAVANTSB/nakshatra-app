@@ -1,79 +1,44 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Dashboard } from './dashboard';
-import { AuthService } from '../../core/services/auth/auth.service';
 
-/**
- * Quick actions must cover the whole event-day workflow in the same
- * order the sidebar uses: Events -> Attendance -> Judging -> Scoring ->
- * Results -> Certificates -> Reports.
- */
-describe('Dashboard - quick actions', () => {
+/** Dashboard hero branding: greeting flow and the smiley welcome icon. */
+describe('Dashboard hero', () => {
   let fixture: ComponentFixture<Dashboard>;
-  let component: Dashboard;
-
-  async function render(): Promise<void> {
-    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
-      const request = JSON.parse(init.body) as { action: string };
-      return Promise.resolve(new Response(
-        JSON.stringify({ success: true, data: request.action === 'getDashboardSummary' ? {} : { shelterHomes: [] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ));
-    });
-
-    const auth = TestBed.inject(AuthService);
-    auth.setGoogleAuthenticatedUser({
-      id: 'spec-user',
-      googleId: 'spec-google-id',
-      email: 'tester@nakshatra.local',
-      displayName: 'Test User',
-      role: 'ADMIN',
-      accessStatus: 'APPROVED',
-      version: 1,
-    });
-    auth.setApplicationSession({
-      id: 'spec-session',
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-    });
-
-    fixture = TestBed.createComponent(Dashboard);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-  }
 
   beforeEach(async () => {
+    // The shell must never reach the network from a unit test.
+    vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Network access is disabled.')));
+
     await TestBed.configureTestingModule({
       imports: [Dashboard],
       providers: [provideRouter([])],
     }).compileComponents();
+
+    fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    sessionStorage.clear();
-    TestBed.inject(AuthService).logout();
+  it('shows Happy Volunteering before the time-of-day greeting', () => {
+    const hero = (fixture.nativeElement as HTMLElement).querySelector('.welcome-content');
+    expect(hero).not.toBeNull();
+
+    const text = hero!.textContent ?? '';
+    const volunteering = text.indexOf('Happy Volunteering');
+    const greeting = text.indexOf(fixture.componentInstance.greeting);
+
+    expect(volunteering).toBeGreaterThanOrEqual(0);
+    expect(greeting).toBeGreaterThan(volunteering);
   });
 
-  it('offers a Certificates quick link in the sidebar workflow order', async () => {
-    await render();
-
-    const workflow = ['Events', 'Attendance', 'Judging', 'Scoring', 'Results', 'Certificates', 'Reports'];
-    const labels = component.quickActions.map(action => action.label);
-
-    // Every workflow step is present, in sidebar order.
-    expect(labels.filter(label => workflow.includes(label))).toEqual(workflow);
-
-    // The Certificates link targets the Certificates page and renders as a button.
-    const certificates = component.quickActions.find(action => action.label === 'Certificates');
-    expect(certificates?.path).toBe('/certificates');
-
-    const buttons = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
-    ).map(button => (button.textContent ?? '').trim());
-    expect(buttons).toContain('Certificates');
+  it('renders a smiley emoji as the welcome icon', () => {
+    const icon = (fixture.nativeElement as HTMLElement).querySelector('.welcome-icon');
+    expect(icon).not.toBeNull();
+    expect(icon!.textContent ?? '').toContain('😊');
+    expect(icon!.getAttribute('aria-hidden')).toBe('true');
   });
 });

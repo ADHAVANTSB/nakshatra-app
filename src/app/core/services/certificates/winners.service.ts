@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ApiClientService } from '../api/api-client.service';
+import { ProgramContextService } from '../program/program-context.service';
 
 /**
  * Winners report for the Certificate Team.
@@ -41,9 +42,20 @@ export interface WinnersReport {
 @Injectable({ providedIn: 'root' })
 export class WinnersService {
   private readonly apiClient = inject(ApiClientService);
+  private readonly programContext = inject(ProgramContextService);
   private readonly report = signal<WinnersReport | null>(null);
   private readonly loading = signal(false);
   private readonly error = signal('');
+
+  constructor() {
+    // Winners are scoped; a programme/zone switch drops the cached report
+    // so another zone's winners are never displayed.
+    this.programContext.onScopeChange(() => {
+      this.report.set(null);
+      this.loading.set(false);
+      this.error.set('');
+    });
+  }
 
   readonly report$ = this.report.asReadonly();
   readonly loading$ = this.loading.asReadonly();
@@ -57,7 +69,15 @@ export class WinnersService {
     this.error.set('');
 
     try {
+      const scopeVersion = this.programContext.scopeVersion();
       const response = await this.apiClient.listWinners();
+
+      if (this.programContext.scopeVersion() !== scopeVersion) {
+        // Scope changed while this read was in flight: never land the
+        // previous zone's winners.
+        return null;
+      }
+
       if (!response.success) {
         this.error.set(response.error.message);
         return null;

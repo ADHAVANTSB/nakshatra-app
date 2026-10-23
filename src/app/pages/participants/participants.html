@@ -925,22 +925,27 @@
         <table class="participant-table">
           <thead>
             <tr>
+              <th>S.No</th>
               <th>Participant</th>
               <th>Shelter home</th>
               <th>Gender / age</th>
               <th>Level</th>
               <th>Participating events</th>
+              @for (slot of [1, 2, 3, 4, 5, 6]; track slot) {
+                <th>Event {{ slot }}</th>
+              }
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            @for (participant of participants(); track participant.id) {
+            @for (participant of participants(); track participant.id; let i = $index) {
               <tr
                 tabindex="0"
                 [class.tr--selected]="openParticipantId() === participant.id"
                 [attr.aria-label]="'Open details for ' + participant.fullName"
                 (click)="openParticipant(participant)"
                 (keydown.enter)="openParticipant(participant)">
+                <td class="cell-sno">{{ i + 1 }}</td>
                 <td class="cell-identity">
                   <strong class="participant-name">{{ participant.fullName }}</strong>
                   <small class="participant-code">{{ participant.participantCode }}</small>
@@ -1006,6 +1011,9 @@
                     <small>—</small>
                   }
                 </td>
+                @for (slot of eventSlots(participant.id); track $index) {
+                  <td class="cell-event-slot">{{ slot || '—' }}</td>
+                }
                 <td class="cell-actions">
                   <button
                     type="button"

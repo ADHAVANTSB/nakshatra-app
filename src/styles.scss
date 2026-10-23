@@ -537,6 +537,17 @@ router-outlet {
 }
 
 
+.welcome-card span.welcome-happy {
+
+  color: #ffffff;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  letter-spacing: 0.2px;
+}
+
+
 .welcome-card h2 {
   margin: 0 0 9px;
 
@@ -587,7 +598,9 @@ router-outlet {
 
   color: #ffffff;
 
-  font-size: 38px;
+  /* Big happy smiley as the welcome mark. */
+  font-size: 56px;
+  line-height: 1;
 
   backdrop-filter: blur(8px);
 }

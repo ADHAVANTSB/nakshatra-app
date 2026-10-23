@@ -28,6 +28,9 @@ interface StoredScope {
  *   previous zone.
  * - `scopeVersion` increments on every scope change so scope-aware consumers
  *   can drop cached state.
+ * - `onScopeChange` notifies cache owners SYNCHRONOUSLY on every scope
+ *   change, so no old-scope record can survive a zone/programme switch (or
+ *   be repopulated by an in-flight response from the previous scope).
  */
 @Injectable({ providedIn: 'root' })
 export class ProgramContextService {
@@ -36,6 +39,23 @@ export class ProgramContextService {
 
   /** Increments whenever the stored scope changes. */
   readonly scopeVersion = signal(0);
+
+  private readonly scopeChangeListeners = new Set<() => void>();
+
+  /**
+   * Registers a synchronous scope-change hook (cache invalidation).
+   * Returns the unsubscribe function.
+   */
+  onScopeChange(listener: () => void): () => void {
+    this.scopeChangeListeners.add(listener);
+    return () => this.scopeChangeListeners.delete(listener);
+  }
+
+  /** Bumps the scope version and notifies every cache owner at once. */
+  private notifyScopeChange(): void {
+    this.scopeVersion.update((version) => version + 1);
+    this.scopeChangeListeners.forEach((listener) => listener());
+  }
 
   /** Server-side scope persistence state for the selection flow. */
   readonly scopeSaving = signal(false);
@@ -82,7 +102,7 @@ export class ProgramContextService {
     // A zone was chosen for the previous program; force a fresh zone choice.
     this.zoneId.set(null);
     if (changed) {
-      this.scopeVersion.update((version) => version + 1);
+      this.notifyScopeChange();
     }
     this.persist();
   }
@@ -91,7 +111,7 @@ export class ProgramContextService {
     const changed = this.zoneId() !== zoneId;
     this.zoneId.set(zoneId);
     if (changed) {
-      this.scopeVersion.update((version) => version + 1);
+      this.notifyScopeChange();
     }
     this.persist();
   }
@@ -99,7 +119,7 @@ export class ProgramContextService {
   /** Keeps the program but requires a fresh zone choice. */
   clearZone(): void {
     this.zoneId.set(null);
-    this.scopeVersion.update((version) => version + 1);
+    this.notifyScopeChange();
     this.persist();
   }
 
@@ -107,7 +127,7 @@ export class ProgramContextService {
   clear(): void {
     this.programId.set(null);
     this.zoneId.set(null);
-    this.scopeVersion.update((version) => version + 1);
+    this.notifyScopeChange();
     sessionStorage.removeItem(PROGRAM_SCOPE_STORAGE_KEY);
   }
 
@@ -123,8 +143,15 @@ export class ProgramContextService {
     if (!program || !zone) {
       return;
     }
+
+    const changed =
+      this.programId() !== program.id || this.zoneId() !== zone.id;
+
     this.programId.set(program.id);
     this.zoneId.set(zone.id);
+    if (changed) {
+      this.notifyScopeChange();
+    }
     this.persist();
   }
 

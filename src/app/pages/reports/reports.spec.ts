@@ -269,7 +269,18 @@ describe('Reports â€” contract, winners and category/level', () => {
               { id: 'e1', eventCode: 'LIT-004', name: 'Potpurri (Words Play)', category: 'LITERARY', mode: 'GROUP', status: 'ACTIVE', registrations: 4, teams: 2, attendance: { recorded: 4, present: 4, absent: 0 }, finalizedScores: 2, certificates: { generated: 1, issued: 1 } },
             ],
             participants: [
-              { id: 'p1', participantCode: 'NK26-P001', fullName: 'Asha', shelterHomeId: 'h1', homeName: 'Sunrise Home', homeCode: 'AAI01', level: 'SUB_JUNIOR', registrations: 2, attendance: { recorded: 2, present: 2, absent: 0 }, finalizedSoloScores: 1, certificates: 1 },
+              {
+                id: 'p1', participantCode: 'NK26-P001', fullName: 'Asha', shelterHomeId: 'h1',
+                homeName: 'Sunrise Home', homeCode: 'AAI01', gender: 'FEMALE', age: 9, standard: 2,
+                level: 'SUB_JUNIOR', registrations: 2,
+                events: [
+                  { eventId: 'e1', eventName: 'Potpurri (Words Play)', eventCategory: 'LITERARY' },
+                  { eventId: 'e2', eventName: 'Clay Modelling', eventCategory: 'ARTS' },
+                ],
+                categoryCounts: { arts: 1, literary: 1, cultural: 0 },
+                dataIssues: [],
+                attendance: { recorded: 2, present: 2, absent: 0 }, finalizedSoloScores: 1, certificates: 1,
+              },
             ],
           });
         case 'listWinners':
@@ -336,6 +347,72 @@ describe('Reports â€” contract, winners and category/level', () => {
       fixture.detectChanges();
 
       expect(pageText()).not.toContain('Unknown report type');
+    }
+  });
+
+  it('the participants tab renders the 18-column participant business table', async () => {
+    await render();
+    component.setTab('PARTICIPANTS');
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const headers = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('th'),
+    ).map(th => (th.textContent ?? '').trim());
+
+    expect(headers.slice(0, 12)).toEqual([
+      'S.No', 'Unique Code', 'Home Name', 'Participant Name', 'Gender', 'Age',
+      'Standard', 'Category', 'Overall Events', 'Arts', 'Literary', 'Culturals',
+    ]);
+    expect(headers.slice(12, 18)).toEqual([
+      'Event 1', 'Event 2', 'Event 3', 'Event 4', 'Event 5', 'Event 6',
+    ]);
+
+    const text = pageText();
+    // S.No is the sequence of the current filtered report; Category is the
+    // participant's LEVEL label (never the event category); the event slots
+    // list registered event names with a dash for empty slots.
+    expect(text).toContain('NK26-P001');
+    expect(text).toContain('Sub Juniors');
+    expect(text).toContain('Potpurri (Words Play)');
+    expect(text).toContain('Clay Modelling');
+  });
+
+  it('the participants CSV export carries exactly the 18 business-table columns', async () => {
+    await render();
+    component.setTab('PARTICIPANTS');
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+
+    const blobs: Blob[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = ((blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:reports-spec';
+    }) as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => undefined) as unknown as typeof URL.revokeObjectURL;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    try {
+      component.exportCsv('participants');
+      const csv = await blobs[0].text();
+      const [header, row] = csv.split('\r\n');
+
+      expect(header.replace(/"/g, '').split(',')).toEqual([
+        'S.No', 'Unique Code', 'Home Name', 'Participant Name', 'Gender', 'Age',
+        'Standard', 'Category', 'Overall Events', 'Arts', 'Literary', 'Culturals',
+        'Event 1', 'Event 2', 'Event 3', 'Event 4', 'Event 5', 'Event 6',
+      ]);
+      expect(row).toContain('"NK26-P001"');
+      expect(row).toContain('"Sub Juniors"');
+      expect(row).toContain('"Potpurri (Words Play)"');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      click.mockRestore();
     }
   });
 

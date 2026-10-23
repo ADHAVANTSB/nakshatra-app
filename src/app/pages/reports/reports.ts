@@ -12,6 +12,7 @@ import {
   ValidationWarning,
 } from '../../core/models';
 import { ApiClientService } from '../../core/services/api/api-client.service';
+import { PARTICIPANT_LEVEL_LABELS } from '../../core/constants/nakshatra-rules';
 import {
   WinnersEventGroup,
   WinnersService,
@@ -192,6 +193,30 @@ export class Reports implements OnInit {
     });
   });
 
+  /**
+   * Participant business table (18 columns) for the current filtered
+   * report. S.No is a display sequence for this filtered view only and is
+   * never stored; the unique code and the event slots come from the
+   * backend rows (stable ids, distinct active registrations).
+   */
+  readonly participantTableRows = computed(() =>
+    this.participantRows().map((row, index) => ({
+      sno: index + 1,
+      row,
+      categoryLabel: row.level
+        ? (PARTICIPANT_LEVEL_LABELS[row.level] ?? row.level)
+        : '—',
+      /** Event 1..Event 6 slots (empty string when not registered). */
+      eventSlots: Array.from({ length: 6 }, (_, slot) => {
+        const entry = row.events[slot];
+        return entry ? entry.eventName : '';
+      }),
+    }))
+  );
+
+  /** Participant business-table event slot labels (Event 1..Event 6). */
+  readonly eventSlotLabels = Array.from({ length: 6 }, (_, i) => `Event ${i + 1}`);
+
   readonly homesView = computed<RowsView>(() =>
     this.viewFor(rows => rows.supplied.homes, rows => rows.homes.length, this.homeRows().length)
   );
@@ -318,11 +343,36 @@ export class Reports implements OnInit {
     return row ? this.figure(row.registrations) : '—';
   }
 
-  /** CSV export of the active winners/category-level view (read-only). */
-  exportCsv(kind: 'winners' | 'winners-by-home' | 'category-level'): void {
+  /** CSV export of the active winners/category-level/participants view (read-only). */
+  exportCsv(kind: 'winners' | 'winners-by-home' | 'category-level' | 'participants'): void {
     let lines: string[][];
 
-    if (kind === 'winners-by-home') {
+    if (kind === 'participants') {
+      // Participant business table: S.No is the sequence of the CURRENT
+      // filtered report only and is never stored.
+      lines = [
+        [
+          'S.No', 'Unique Code', 'Home Name', 'Participant Name', 'Gender', 'Age',
+          'Standard', 'Category', 'Overall Events', 'Arts', 'Literary', 'Culturals',
+          ...this.eventSlotLabels,
+        ],
+        ...this.participantTableRows().map(item => [
+          String(item.sno),
+          item.row.participantCode,
+          item.row.homeName,
+          item.row.fullName,
+          item.row.gender,
+          item.row.age === null ? '' : String(item.row.age),
+          item.row.standard === null ? '' : String(item.row.standard),
+          item.categoryLabel,
+          this.figure(item.row.registrations),
+          String(item.row.categoryCounts.arts),
+          String(item.row.categoryCounts.literary),
+          String(item.row.categoryCounts.cultural),
+          ...item.eventSlots,
+        ]),
+      ];
+    } else if (kind === 'winners-by-home') {
       lines = [
         ['Shelter home', 'Event', 'Category', 'Winner', 'Position', 'Final score'],
         ...this.winnersByHome().flatMap(group =>
