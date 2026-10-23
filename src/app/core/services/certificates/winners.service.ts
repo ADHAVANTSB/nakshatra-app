@@ -13,6 +13,8 @@ import { ProgramContextService } from '../program/program-context.service';
 export interface WinnerRow {
   position: number;
   name: string;
+  /** Participant age as displayed ("9"); empty when not applicable (teams). */
+  age: string;
   className: string;
   level: string;
   shelterHomeName: string;

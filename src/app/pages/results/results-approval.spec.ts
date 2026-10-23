@@ -4,6 +4,7 @@ import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService } from '../../core/services/auth/auth.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { Results } from './results';
 
@@ -16,6 +17,34 @@ const EVENT = {
   status: 'ACTIVE',
   eligibleLevels: ['JUNIOR'],
 };
+
+const EVENT_2 = {
+  id: 'event-2',
+  eventCode: 'E-02',
+  name: 'Rangoli',
+  category: 'ARTS',
+  mode: 'SOLO',
+  status: 'ACTIVE',
+  eligibleLevels: ['JUNIOR'],
+};
+
+/** A persisted ResultApprovals row exactly as the backend returns it. */
+function approvalRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'RA-1',
+    eventId: 'event-1',
+    decision: 'ACCEPTED',
+    comments: 'Verified against the reconciliation.',
+    version: 1,
+    createdAt: '2026-10-23T09:00:00.000Z',
+    createdBy: 'spec-user',
+    updatedAt: '2026-10-23T10:00:00.000Z',
+    updatedBy: 'reviewer-7',
+    programId: 'ARTS',
+    environmentId: 'TEST',
+    ...overrides,
+  };
+}
 
 function participant(id: string, name: string): Record<string, unknown> {
   return {
@@ -64,6 +93,11 @@ describe('Results — reconciliation and reviewer decision', () => {
   let component: Results;
   let calls: Array<{ action: string; payload: Record<string, unknown> }>;
   let saveResultResponse: () => Promise<Response>;
+  /** Payload the next `listResults` read returns (evaluated at request time). */
+  let listResultsPayload: () => Record<string, unknown>;
+  /** While true, `listResults` responses are captured and released manually. */
+  let holdListResults: boolean;
+  let heldListResults: Array<() => void>;
 
   const ok = (data: unknown) => Promise.resolve(new Response(
     JSON.stringify({ success: true, data }),
@@ -78,10 +112,20 @@ describe('Results — reconciliation and reviewer decision', () => {
       calls.push({ action: request.action, payload: (request.payload ?? {}) as Record<string, unknown> });
 
       switch (request.action) {
-        case 'listResults':
-          return ok({ results: [] });
+        case 'listResults': {
+          // Evaluated at request time: a held response keeps the payload it
+          // was issued with — exactly like a stale in-flight backend read.
+          const payload = listResultsPayload();
+          const respond = () => ok(payload);
+          if (holdListResults) {
+            return new Promise<Response>(resolve => {
+              heldListResults.push(() => resolve(respond()));
+            });
+          }
+          return respond();
+        }
         case 'listEvents':
-          return ok({ events: [EVENT] });
+          return ok({ events: [EVENT, EVENT_2] });
         case 'listShelterHomes':
           return ok({ shelterHomes: [HOME] });
         case 'listParticipants':
@@ -153,6 +197,9 @@ describe('Results — reconciliation and reviewer decision', () => {
   beforeEach(async () => {
     calls = [];
     saveResultResponse = () => ok({});
+    listResultsPayload = () => ({ results: [] });
+    holdListResults = false;
+    heldListResults = [];
 
     await TestBed.configureTestingModule({
       imports: [Results],
@@ -389,5 +436,137 @@ describe('Results — reconciliation and reviewer decision', () => {
 
     const saves = calls.filter(call => call.action === 'saveResultApproval');
     expect(saves[1]?.payload).toHaveProperty('expectedVersion', 4);
+  });
+
+  it('shows both reviewer actions for a pending event to authorized users', async () => {
+    await render();
+
+    const buttons = Array.from((fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.decision-actions button')) as HTMLButtonElement[];
+    expect(buttons.map(button => (button.textContent ?? '').trim())).toEqual([
+      'Accept Results',
+      'Decline / Return for Correction',
+    ]);
+    expect(buttons.every(button => !button.disabled)).toBe(true);
+    expect(component.reviewStatus()).toBe('UNDER_REVIEW');
+  });
+
+  it('a successful accept becomes a completed state with BOTH action buttons gone', async () => {
+    saveResultResponse = () => ok({ resultApproval: approvalRecord() });
+    await render();
+
+    component.openAccept();
+    component.toggleAcknowledgement('MISSING_JUDGE_SCORE:participant-2');
+    await component.confirmAccept();
+    fixture.detectChanges();
+
+    // The state comes from the persisted backend record, not the toast.
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect(component.acceptedAt()).toBe('2026-10-23T10:00:00.000Z');
+    expect(component.acceptedBy()).toBe('reviewer-7');
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('.decision-actions').length).toBe(0);
+    expect(host.textContent).toContain('Results Accepted');
+    expect(host.textContent).toContain('Completed');
+    expect(host.textContent).toContain('reviewer-7');
+  });
+
+  it('the accepted state persists across reload and navigate-away-and-back', async () => {
+    listResultsPayload = () => ({ results: [], resultApprovals: [approvalRecord()] });
+    await render();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(0);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Results Accepted');
+
+    // Navigate away and back: a fresh page instance re-reads the same state.
+    fixture = TestBed.createComponent(Results);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectedEventId.set('event-1');
+    await component.retryData();
+    fixture.detectChanges();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect(component.acceptedBy()).toBe('reviewer-7');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(0);
+  });
+
+  it('a stale approval read can never restore the Accept button after acceptance', async () => {
+    await render();
+
+    // Stateful backend read: a read issued BEFORE any acceptance reports
+    // "nothing recorded yet" (legitimately); reads after the acceptance
+    // carry the persisted record. The pre-acceptance read is held so it
+    // lands after everything else.
+    listResultsPayload = () => calls.some(call => call.action === 'saveResultApproval')
+      ? { results: [], resultApprovals: [approvalRecord()] }
+      : { results: [], resultApprovals: [] };
+    holdListResults = true;
+    void component.retryData();
+
+    saveResultResponse = () => ok({ resultApproval: approvalRecord() });
+    component.openAccept();
+    component.toggleAcknowledgement('MISSING_JUDGE_SCORE:participant-2');
+    await component.confirmAccept();
+    fixture.detectChanges();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(0);
+
+    // The held responses land LAST, in reverse issue order: the stale
+    // pre-acceptance read arrives after everything else. It must never
+    // bring the actionable state back.
+    holdListResults = false;
+    heldListResults.splice(0).reverse().forEach(release => release());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(0);
+  });
+
+  it('a different event keeps its own independent approval state', async () => {
+    listResultsPayload = () => ({ results: [], resultApprovals: [approvalRecord()] });
+    await render();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+
+    // event-2 has no stored decision: it is pending and actionable again.
+    component.setEvent('event-2');
+    await component.loadEvent('event-2');
+    fixture.detectChanges();
+
+    expect(component.reviewStatus()).toBe('UNDER_REVIEW');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(1);
+
+    // Switching back re-reads event-1's own accepted state.
+    component.setEvent('event-1');
+    await component.loadEvent('event-1');
+    fixture.detectChanges();
+
+    expect(component.reviewStatus()).toBe('APPROVED');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.decision-actions').length).toBe(0);
+  });
+
+  it('a scope switch drops the cached review state and reloads from the backend', async () => {
+    saveResultResponse = () => ok({ resultApproval: approvalRecord() });
+    await render();
+
+    component.openAccept();
+    component.toggleAcknowledgement('MISSING_JUDGE_SCORE:participant-2');
+    await component.confirmAccept();
+    fixture.detectChanges();
+    expect(component.reviewStatus()).toBe('APPROVED');
+
+    const readsBefore = calls.filter(call => call.action === 'listResults').length;
+    TestBed.inject(ProgramContextService).selectZone('ZONE_2');
+
+    // The cached accepted state is dropped immediately …
+    expect(component.reviewStatus()).toBe('UNDER_REVIEW');
+    // … and the persisted decision is re-read under the new scope.
+    expect(calls.filter(call => call.action === 'listResults').length).toBeGreaterThan(readsBefore);
   });
 });

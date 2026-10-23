@@ -111,6 +111,8 @@ export interface ListWinnersPayload {
 export interface WinnerEntry {
   position: number;
   name: string;
+  /** Participant age as displayed ("9"); empty when not applicable (teams). */
+  age: string;
   className: string;
   level: string;
   shelterHomeName: string;
@@ -914,8 +916,30 @@ export interface ListResultRow {
   finalizedAt?: string;
 }
 
+/**
+ * Persisted reviewer decision for one event (the ResultApprovals row).
+ * For an ACCEPTED record `updatedAt`/`updatedBy` are the acceptance
+ * timestamp and the accepting reviewer. `programId`/`environmentId`
+ * carry the record's scope identity.
+ */
+export interface ResultApprovalRecord {
+  id: string;
+  eventId: string;
+  decision: string;
+  comments: string;
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  programId?: string;
+  environmentId?: string;
+}
+
 export interface ListResultsData {
   results: ListResultRow[];
+  /** Persisted reviewer decisions in scope; absent on older payloads. */
+  resultApprovals?: ResultApprovalRecord[];
 }
 
 export interface RegistrationRequestData {

@@ -246,33 +246,56 @@
           </ul>
         }
 
-        <label for="reviewer-comments">Reviewer comments</label>
-        <textarea
-          id="reviewer-comments"
-          rows="4"
-          placeholder="e.g. Scoring missing for 2 participants — return to judge panel for completion."
-          [value]="comments()"
-          (input)="updateComments($any($event.target).value)"></textarea>
-        @if (declineError()) {
-          <div class="err-msg" role="alert">A comment is required to return results for correction.</div>
-        }
+        @if (reviewStatus() === 'APPROVED') {
+          <!-- Acceptance is a terminal completion state: both action buttons
+               and the comment entry are replaced by this read-only summary. -->
+          <div class="note" role="status">
+            <span class="pill pill-locked">Results Accepted · Completed</span>
+            <p>
+              <strong>Results accepted.</strong>
+              This reviewer decision is complete — the acceptance is recorded as final and
+              no further reviewer action is available for this event.
+            </p>
+            @if (acceptedAt() || acceptedBy()) {
+              <p class="sub">
+                @if (acceptedAt()) {
+                  Accepted {{ acceptedAt() | date:'medium' }}
+                }
+                @if (acceptedBy()) {
+                  — reviewer <strong>{{ acceptedBy() }}</strong>
+                }
+              </p>
+            }
+          </div>
+        } @else {
+          <label for="reviewer-comments">Reviewer comments</label>
+          <textarea
+            id="reviewer-comments"
+            rows="4"
+            placeholder="e.g. Scoring missing for 2 participants — return to judge panel for completion."
+            [value]="comments()"
+            (input)="updateComments($any($event.target).value)"></textarea>
+          @if (declineError()) {
+            <div class="err-msg" role="alert">A comment is required to return results for correction.</div>
+          }
 
-        <div class="decision-actions">
-          <button
-            type="button"
-            class="primary-action"
-            [disabled]="!canEdit() || busy()"
-            (click)="openAccept()">
-            Accept Results
-          </button>
-          <button
-            type="button"
-            class="danger-action"
-            [disabled]="!canEdit() || busy()"
-            (click)="decline()">
-            Decline / Return for Correction
-          </button>
-        </div>
+          <div class="decision-actions">
+            <button
+              type="button"
+              class="primary-action"
+              [disabled]="!canEdit() || busy()"
+              (click)="openAccept()">
+              Accept Results
+            </button>
+            <button
+              type="button"
+              class="danger-action"
+              [disabled]="!canEdit() || busy()"
+              (click)="decline()">
+              Decline / Return for Correction
+            </button>
+          </div>
+        }
       </section>
 
       @if (acceptDialogOpen()) {

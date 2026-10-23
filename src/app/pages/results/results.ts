@@ -13,7 +13,8 @@ import { AttendanceService } from '../../core/services/attendance/attendance.ser
 import { AuthService } from '../../core/services/auth/auth.service';
 import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
-import { ListResultRow, EventJudge, JudgeScoreRow } from '../../core/models/api.model';
+import { ListResultRow, EventJudge, JudgeScoreRow, ResultApprovalRecord } from '../../core/models/api.model';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { formatScore } from '../../shared/score-format';
@@ -97,6 +98,7 @@ export class Results implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly notify = inject(NotificationService);
   private readonly registrationService = inject(ParticipantEventService);
+  private readonly programContext = inject(ProgramContextService);
   /** Re-runs the full store load after a failed page load (Retry button). */
   async retryStoreLoad(): Promise<void> {
     await this.shelterData.refresh();
@@ -136,6 +138,16 @@ export class Results implements OnInit {
     if (preselected) {
       void this.loadData(preselected);
     }
+  }
+
+  constructor() {
+    // A programme/zone switch drops the cached review state immediately; the
+    // persisted decision is re-read for the selected event from the new scope.
+    this.programContext.onScopeChange(() => {
+      this.applyApprovalRecord(null);
+      const eventId = this.selectedEventId();
+      if (eventId) void this.loadApproval(eventId);
+    });
   }
 
   /**
@@ -292,8 +304,7 @@ export class Results implements OnInit {
     this.comments.set('');
     this.declineError.set(false);
     this.approvalError.set('');
-    this.approvalVersion.set(undefined);
-    this.reviewStatus.set('UNDER_REVIEW');
+    this.applyApprovalRecord(null);
     this.closeAccept();
     void this.loadData(eventId);
   }
@@ -332,6 +343,7 @@ export class Results implements OnInit {
       this.scoringService.loadScores(eventId),
       isGroup ? this.teamService.loadTeams(eventId) : Promise.resolve(true),
       this.loadJudges(eventId).then(() => this.loadJudgeScores(eventId)),
+      this.loadApproval(eventId),
     ]);
 
     const registrations = await this.registrationService.loadEventRegistrations(eventId);
@@ -642,8 +654,22 @@ export class Results implements OnInit {
   readonly approvalError = signal('');
   readonly busy = signal(false);
 
+  /**
+   * Acceptance completion detail from the persisted record: when the results
+   * were accepted and by which reviewer (user id, "when available").
+   */
+  readonly acceptedAt = signal('');
+  readonly acceptedBy = signal('');
+
   /** Version of the stored decision, sent back as expectedVersion next time. */
   private readonly approvalVersion = signal<number | undefined>(undefined);
+
+  /**
+   * Bumped on every applied approval write. An in-flight approval READ that
+   * was issued before the write is dropped on arrival, so a stale response
+   * can never restore the actionable state after an acceptance.
+   */
+  private approvalWriteSeq = 0;
 
   readonly dataState = signal<DataState>('IDLE');
   readonly dataError = signal('');
@@ -739,13 +765,26 @@ export class Results implements OnInit {
         return;
       }
 
-      const version = (response.data as { resultApproval?: { version?: number } } | undefined)
-        ?.resultApproval?.version;
-      if (typeof version === 'number') {
-        this.approvalVersion.set(version);
+      // A stale decision response never lands on another event's state.
+      if (this.selectedEventId() !== event.id) return;
+
+      this.approvalWriteSeq += 1;
+
+      const record = (response.data as { resultApproval?: ResultApprovalRecord } | undefined)
+        ?.resultApproval;
+
+      if (record) {
+        // The persisted record returned by the backend is the authoritative
+        // state — including the acceptance timestamp and reviewer.
+        this.applyApprovalRecord(record);
+      } else {
+        // Older response shape without the record: the success IS the backend
+        // confirmation of this decision.
+        this.reviewStatus.set(decision === 'ACCEPTED' ? 'APPROVED' : 'RETURNED');
+        this.acceptedAt.set('');
+        this.acceptedBy.set('');
       }
 
-      this.reviewStatus.set(decision === 'ACCEPTED' ? 'APPROVED' : 'RETURNED');
       this.closeAccept();
       this.notify.success(
         decision === 'ACCEPTED' ? 'Results accepted.' : 'Results returned for correction.',
@@ -755,14 +794,66 @@ export class Results implements OnInit {
               : 'Every registered participant has attendance and scoring recorded.')
           : 'The reviewer comment was recorded with the decision.'
       );
+
+      // Refresh approval status + official results from the authoritative
+      // backend reads; the toast alone never drives the page state.
+      void this.loadApproval(event.id);
+      void this.loadEventsWithResults();
     } finally {
       this.busy.set(false);
     }
   }
 
+  /**
+   * Reloads the persisted reviewer decision for one event from the
+   * authoritative `listResults` read. A response that lands after a scope
+   * switch, an event switch or an approval write is dropped — stale reads
+   * never restore the actionable state (scopeVersion cache-drop mechanism).
+   * A payload without `resultApprovals` never clobbers current state.
+   */
+  private async loadApproval(eventId: string): Promise<void> {
+    if (!eventId) return;
+    const scopeVersion = this.programContext.scopeVersion();
+    const writeSeq = this.approvalWriteSeq;
+    const response = await this.apiClient.listResults();
+    if (this.programContext.scopeVersion() !== scopeVersion ||
+        this.selectedEventId() !== eventId ||
+        this.approvalWriteSeq !== writeSeq) {
+      return;
+    }
+    if (!response.success) return;
+    const approvals = response.data.resultApprovals;
+    if (!Array.isArray(approvals)) return;
+    this.applyApprovalRecord(approvals.find(row => row.eventId === eventId) ?? null);
+  }
+
+  /**
+   * Applies one persisted approval record as the page's review state;
+   * `null` means no stored decision — the event is pending and actionable.
+   * An ACCEPTED record is a terminal completion state: both action buttons
+   * are replaced by the read-only completion panel.
+   */
+  private applyApprovalRecord(record: ResultApprovalRecord | null): void {
+    if (!record) {
+      this.reviewStatus.set('UNDER_REVIEW');
+      this.acceptedAt.set('');
+      this.acceptedBy.set('');
+      this.approvalVersion.set(undefined);
+      return;
+    }
+
+    const decision = String(record.decision || '').trim().toUpperCase();
+    const accepted = decision === 'ACCEPTED';
+    this.reviewStatus.set(
+      accepted ? 'APPROVED' : decision === 'RETURNED' ? 'RETURNED' : 'UNDER_REVIEW');
+    this.acceptedAt.set(accepted ? (record.updatedAt || '') : '');
+    this.acceptedBy.set(accepted ? (record.updatedBy || '') : '');
+    this.approvalVersion.set(typeof record.version === 'number' ? record.version : undefined);
+  }
+
   statusLabel(): string {
     switch (this.reviewStatus()) {
-      case 'APPROVED': return 'Approved';
+      case 'APPROVED': return 'Results Accepted';
       case 'RETURNED': return 'Returned for Correction';
       default: return 'Under Review';
     }

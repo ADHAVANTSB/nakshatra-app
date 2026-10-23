@@ -12,6 +12,7 @@ import { NotificationService } from '../../core/services/notifications/notificat
 import { AuthService } from '../../core/services/auth/auth.service';
 import { canEditModule } from '../../core/permissions/role-matrix';
 import { persistenceUnconfirmed } from '../../core/permissions/friendly-error';
+import { PARTICIPANT_LEVEL_LABELS } from '../../core/constants/nakshatra-rules';
 import { formatScore } from '../../shared/score-format';
 
 /** One winner's toggle view state for one certificate-workflow state. */
@@ -46,8 +47,8 @@ export interface CertificateRow {
   eventCode: string;
   category: string;
   winnerName: string;
-  /** "5A · Junior" - class and level together, never a raw id. */
-  classAndLevel: string;
+  /** "Age 9 · Class 5 · Juniors" - age, class and level together, never a raw level id. */
+  ageClassLevel: string;
   shelterHomeName: string;
   position: number;
   score: number;
@@ -177,7 +178,7 @@ export class Certificates implements OnInit {
           eventCode: group.eventCode,
           category: group.category,
           winnerName: winner.name,
-          classAndLevel: [winner.className, winner.level].filter(part => !!part).join(' · ') || '—',
+          ageClassLevel: Certificates.ageClassLevelText(winner),
           shelterHomeName: winner.shelterHomeName || '—',
           position: winner.position,
           score: winner.score,
@@ -314,13 +315,13 @@ export class Certificates implements OnInit {
   exportCsv(overall = false): void {
     const rows = overall ? this.rows() : this.filteredRows();
     const header = [
-      'Event', 'Winner', 'Class & Level', 'Shelter home', 'Position',
+      'Event', 'Winner', 'Age, Class & Level', 'Shelter home', 'Position',
       'Certificate Written', 'Certificate Distributed', 'Last status update',
     ];
     const lines = [header, ...rows.map(row => [
       `${row.eventName} (${row.eventCode})`,
       row.winnerName,
-      row.classAndLevel,
+      row.ageClassLevel,
       row.shelterHomeName,
       String(row.position),
       row.writtenLabel,
@@ -584,6 +585,24 @@ export class Certificates implements OnInit {
     const recorder = latest.recordedByName || latest.recordedBy;
 
     return `${timestamp || '—'}${recorder ? ` by ${recorder}` : ''}`;
+  }
+
+  /**
+   * "Age 9 · Class 5 · Juniors" - age, class and labelled level together;
+   * a missing value shows "—" (never invented). Team winners carry no
+   * age/class/level at all and keep the plain "—".
+   */
+  private static ageClassLevelText(winner: WinnerRow): string {
+    const age = String(winner.age ?? '').trim();
+    const className = String(winner.className ?? '').trim();
+    const levelKey = String(winner.level ?? '').trim();
+    const level = levelKey
+      ? (PARTICIPANT_LEVEL_LABELS[levelKey as keyof typeof PARTICIPANT_LEVEL_LABELS] ?? levelKey)
+      : '';
+    if (!age && !className && !level) {
+      return '—';
+    }
+    return `Age ${age || '—'} · Class ${className || '—'} · ${level || '—'}`;
   }
 
   /** "25 Oct 2026, 11:42 AM" — the format shown on rows and printouts. */

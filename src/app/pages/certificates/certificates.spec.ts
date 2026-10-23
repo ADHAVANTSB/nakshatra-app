@@ -10,6 +10,7 @@ function winner(position: number, name: string, score: number, scoreId = `score-
   return {
     position,
     name,
+    age: '9',
     className: '5',
     level: 'JUNIOR',
     shelterHomeName: 'Sunrise Home',
@@ -95,6 +96,48 @@ describe('Certificates — official score display', () => {
     expect(scores).toEqual(['21.3', '21']);
     expect(host.textContent).not.toContain('21.25');
     expect(host.textContent).not.toContain('21.0');
+  });
+
+  it('shows Age with class and level together; a missing age shows the — placeholder', async () => {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      if (request.action === 'listWinners') {
+        return ok({
+          events: [{
+            eventId: 'event-1',
+            eventCode: 'LIT-006',
+            eventName: 'Quiz (S+SS)',
+            category: 'LITERARY',
+            mode: 'SOLO',
+            eventStatus: 'ACTIVE',
+            winners: [
+              winner(1, 'Ana', 21.25),
+              { ...winner(2, 'Bhavana', 21), age: '' },
+            ],
+          }],
+          totalEvents: 1,
+          totalWinners: 2,
+        });
+      }
+      return ok({});
+    });
+
+    fixture = TestBed.createComponent(Certificates);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    // Age, class and the labelled level share the one readable cell.
+    expect(host.textContent).toContain('Age 9 · Class 5 · Juniors');
+    // A missing age is the "—" placeholder - never an invented value.
+    expect(host.textContent).toContain('Age — · Class 5 · Juniors');
+    expect(host.textContent).not.toContain('Age 10');
   });
 });
 
@@ -813,6 +856,9 @@ describe('Certificates — written/distributed workflow tracking', () => {
     const csv = await (createdBlob as unknown as Blob).text();
     expect(csv).toContain('Event');
     expect(csv).toContain('Certificate Written');
+    // The exported column carries age alongside class & level too.
+    expect(csv).toContain('Age, Class & Level');
+    expect(csv).toContain('Age 9 · Class 5 · Juniors');
     expect(csv).not.toContain('score-1');
     expect(csv).not.toContain('participant-');
 

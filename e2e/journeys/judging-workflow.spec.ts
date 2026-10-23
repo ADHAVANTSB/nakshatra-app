@@ -98,12 +98,25 @@ interface StubOfficialScore {
   updatedBy: string;
 }
 
+/** Persisted ResultApprovals row exactly as the backend stores/returns it. */
+interface StubApproval {
+  id: string;
+  eventId: string;
+  decision: string;
+  comments: string;
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 interface JudgeWorkflowState {
   judges: StubJudge[];
   judgeScores: StubJudgeScore[];
   official: StubOfficialScore[];
   finalized: boolean;
-  approvals: unknown[];
+  approvals: StubApproval[];
 }
 
 const CRITERIA_NAMES = EVENT.criteria.map(criterion => criterion.name);
@@ -296,11 +309,40 @@ function installJudgeWorkflow(backend: BackendStub): JudgeWorkflowState {
         score: row.value,
         finalizedAt: row.updatedAt,
       })),
+    // The persisted reviewer decisions, so a reload re-reads the accepted
+    // state exactly like Code.gs `listResults`.
+    resultApprovals: state.approvals.map(row => ({ ...row })),
   }));
 
   backend.on('saveResultApproval', request => {
-    state.approvals.push(request['payload']);
-    return json({ approval: { eventId: EVENT.id, decision: 'ACCEPTED', version: 1 } });
+    const payload = request['payload'] as { eventId: string; decision: string; comments?: string };
+    // Code.gs semantics: exactly one persisted approval row per event
+    // (upsert) and the response returns the stored record.
+    const index = state.approvals.findIndex(row => row.eventId === payload.eventId);
+    const now = new Date().toISOString();
+    const record: StubApproval = index === -1
+      ? {
+          id: `ap-${state.approvals.length + 1}`,
+          eventId: payload.eventId,
+          decision: payload.decision,
+          comments: payload.comments ?? '',
+          version: 1,
+          createdAt: now,
+          createdBy: 'e2e-stub',
+          updatedAt: now,
+          updatedBy: 'e2e-stub',
+        }
+      : {
+          ...state.approvals[index],
+          decision: payload.decision,
+          comments: payload.comments ?? '',
+          version: state.approvals[index].version + 1,
+          updatedAt: now,
+          updatedBy: 'e2e-stub',
+        };
+    if (index === -1) state.approvals.push(record);
+    else state.approvals[index] = record;
+    return json({ resultApproval: record });
   });
 
   return state;
@@ -421,6 +463,23 @@ test.describe('judging workflow journey', () => {
     await page.getByRole('button', { name: 'Accept Results' }).first().click();
     await page.getByRole('button', { name: 'Accept Results' }).last().click();
     await expect(page.locator('body')).toContainText('Results accepted.');
+    expect(state.approvals).toHaveLength(1);
+
+    // The acceptance is terminal: BOTH action buttons are replaced by the
+    // read-only completion state …
+    await expect(page.locator('body')).toContainText('Results Accepted');
+    await expect(page.locator('body')).toContainText('Completed');
+    await expect(page.getByRole('button', { name: 'Accept Results' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Decline / Return for Correction' })).toHaveCount(0);
+
+    // … and the accepted state survives a reload (re-read from the backend).
+    await page.reload();
+    await expect(page).toHaveURL(/dashboard/);
+    await page.goto('/#/results');
+    await page.getByRole('button', { name: /Open full results/ }).click();
+    await expect(page.locator('body')).toContainText('Results Accepted');
+    await expect(page.getByRole('button', { name: 'Accept Results' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Decline / Return for Correction' })).toHaveCount(0);
     expect(state.approvals).toHaveLength(1);
 
     // ---- finalized scores are not editable on /scoring ----
