@@ -111,6 +111,149 @@
   }
 }
 
+/* =========================================================
+   Animated welcome smiley (Telegram-style)
+   Inline SVG in dashboard.html: separate eye and mouth paths,
+   so only the mouth (1.3s open/close loop) and the occasional
+   blink (independent ~5s loop) animate. The face gets a very
+   subtle bob — the card itself never moves.
+   ========================================================= */
+
+.welcome-icon .nk-smiley {
+  /* Matches the previous emoji size; scales with the tile's
+     responsive font-size (56px desktop, 31px on small tablets). */
+  width: 1em;
+  height: 1em;
+
+  display: block;
+}
+
+.nk-smiley-face {
+  fill: #ffd23f;
+}
+
+.nk-smiley-blush {
+  fill: rgba(255, 138, 101, 0.35);
+}
+
+.nk-smiley-eye,
+.nk-smiley-eye-blink,
+.nk-smiley-mouth-closed {
+  fill: none;
+
+  stroke: #6b4708;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+
+.nk-smiley-mouth-open {
+  fill: #6b4708;
+}
+
+/* Mouth: closed happy smile <-> cheerful rounded open smile. */
+.nk-smiley-mouth-closed {
+  opacity: 1;
+
+  transform-box: fill-box;
+  transform-origin: top center;
+
+  animation: nk-mouth-closed 1.3s ease-in-out infinite;
+}
+
+.nk-smiley-mouth-open {
+  opacity: 0;
+
+  transform-box: fill-box;
+  transform-origin: top center;
+
+  animation: nk-mouth-open 1.3s ease-in-out infinite;
+}
+
+@keyframes nk-mouth-closed {
+  0%, 100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  42%, 58% {
+    opacity: 0;
+    transform: scaleY(0.6);
+  }
+}
+
+@keyframes nk-mouth-open {
+  0%, 100% {
+    opacity: 0;
+    transform: scaleY(0.55);
+  }
+  42%, 58% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* Eyes: happy arcs normally, quick gentle blink every ~5s. */
+.nk-smiley-eye {
+  opacity: 1;
+
+  animation: nk-eye-open 5s ease-in-out infinite;
+}
+
+.nk-smiley-eye-blink {
+  opacity: 0;
+
+  animation: nk-eye-blink 5s ease-in-out infinite;
+}
+
+@keyframes nk-eye-open {
+  0%, 92%, 100% { opacity: 1; }
+  94%, 97%     { opacity: 0; }
+}
+
+@keyframes nk-eye-blink {
+  0%, 92%, 100% { opacity: 0; }
+  94%, 97%     { opacity: 1; }
+}
+
+/* Very subtle face bob — gentle life without touching the card. */
+.nk-smiley {
+  animation: nk-face-bob 2.6s ease-in-out infinite;
+}
+
+@keyframes nk-face-bob {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-1.5px) rotate(-1deg);
+  }
+}
+
+/* Reduced motion: static cheerful smile, no animation at all. */
+@media (prefers-reduced-motion: reduce) {
+  .nk-smiley,
+  .nk-smiley * {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .nk-smiley-mouth-closed {
+    opacity: 0;
+  }
+
+  .nk-smiley-mouth-open {
+    opacity: 1;
+  }
+
+  .nk-smiley-eye {
+    opacity: 1;
+  }
+
+  .nk-smiley-eye-blink {
+    opacity: 0;
+  }
+}
+
 .quick-actions {
   display: flex;
   flex-wrap: wrap;

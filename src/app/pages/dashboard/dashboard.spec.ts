@@ -35,10 +35,19 @@ describe('Dashboard hero', () => {
     expect(greeting).toBeGreaterThan(volunteering);
   });
 
-  it('renders a smiley emoji as the welcome icon', () => {
+  it('renders an inline SVG smiley with independently animatable parts', () => {
     const icon = (fixture.nativeElement as HTMLElement).querySelector('.welcome-icon');
     expect(icon).not.toBeNull();
-    expect(icon!.textContent ?? '').toContain('😊');
     expect(icon!.getAttribute('aria-hidden')).toBe('true');
+
+    const svg = icon!.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute('viewBox')).toBe('0 0 64 64');
+
+    // Eyes and mouth are separate elements so only the mouth animates.
+    expect(icon!.querySelectorAll('.nk-smiley-mouth-closed').length).toBe(1);
+    expect(icon!.querySelectorAll('.nk-smiley-mouth-open').length).toBe(1);
+    expect(icon!.querySelectorAll('.nk-smiley-eye').length).toBe(2);
+    expect(icon!.querySelectorAll('.nk-smiley-eye-blink').length).toBe(2);
   });
 });

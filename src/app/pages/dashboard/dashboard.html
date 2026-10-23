@@ -70,7 +70,22 @@
       </p>
     </div>
 
-    <div class="welcome-icon" aria-hidden="true">😊</div>
+    <!-- Telegram-style animated smiley: separate eye/mouth paths so only the
+         mouth and the occasional blink animate (CSS keyframes in dashboard.scss).
+         aria-hidden: decorative only. -->
+    <div class="welcome-icon" aria-hidden="true">
+      <svg class="nk-smiley" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <circle class="nk-smiley-face" cx="32" cy="32" r="29"></circle>
+        <ellipse class="nk-smiley-blush" cx="15.5" cy="37" rx="4.6" ry="3"></ellipse>
+        <ellipse class="nk-smiley-blush" cx="48.5" cy="37" rx="4.6" ry="3"></ellipse>
+        <path class="nk-smiley-eye" d="M14 27c1.8-3.6 6.2-3.6 8 0"></path>
+        <path class="nk-smiley-eye" d="M42 27c1.8-3.6 6.2-3.6 8 0"></path>
+        <path class="nk-smiley-eye-blink" d="M14 27.5c1.8 2.2 6.2 2.2 8 0"></path>
+        <path class="nk-smiley-eye-blink" d="M42 27.5c1.8 2.2 6.2 2.2 8 0"></path>
+        <path class="nk-smiley-mouth-closed" d="M22 37q10 7 20 0"></path>
+        <path class="nk-smiley-mouth-open" d="M22 37q10 7 20 0c-1 8-5 12-10 12s-9-4-10-12z"></path>
+      </svg>
+    </div>
   </div>
 
   @if (firstRun()) {
