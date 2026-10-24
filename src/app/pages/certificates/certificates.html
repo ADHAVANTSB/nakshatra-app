@@ -153,7 +153,9 @@
           <tr>
             <th>Event</th>
             <th>Winner</th>
-            <th>Age, class &amp; level</th>
+            <th>Age</th>
+            <th>Class</th>
+            <th>Category / Level</th>
             <th>Shelter home</th>
             <th>Position</th>
             <th>Certificate Written</th>
@@ -164,22 +166,22 @@
         <tbody>
           @for (row of filteredRows(); track row.scoreId) {
             <tr>
-              <td>
+              <td data-l="Event">
                 <strong>{{ row.eventName }}</strong>
                 <small> · {{ row.eventCode }} · {{ row.category }}</small>
               </td>
-              <td>
+              <td data-l="Winner">
                 <strong>{{ row.winnerName }}</strong>
                 <small class="winner-score">{{ formatScore(row.score) }}</small>
-              </td>
-              <td>
-                {{ row.ageClassLevel }}
                 @for (line of row.memberDetails; track line) {
                   <small class="member-detail">{{ line }}</small>
                 }
               </td>
-              <td>{{ row.shelterHomeName }}</td>
-              <td>
+              <td class="col-value" data-l="Age">{{ row.age }}</td>
+              <td class="col-value" data-l="Class">{{ row.className }}</td>
+              <td class="col-value" data-l="Category / Level">{{ row.levelLabel }}</td>
+              <td data-l="Shelter home">{{ row.shelterHomeName }}</td>
+              <td data-l="Position">
                 <span class="medal"
                   [class.gold]="row.position === 1"
                   [class.silver]="row.position === 2"
@@ -188,7 +190,7 @@
                 </span>
               </td>
               @for (state of states; track state) {
-                <td class="distribution-cell">
+                <td class="distribution-cell" [attr.data-l]="awardLabel(state)">
                   <label class="distribution-toggle">
                     <input
                       type="checkbox"
@@ -227,11 +229,11 @@
                   }
                 </td>
               }
-              <td>{{ row.lastUpdate }}</td>
+              <td data-l="Last status update">{{ row.lastUpdate }}</td>
             </tr>
           } @empty {
             <tr class="empty-row">
-              <td colspan="8">
+              <td colspan="10">
                 <span class="certificates-empty" role="status">
                   <strong>No rows in this view.</strong>
                   <span>Adjust the filters or pick another view.</span>

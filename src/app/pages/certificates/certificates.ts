@@ -50,8 +50,12 @@ export interface CertificateRow {
   eventCode: string;
   category: string;
   winnerName: string;
-  /** "Age 9 · Class 5 · Juniors" - age, class and level together, never a raw level id. */
-  ageClassLevel: string;
+  /** Participant age as displayed ("9"); the neutral placeholder when unavailable. */
+  age: string;
+  /** Participant class/standard as displayed ("5"); the neutral placeholder when unavailable. */
+  className: string;
+  /** Labelled level ("Juniors"), never a raw level id; placeholder when unavailable. */
+  levelLabel: string;
   /** One "Name - Age 9 - Class 5 - Juniors" line per member of a group winner. */
   memberDetails: string[];
   shelterHomeName: string;
@@ -179,6 +183,7 @@ export class Certificates implements OnInit {
       for (const winner of groupWinners) {
         const written = this.confirmedEntry(winner.scoreId, 'CERTIFICATE_WRITTEN');
         const distributed = this.confirmedEntry(winner.scoreId, 'CERTIFICATE');
+        const detail = this.enrichWinner(winner);
 
         rows.push({
           scoreId: winner.scoreId,
@@ -186,7 +191,9 @@ export class Certificates implements OnInit {
           eventCode: group.eventCode,
           category: group.category,
           winnerName: winner.name,
-          ageClassLevel: Certificates.ageClassLevelText(this.enrichWinner(winner)),
+          age: Certificates.valueOrPlaceholder(detail.age),
+          className: Certificates.valueOrPlaceholder(detail.className),
+          levelLabel: Certificates.levelLabel(detail.level),
           memberDetails: this.memberDetails(winner),
           shelterHomeName: winner.shelterHomeName || '—',
           position: winner.position,
@@ -327,13 +334,17 @@ export class Certificates implements OnInit {
   exportCsv(overall = false): void {
     const rows = overall ? this.rows() : this.filteredRows();
     const header = [
-      'Event', 'Winner', 'Age, Class & Level', 'Shelter home', 'Position',
+      'Event', 'Winner', 'Age', 'Class', 'Category / Level', 'Shelter home', 'Position',
       'Certificate Written', 'Certificate Distributed', 'Last status update',
     ];
     const lines = [header, ...rows.map(row => [
       `${row.eventName} (${row.eventCode})`,
-      row.winnerName,
-      row.memberDetails.length ? row.memberDetails.join(' | ') : row.ageClassLevel,
+      row.memberDetails.length
+        ? `${row.winnerName} (${row.memberDetails.join(' | ')})`
+        : row.winnerName,
+      row.age,
+      row.className,
+      row.levelLabel,
       row.shelterHomeName,
       String(row.position),
       row.writtenLabel,
@@ -643,6 +654,19 @@ export class Certificates implements OnInit {
           : '';
       })
       .filter(Boolean);
+  }
+
+  /** Trimmed display value; the neutral placeholder when unavailable. */
+  private static valueOrPlaceholder(value: string | number | null | undefined): string {
+    return String(value ?? '').trim() || '—';
+  }
+
+  /** Labelled level ("Juniors") from a level id; placeholder when unavailable. */
+  private static levelLabel(level: string | null | undefined): string {
+    const levelKey = String(level ?? '').trim();
+    return levelKey
+      ? (PARTICIPANT_LEVEL_LABELS[levelKey as keyof typeof PARTICIPANT_LEVEL_LABELS] ?? levelKey)
+      : '—';
   }
 
   private static ageClassLevelText(winner: WinnerRow): string {

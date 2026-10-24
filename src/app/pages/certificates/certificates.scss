@@ -110,6 +110,85 @@
   color: #60798f;
 }
 
+/* 10-column certificate table: value columns stay narrow and unwrapped,
+   text columns keep the room. Horizontal scroll lives in .table-wrapper. */
+.certificates-page .table-wrapper table {
+  min-width: 1500px;
+}
+
+.certificates-page .table-wrapper th,
+.certificates-page .table-wrapper td {
+  vertical-align: middle;
+}
+
+.certificates-page .table-wrapper th {
+  white-space: nowrap;
+}
+
+.certificates-page .table-wrapper th:nth-child(1) { min-width: 190px; }
+.certificates-page .table-wrapper th:nth-child(2) { min-width: 150px; }
+.certificates-page .table-wrapper th:nth-child(6) { min-width: 170px; }
+.certificates-page .table-wrapper th:nth-child(10) { min-width: 160px; }
+
+.certificates-page .table-wrapper td.col-value {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Mobile: each row becomes a labeled block - every column stays visible. */
+@media (max-width: 720px) {
+  .certificates-page .table-wrapper {
+    overflow-x: visible;
+  }
+
+  .certificates-page .table-wrapper table {
+    min-width: 0;
+  }
+
+  .certificates-page .table-wrapper thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .certificates-page .table-wrapper tbody tr {
+    display: block;
+    padding: 10px 0;
+    border-bottom: 1px solid #eef3f7;
+  }
+
+  .certificates-page .table-wrapper tbody td {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 6px 14px;
+    border-bottom: 0;
+  }
+
+  /* Checkbox + status lines stack under their caption instead of squeezing. */
+  .certificates-page .table-wrapper tbody td.distribution-cell {
+    display: block;
+  }
+
+  .certificates-page .table-wrapper tbody td.distribution-cell::before {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .certificates-page .table-wrapper tbody td::before {
+    content: attr(data-l);
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #60798f;
+  }
+}
+
 .medal {
   font-weight: 700;
   padding: 4px 10px;

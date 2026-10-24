@@ -98,7 +98,7 @@ describe('Certificates — official score display', () => {
     expect(host.textContent).not.toContain('21.0');
   });
 
-  it('shows Age with class and level together; a missing age shows the — placeholder', async () => {
+  it('shows Age, Class and Category / Level as separate columns; missing values show the placeholder', async () => {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string };
       const ok = (data: unknown) => Promise.resolve(new Response(
@@ -118,10 +118,11 @@ describe('Certificates — official score display', () => {
             winners: [
               winner(1, 'Ana', 21.25),
               { ...winner(2, 'Bhavana', 21), age: '' },
+              { ...winner(3, 'Chitra', 18), age: '', className: '', level: '' },
             ],
           }],
           totalEvents: 1,
-          totalWinners: 2,
+          totalWinners: 3,
         });
       }
       return ok({});
@@ -133,11 +134,32 @@ describe('Certificates — official score display', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
-    // Age, class and the labelled level share the one readable cell.
-    expect(host.textContent).toContain('Age 9 · Class 5 · Juniors');
-    // A missing age is the "—" placeholder - never an invented value.
-    expect(host.textContent).toContain('Age — · Class 5 · Juniors');
-    expect(host.textContent).not.toContain('Age 10');
+    const cell = (row: number, label: string): string =>
+      host
+        .querySelectorAll('tbody tr')
+        .item(row)
+        .querySelector(`td[data-l="${label}"]`)
+        ?.textContent?.trim() ?? '';
+
+    // Each value sits in its own column; the level is labelled, never a raw id.
+    expect(cell(0, 'Age')).toBe('9');
+    expect(cell(0, 'Class')).toBe('5');
+    expect(cell(0, 'Category / Level')).toBe('Juniors');
+    // A missing age is the neutral placeholder - never an invented value.
+    expect(cell(1, 'Age')).toBe('—');
+    expect(cell(1, 'Class')).toBe('5');
+    expect(cell(1, 'Category / Level')).toBe('Juniors');
+    // Missing age, class and level all fall back to the placeholder.
+    expect(cell(2, 'Age')).toBe('—');
+    expect(cell(2, 'Class')).toBe('—');
+    expect(cell(2, 'Category / Level')).toBe('—');
+    // The header keeps the reference column order.
+    const headers = Array.from(host.querySelectorAll('thead th'))
+      .map(th => (th.textContent ?? '').trim());
+    expect(headers).toEqual([
+      'Event', 'Winner', 'Age', 'Class', 'Category / Level', 'Shelter home',
+      'Position', 'Certificate Written', 'Certificate Distributed', 'Last status update',
+    ]);
   });
 });
 
@@ -367,6 +389,15 @@ describe('Certificates — written/distributed workflow tracking', () => {
     expect(stateText).toContain('Not distributed');
     expect(stateText).toContain('Not written');
     expect(stateText).not.toContain('Unavailable');
+
+    // Status controls and the actor/timestamp text sit in their own columns.
+    const cells = Array.from(host.querySelectorAll('tbody tr:first-child td'));
+    expect(cells).toHaveLength(10);
+    expect(cells[7].querySelector('[data-testid="distribution-toggle"]')).not.toBeNull();
+    expect(cells[7].textContent ?? '').toContain('Praveen (E2E)');
+    expect(cells[8].querySelector('[data-testid="distribution-toggle"]')).not.toBeNull();
+    expect(cells[8].textContent ?? '').toContain('Not distributed');
+    expect(cells[9].textContent ?? '').toMatch(/\d{1,2} Oct 2026/);
   });
 
   it('a certificate cannot be distributed before it is written (UI gate + backend rejection)', async () => {
@@ -856,9 +887,11 @@ describe('Certificates — written/distributed workflow tracking', () => {
     const csv = await (createdBlob as unknown as Blob).text();
     expect(csv).toContain('Event');
     expect(csv).toContain('Certificate Written');
-    // The exported column carries age alongside class & level too.
-    expect(csv).toContain('Age, Class & Level');
-    expect(csv).toContain('Age 9 · Class 5 · Juniors');
+    // The exported row carries age, class and the labelled level in separate columns.
+    expect(csv).toContain('"Age"');
+    expect(csv).toContain('"Class"');
+    expect(csv).toContain('"Category / Level"');
+    expect(csv).toContain('"9","5","Juniors"');
     expect(csv).not.toContain('score-1');
     expect(csv).not.toContain('participant-');
 
