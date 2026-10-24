@@ -189,6 +189,7 @@
                   <td data-l="Participant">
                     <strong>{{ row.name }}</strong>
                     <span class="code">{{ row.code }}</span>
+                    <span class="code">{{ row.details }}</span>
                   </td>
                   <td data-l="Home">{{ row.home }}</td>
                   <td class="num" data-l="Registration">
@@ -378,6 +379,9 @@
                     </td>
                     <td>
                       <strong>{{ entryName(result) }}</strong>
+                      @if (entryDetails(result)) {
+                        <small class="code">{{ entryDetails(result) }}</small>
+                      }
                     </td>
                     <td>{{ result.participant ? homeName(result.participant.shelterHomeId) : '—' }}</td>
                     <td>{{ event.category }} / {{ entryLevel(result) }}</td>
@@ -443,6 +447,7 @@
                   — {{ formatScore(winner.score.value) }}
                   @if (winner.participant) {
                     — {{ homeName(winner.participant.shelterHomeId) }}
+                    <small class="code">{{ entryDetails(winner) }}</small>
                   }
                 </li>
               }
@@ -487,7 +492,11 @@
                     @else if (entry.position === 3) { 🥉 3rd }
                     @else { {{ entry.position }} }
                   </span>
-                  <span class="entry-name">{{ boardName(entry.row) }}</span>
+                  <span class="entry-name">{{ boardName(entry.row) }}
+                    @if (boardDetails(entry.row)) {
+                      <small class="code">{{ boardDetails(entry.row) }}</small>
+                    }
+                  </span>
                   <span class="entry-score">{{ formatScore(entry.row.score) }}</span>
                 </div>
               }

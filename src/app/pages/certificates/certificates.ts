@@ -3,6 +3,9 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } 
 import { FormsModule } from '@angular/forms';
 
 import { WinnersEventGroup, WinnersService, WinnerRow } from '../../core/services/certificates/winners.service';
+import { ParticipantService } from '../../core/services/participants/participant.service';
+import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
+import { TeamService } from '../../core/services/teams/team.service';
 import {
   DistributionAwardType,
   DistributionTrackingEntry,
@@ -49,6 +52,8 @@ export interface CertificateRow {
   winnerName: string;
   /** "Age 9 · Class 5 · Juniors" - age, class and level together, never a raw level id. */
   ageClassLevel: string;
+  /** One "Name - Age 9 - Class 5 - Juniors" line per member of a group winner. */
+  memberDetails: string[];
   shelterHomeName: string;
   position: number;
   score: number;
@@ -93,6 +98,9 @@ export class Certificates implements OnInit {
   private readonly distributionService = inject(DistributionService);
   private readonly notifications = inject(NotificationService);
   private readonly auth = inject(AuthService);
+  private readonly shelterData = inject(ShelterDataService);
+  private readonly participantService = inject(ParticipantService);
+  private readonly teamService = inject(TeamService);
 
   readonly loading = this.winnersService.loading$;
   readonly loadError = this.winnersService.error$;
@@ -178,7 +186,8 @@ export class Certificates implements OnInit {
           eventCode: group.eventCode,
           category: group.category,
           winnerName: winner.name,
-          ageClassLevel: Certificates.ageClassLevelText(winner),
+          ageClassLevel: Certificates.ageClassLevelText(this.enrichWinner(winner)),
+          memberDetails: this.memberDetails(winner),
           shelterHomeName: winner.shelterHomeName || '—',
           position: winner.position,
           score: winner.score,
@@ -290,6 +299,9 @@ export class Certificates implements OnInit {
      ------------------------------------------------------------------ */
 
   ngOnInit(): void {
+    // Participant store backs the age / class / level fallback and the
+    // per-member details of group winners.
+    void this.shelterData.ensureLoaded();
     void this.load();
   }
 
@@ -321,7 +333,7 @@ export class Certificates implements OnInit {
     const lines = [header, ...rows.map(row => [
       `${row.eventName} (${row.eventCode})`,
       row.winnerName,
-      row.ageClassLevel,
+      row.memberDetails.length ? row.memberDetails.join(' | ') : row.ageClassLevel,
       row.shelterHomeName,
       String(row.position),
       row.writtenLabel,
@@ -348,6 +360,14 @@ export class Certificates implements OnInit {
     const report = await this.winnersService.load(force);
     this.events.set(report ? report.events : []);
     this.totalWinners.set(report ? report.totalWinners : 0);
+
+    // Group winners list their members without details until the team roster
+    // is loaded - fetch it so each member's age / class / level can be shown.
+    for (const group of this.events()) {
+      if (group.winners.some(winner => winner.teamId)) {
+        void this.teamService.loadTeams(group.eventId).catch(() => false);
+      }
+    }
 
     // Tracking is a separate read: if it fails the winners list above is
     // still shown and the toggles fall into an explicit unavailable state.
@@ -592,6 +612,39 @@ export class Certificates implements OnInit {
    * a missing value shows "—" (never invented). Team winners carry no
    * age/class/level at all and keep the plain "—".
    */
+  /**
+   * Fills missing age / class / level from the participant store. Older
+   * backend deployments omit `age` in the winners payload; a missing value is
+   * never invented - only the recorded participant data is reused.
+   */
+  private enrichWinner(winner: WinnerRow): WinnerRow {
+    const participant = winner.participantId
+      ? this.participantService.getParticipantById(winner.participantId)
+      : undefined;
+    return {
+      ...winner,
+      age: winner.age || String(participant?.age ?? ''),
+      className: winner.className || String(participant?.standard ?? ''),
+      level: winner.level || (participant?.level ?? ''),
+    };
+  }
+
+  /** Per-member age / class / level for a group winner - one certificate each. */
+  private memberDetails(winner: WinnerRow): string[] {
+    if (!winner.teamId) return [];
+    return this.teamService
+      .getMembers(winner.teamId)
+      .map(member => {
+        const participant = this.participantService.getParticipantById(member.participantId);
+        return participant
+          ? `${participant.fullName} - ${Certificates.ageClassLevelText(
+              this.enrichWinner({ ...winner, participantId: participant.id }),
+            )}`
+          : '';
+      })
+      .filter(Boolean);
+  }
+
   private static ageClassLevelText(winner: WinnerRow): string {
     const age = String(winner.age ?? '').trim();
     const className = String(winner.className ?? '').trim();

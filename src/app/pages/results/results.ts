@@ -18,6 +18,7 @@ import { ProgramContextService } from '../../core/services/program/program-conte
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ShelterHomeService } from '../../core/services/shelter-homes/shelter-home.service';
 import { formatScore } from '../../shared/score-format';
+import { PARTICIPANT_LEVEL_LABELS } from '../../core/constants/nakshatra-rules';
 import { TeamLoadState, TeamService } from '../../core/services/teams/team.service';
 
 interface ResultRow {
@@ -34,6 +35,8 @@ export interface ReconciliationRow {
   participantId: string;
   name: string;
   code: string;
+  /** "Age 12 · Class 8 · Seniors" — age, standard and level together. */
+  details: string;
   home: string;
   registered: boolean;
   attended: boolean;
@@ -394,6 +397,36 @@ export class Results implements OnInit {
     return row.participant?.level ?? (row.team ? 'Team' : '—');
   }
 
+  /** "Age 12 · Class 8 · Seniors" — age, standard and level for certificate writing. */
+  personDetails(
+    age: number | null | undefined,
+    standard: number | null | undefined,
+    level: string | null | undefined,
+  ): string {
+    const levelLabel = level
+      ? (PARTICIPANT_LEVEL_LABELS[level as keyof typeof PARTICIPANT_LEVEL_LABELS] ?? level)
+      : '—';
+    return `Age ${age ?? '—'} · Class ${standard ?? '—'} · ${levelLabel}`;
+  }
+
+  /** The same detail line for an official-results / winners row. */
+  entryDetails(row: ResultRow): string {
+    return row.participant
+      ? this.personDetails(row.participant.age, row.participant.standard, row.participant.level)
+      : '';
+  }
+
+  /** Detail line for a results-board row (participant resolved from the store). */
+  boardDetails(row: ListResultRow): string {
+    if (row.scoringEntity === 'TEAM' || row.teamId) return '';
+    const participant = row.participantId
+      ? this.participantService.getParticipantById(row.participantId)
+      : undefined;
+    return participant
+      ? this.personDetails(participant.age, participant.standard, participant.level)
+      : '';
+  }
+
   /** Resolves a backend shelter home id to its readable name. */
   homeName(homeId: string | null | undefined): string {
     if (!homeId) return 'Unknown Home';
@@ -565,6 +598,11 @@ export class Results implements OnInit {
         participantId: participant.id,
         name: participant.fullName,
         code: participant.participantCode,
+        details: this.personDetails(
+          participant.age,
+          participant.standard,
+          participant.level,
+        ),
         home: this.homeName(participant.shelterHomeId),
         registered,
         attended,

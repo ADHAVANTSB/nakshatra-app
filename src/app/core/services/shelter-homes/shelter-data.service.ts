@@ -755,20 +755,22 @@ export class ShelterDataService {
 
       const data = response.data;
 
-      this.homesState.set(data.shelterHomes);
+      // A malformed or partial payload must never blank the store or crash the
+      // page: missing collections degrade to empty lists.
+      this.homesState.set(data.shelterHomes ?? []);
       this.clearErrors('HOMES');
 
-      this.participantsState.set(data.participants);
+      this.participantsState.set(data.participants ?? []);
       this.clearErrors('PARTICIPANTS');
 
       this.importsState.set(
-        data.imports
+        (data.imports ?? [])
           .map(entry => this.toImportRecord(entry))
           .filter((record): record is ShelterImportRecord => record !== null),
       );
       this.clearErrors('IMPORTS');
 
-      this.validationsState.set(data.validationResults);
+      this.validationsState.set(data.validationResults ?? []);
       this.clearErrors('VALIDATIONS');
 
       // The events catalogue keeps its own service, cache and request.

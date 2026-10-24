@@ -172,7 +172,12 @@
                 <strong>{{ row.winnerName }}</strong>
                 <small class="winner-score">{{ formatScore(row.score) }}</small>
               </td>
-              <td>{{ row.ageClassLevel }}</td>
+              <td>
+                {{ row.ageClassLevel }}
+                @for (line of row.memberDetails; track line) {
+                  <small class="member-detail">{{ line }}</small>
+                }
+              </td>
               <td>{{ row.shelterHomeName }}</td>
               <td>
                 <span class="medal"
