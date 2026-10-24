@@ -105,7 +105,12 @@ describe('Results — reconciliation and reviewer decision', () => {
   ));
 
   function stubBackend(
-    judgeFixtures: { judges?: unknown[]; judgeScores?: unknown[] } = {},
+    fixtures: {
+      judges?: unknown[];
+      judgeScores?: unknown[];
+      attendance?: unknown[];
+      scores?: unknown[];
+    } = {},
   ): void {
     vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
       const request = JSON.parse(init.body) as { action: string; payload?: Record<string, unknown> };
@@ -139,7 +144,7 @@ describe('Results — reconciliation and reviewer decision', () => {
           });
         case 'listAttendance':
           return ok({
-            attendance: [
+            attendance: fixtures.attendance ?? [
               { id: 'att-1', eventId: 'event-1', participantId: 'participant-1', teamId: '', status: 'PRESENT', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
               { id: 'att-2', eventId: 'event-1', participantId: 'participant-2', teamId: '', status: 'PRESENT', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
             ],
@@ -147,7 +152,7 @@ describe('Results — reconciliation and reviewer decision', () => {
         case 'listScores':
           // participant-1 scored; participant-2 attended but has no score.
           return ok({
-            scores: [{
+            scores: fixtures.scores ?? [{
               id: 'score-1',
               eventId: 'event-1',
               participantId: 'participant-1',
@@ -161,9 +166,9 @@ describe('Results — reconciliation and reviewer decision', () => {
             }],
           });
         case 'listEventJudges':
-          return ok({ judges: judgeFixtures.judges ?? [] });
+          return ok({ judges: fixtures.judges ?? [] });
         case 'listJudgeScores':
-          return ok({ scores: judgeFixtures.judgeScores ?? [] });
+          return ok({ scores: fixtures.judgeScores ?? [] });
         case 'getPageData':
           return ok({ shelterHomes: [HOME], participants: [PARTICIPANT_1, PARTICIPANT_2], imports: [], validationResults: [] });
         case 'saveResultApproval':
@@ -175,7 +180,7 @@ describe('Results — reconciliation and reviewer decision', () => {
   }
 
   async function render(
-    judgeFixtures: { judges?: unknown[]; judgeScores?: unknown[] } = {},
+    judgeFixtures: { judges?: unknown[]; judgeScores?: unknown[]; attendance?: unknown[]; scores?: unknown[] } = {},
   ): Promise<void> {
     stubBackend(judgeFixtures);
 
@@ -287,7 +292,6 @@ describe('Results — reconciliation and reviewer decision', () => {
 
   it('blocks accepting until every unresolved discrepancy is acknowledged', async () => {
     await render();
-
     component.openAccept();
     fixture.detectChanges();
 
@@ -314,6 +318,47 @@ describe('Results — reconciliation and reviewer decision', () => {
       acknowledgedDiscrepancyIds: ['MISSING_JUDGE_SCORE:participant-2'],
     });
     expect(component.reviewStatus()).toBe('APPROVED');
+  });
+
+  it('never acknowledges an attendance-eligibility violation: acceptance stays blocked', async () => {
+    // participant-2 has a FINALIZED score but no PRESENT attendance: the
+    // backend excludes it from results/certificates and blocks acceptance.
+    await render({
+      attendance: [
+        { id: 'att-1', eventId: 'event-1', participantId: 'participant-1', teamId: '', status: 'PRESENT', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
+        { id: 'att-2', eventId: 'event-1', participantId: 'participant-2', teamId: '', status: 'ABSENT', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
+      ],
+      scores: [
+        { id: 'score-1', eventId: 'event-1', participantId: 'participant-1', value: 9, status: 'DRAFT', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
+        { id: 'score-2', eventId: 'event-1', participantId: 'participant-2', value: 8, status: 'FINALIZED', version: 1, createdAt: '', createdBy: '', updatedAt: '', updatedBy: '' },
+      ],
+    });
+
+    const items = component.discrepancies();
+    const absent = items.find(item => item.id === 'ABSENT_PARTICIPANT:participant-2');
+    const violation = items.find(item => item.id === 'SCORE_WITHOUT_ATTENDANCE:participant-2');
+
+    // The absence is shown clearly; the eligibility violation is not
+    // acknowledgeable at all.
+    expect(absent).toBeTruthy();
+    expect(violation).toBeTruthy();
+    expect(violation?.acknowledgeable).toBe(false);
+
+    component.openAccept();
+    fixture.detectChanges();
+
+    // Ticking every acknowledgeable item cannot unblock acceptance.
+    component.toggleAcknowledgement('ABSENT_PARTICIPANT:participant-2');
+    fixture.detectChanges();
+    expect(component.allAcknowledged()).toBe(false);
+
+    const confirmButton = Array
+      .from((fixture.nativeElement as HTMLElement).querySelectorAll('.modal-actions button'))
+      .find(button => (button.textContent ?? '').includes('Accept')) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+
+    await component.confirmAccept();
+    expect(calls.some(call => call.action === 'saveResultApproval')).toBe(false);
   });
 
   it('keeps the review open when the backend rejects an accept as incomplete', async () => {

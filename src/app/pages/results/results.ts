@@ -40,6 +40,8 @@ export interface ReconciliationRow {
   home: string;
   registered: boolean;
   attended: boolean;
+  /** Raw event-day attendance record: 'PRESENT' | 'ABSENT' | '' (unconfirmed). */
+  attendanceStatus: string;
   scored: boolean;
   /** Explicit text naming exactly what this participant is missing. */
   statusText: string;
@@ -59,6 +61,12 @@ export interface DiscrepancyItem {
   participantId: string;
   name: string;
   label: string;
+  /**
+   * False for an attendance-eligibility violation backed by a FINALIZED
+   * score: acceptance can never override it (the backend refuses
+   * regardless), so it is shown read-only instead of acknowledged.
+   */
+  acknowledgeable?: boolean;
 }
 
 type DataState = 'IDLE' | 'LOADING' | 'LOADED' | 'FAILED';
@@ -549,8 +557,9 @@ export class Results implements OnInit {
         .getEventRegistrations(event.id)
         .find(item => item.participantId === participant.id);
       const registered = registration?.registrationStatus === 'REGISTERED';
-      const attended =
-        this.attendanceService.getByParticipantEvent(participant.id, event.id)?.status === 'PRESENT';
+      const attendanceStatus =
+        this.attendanceService.getByParticipantEvent(participant.id, event.id)?.status ?? '';
+      const attended = attendanceStatus === 'PRESENT';
 
       // A group entry is scored through its team; individuals through their own score.
       const hasScoreRow =
@@ -606,6 +615,7 @@ export class Results implements OnInit {
         home: this.homeName(participant.shelterHomeId),
         registered,
         attended,
+        attendanceStatus,
         scored,
         judgeNote,
         ok: missing.length === 0,
@@ -644,11 +654,29 @@ export class Results implements OnInit {
       if (!row.registered) {
         rowItems.push({ id: `MISSING_REGISTRATION:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'registration missing' });
       }
-      if (!row.attended) {
+      if (!row.attended && row.attendanceStatus !== 'ABSENT') {
         rowItems.push({ id: `MISSING_ATTENDANCE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'attendance not recorded' });
+      }
+      if (row.attendanceStatus === 'ABSENT') {
+        rowItems.push({ id: `ABSENT_PARTICIPANT:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'marked ABSENT - excluded from results and certificates' });
       }
       if (!row.scored && !this.isGroupEvent()) {
         rowItems.push({ id: `MISSING_JUDGE_SCORE:${row.participantId}`, participantId: row.participantId, name: row.name, label: 'scoring not completed' });
+      }
+
+      // Attendance-eligibility violation: a score row whose target is not
+      // PRESENT for this exact event can appear in neither the official
+      // results nor the certificates. A FINALIZED one is never
+      // acknowledgeable (the backend refuses acceptance regardless).
+      const participantScore = this.scoringService.getParticipantScore(this.selectedEvent()!.id, row.participantId);
+      if (participantScore && row.attendanceStatus !== 'PRESENT') {
+        rowItems.push({
+          id: `SCORE_WITHOUT_ATTENDANCE:${row.participantId}`,
+          participantId: row.participantId,
+          name: row.name,
+          label: `score exists without PRESENT attendance - excluded from results and certificates (${participantScore.status === 'FINALIZED' ? 'finalized: correct the attendance or reopen and re-finalize' : 'draft'})`,
+          acknowledgeable: participantScore.status !== 'FINALIZED',
+        });
       }
       return rowItems;
     });
@@ -662,6 +690,20 @@ export class Results implements OnInit {
         const members = this.teamService.getMembers(team.id);
         const hasPresentMember = members.some(member =>
           this.attendanceService.getByParticipantEvent(member.participantId, event.id)?.status === 'PRESENT');
+
+        // A team score without a single PRESENT member is an
+        // attendance-eligibility violation: the team result and any
+        // member certificate from it are excluded.
+        const teamScore = this.scoringService.getTeamScore(event.id, team.id);
+        if (teamScore && !hasPresentMember) {
+          items.push({
+            id: `SCORE_WITHOUT_ATTENDANCE:${team.id}`,
+            participantId: team.id,
+            name: team.name,
+            label: `team score exists with no PRESENT member - excluded from results and certificates (${teamScore.status === 'FINALIZED' ? 'finalized: correct the attendance or reopen and re-finalize' : 'draft'})`,
+            acknowledgeable: teamScore.status !== 'FINALIZED',
+          });
+        }
 
         if (!hasPresentMember) continue;
 
@@ -743,7 +785,10 @@ export class Results implements OnInit {
 
   /** Accept stays disabled until every unresolved item is acknowledged. */
   readonly allAcknowledged = computed(() =>
-    this.discrepancies().every(item => this.acknowledged().has(item.id))
+    this.discrepancies().every(item =>
+      // A non-acknowledgeable attendance-eligibility violation blocks
+      // acceptance outright: acknowledgement can never override it.
+      item.acknowledgeable === false ? false : this.acknowledged().has(item.id))
   );
 
   async confirmAccept(): Promise<void> {

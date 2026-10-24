@@ -2,7 +2,7 @@ import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { WinnersEventGroup, WinnersService, WinnerRow } from '../../core/services/certificates/winners.service';
+import { WinnersEventGroup, WinnersService, WinnerMember, WinnerRow } from '../../core/services/certificates/winners.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { TeamService } from '../../core/services/teams/team.service';
@@ -58,6 +58,12 @@ export interface CertificateRow {
   levelLabel: string;
   /** One "Name - Age 9 - Class 5 - Juniors" line per member of a group winner. */
   memberDetails: string[];
+  /**
+   * PRESENT roster members only (backend-filtered): a member without
+   * PRESENT attendance for the event never rides along on the team
+   * result, so no individual certificate is written for them.
+   */
+  members: WinnerMember[];
   shelterHomeName: string;
   position: number;
   score: number;
@@ -195,6 +201,7 @@ export class Certificates implements OnInit {
           className: Certificates.valueOrPlaceholder(detail.className),
           levelLabel: Certificates.levelLabel(detail.level),
           memberDetails: this.memberDetails(winner),
+          members: winner.members || [],
           shelterHomeName: winner.shelterHomeName || '—',
           position: winner.position,
           score: winner.score,
@@ -643,17 +650,21 @@ export class Certificates implements OnInit {
   /** Per-member age / class / level for a group winner - one certificate each. */
   private memberDetails(winner: WinnerRow): string[] {
     if (!winner.teamId) return [];
-    return this.teamService
-      .getMembers(winner.teamId)
-      .map(member => {
-        const participant = this.participantService.getParticipantById(member.participantId);
-        return participant
-          ? `${participant.fullName} - ${Certificates.ageClassLevelText(
-              this.enrichWinner({ ...winner, participantId: participant.id }),
-            )}`
-          : '';
-      })
-      .filter(Boolean);
+    // Backend-filtered roster: only members PRESENT for the event are
+    // listed, so an absent team member never earns an individual
+    // certificate line. Frontend-only hiding would not be enough - the
+    // payload itself carries the eligible members.
+    return (winner.members || []).map(
+      member =>
+        `${member.name} - ${Certificates.ageClassLevelText({
+          ...winner,
+          participantId: member.participantId,
+          name: member.name,
+          age: member.age,
+          className: member.className,
+          level: member.level,
+        })}`,
+    );
   }
 
   /** Trimmed display value; the neutral placeholder when unavailable. */

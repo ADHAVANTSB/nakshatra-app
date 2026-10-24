@@ -121,6 +121,14 @@ export interface WinnerEntry {
   scoreId: string;
   participantId: string;
   teamId: string;
+  /** PRESENT roster members only (a team result never certifies an absent member). */
+  members: Array<{
+    participantId: string;
+    name: string;
+    age: string;
+    className: string;
+    level: string;
+  }>;
 }
 
 export interface WinnersEventGroup {

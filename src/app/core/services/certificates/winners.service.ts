@@ -10,6 +10,14 @@ import { ProgramContextService } from '../program/program-context.service';
  * certificate team writes certificates by hand from this list — nothing on
  * this page generates or mutates certificate records.
  */
+export interface WinnerMember {
+  participantId: string;
+  name: string;
+  age: string;
+  className: string;
+  level: string;
+}
+
 export interface WinnerRow {
   position: number;
   name: string;
@@ -23,6 +31,8 @@ export interface WinnerRow {
   scoreId: string;
   participantId: string;
   teamId: string;
+  /** PRESENT roster members of a team winner (never absent/unmarked members). */
+  members: WinnerMember[];
 }
 
 export interface WinnersEventGroup {

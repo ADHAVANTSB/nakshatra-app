@@ -324,8 +324,14 @@
                       <input
                         type="checkbox"
                         [checked]="acknowledged().has(item.id)"
+                        [disabled]="item.acknowledgeable === false"
                         (change)="toggleAcknowledgement(item.id)" />
-                      <span><strong>{{ item.name }}</strong> — {{ item.label }}</span>
+                      <span>
+                        <strong>{{ item.name }}</strong> - {{ item.label }}
+                        @if (item.acknowledgeable === false) {
+                          <em>(cannot be acknowledged - acceptance is blocked until this is corrected)</em>
+                        }
+                      </span>
                     </label>
                   </li>
                 }
