@@ -69,7 +69,7 @@ export function makeCredential(email: string, name: string): string {
   return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ email, name })}.signature`;
 }
 
-const fourHoursFromNow = (): string => new Date(Date.now() + 4 * 3_600_000).toISOString();
+const twoHoursFromNow = (): string => new Date(Date.now() + 2 * 3_600_000).toISOString();
 
 /**
  * Empty-but-valid data per authenticated action. Journeys override the
@@ -130,7 +130,7 @@ function sessionActionResponse(action: string, user: StubUser): StubResponse | n
         user,
         data: {
           session: {
-            expiresAt: fourHoursFromNow(),
+            expiresAt: twoHoursFromNow(),
             // The stub backend has no real session storage; the scope the app
             // seeded into sessionStorage is authoritative for the journey.
           },
@@ -173,7 +173,7 @@ export class BackendStub {
       success: true,
       access: 'APPROVED',
       user: adminUser,
-      data: { applicationSession: { id: 'e2e-session-1', expiresAt: fourHoursFromNow() } },
+      data: { applicationSession: { id: 'e2e-session-1', expiresAt: twoHoursFromNow() } },
     },
   });
 

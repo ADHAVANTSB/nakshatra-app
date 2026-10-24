@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 
 import { BackendStub, adminUser, certificateTeamUser, makeCredential, type StubUser } from './stubs/backend';
 
-const fourHoursFromNow = (): string => new Date(Date.now() + 4 * 3_600_000).toISOString();
+const twoHoursFromNow = (): string => new Date(Date.now() + 2 * 3_600_000).toISOString();
 
 /**
  * Fixtures for the mocked E2E suite. Every test gets a `backend` stub that
@@ -77,7 +77,7 @@ export async function signIn(
         success: true,
         access: 'APPROVED',
         user,
-        data: { applicationSession: { id: 'e2e-session-1', expiresAt: fourHoursFromNow() } },
+        data: { applicationSession: { id: 'e2e-session-1', expiresAt: twoHoursFromNow() } },
       },
     });
   }

@@ -1413,7 +1413,15 @@ tbody tr:hover {
 
 
   .welcome-icon {
-    display: none;
+    /* Compact tile on phones; the animated smiley scales with
+       font-size like the other breakpoints (never display:none -
+       the welcome mark is part of the hero at every width). */
+    width: 56px;
+    height: 56px;
+
+    border-radius: 16px;
+
+    font-size: 24px;
   }
 
 
