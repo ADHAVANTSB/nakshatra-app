@@ -51,6 +51,25 @@ export class AuthService {
     this.persistSession(session);
   }
 
+  /**
+   * Advances the stored session deadline after authenticated activity.
+   *
+   * The backend slides the session's inactivity window on every authenticated
+   * request; responses that carry the authoritative deadline pass it here,
+   * and other successful calls refresh it with the same sliding window the
+   * server applies. This is a UX estimate only — the backend remains
+   * authoritative and never trusts browser time. A missing session is never
+   * created or extended.
+   */
+  updateSessionExpiry(expiresAt: string): void {
+    this.applicationSessionState.update(session =>
+      session ? { ...session, expiresAt } : session);
+    const session = this.applicationSessionState();
+    if (session) {
+      this.persistSession(session);
+    }
+  }
+
   clearApplicationSession(): void {
     this.applicationSessionState.set(null);
     this.clearPersistedSession();

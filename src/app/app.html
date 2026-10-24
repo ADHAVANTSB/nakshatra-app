@@ -27,6 +27,40 @@
 
   }
 
+  <!-- Session about to expire (inactivity). Non-blocking: dismissible and
+       never covers work. The backend enforces the real expiry; "stay signed
+       in" is one authenticated call that slides the inactivity window. -->
+  @if (sessionExpiry.warningVisible()) {
+
+    <div class="nk-toast nk-toast--warning nk-toast--session" role="status">
+
+      <div class="nk-toast-body">
+        <strong>Your session is about to expire</strong>
+
+        <span>You will be signed out after 2 hours of inactivity.</span>
+
+      </div>
+
+      <button
+        class="nk-session-stay"
+        type="button"
+        [disabled]="renewingSession()"
+        (click)="staySignedIn()">
+        {{ renewingSession() ? 'Continuing…' : 'Stay signed in' }}
+      </button>
+
+      <button
+        class="nk-toast-close"
+        type="button"
+        [attr.aria-label]="'Dismiss session warning'"
+        (click)="dismissSessionWarning()">
+        ×
+      </button>
+
+    </div>
+
+  }
+
 </div>
 
 @if (!isAuthenticated() || isLoginRoute()) {

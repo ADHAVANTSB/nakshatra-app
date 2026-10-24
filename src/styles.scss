@@ -1601,6 +1601,29 @@ tbody tr:hover {
 
 .nk-toast-close:hover { color: #fff; }
 
+/* Explicit "stay signed in" action on the sticky session-expiry toast. */
+.nk-session-stay {
+  flex: 0 0 auto;
+  align-self: center;
+  border: 1px solid rgba(255, 255, 255, .45);
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nk-session-stay:hover:not(:disabled) { background: rgba(255, 255, 255, .22); }
+
+.nk-session-stay:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
 .nk-toast-close:focus-visible {
   outline: 2px solid rgba(255, 255, 255, .7);
   outline-offset: 2px;

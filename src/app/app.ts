@@ -10,6 +10,7 @@ import { AuthService } from './core/services/auth/auth.service';
 import { ApiClientService } from './core/services/api/api-client.service';
 import { NotificationService } from './core/services/notifications/notification.service';
 import { ProgramContextService } from './core/services/program/program-context.service';
+import { SessionExpiryService } from './core/services/session/session-expiry.service';
 
 interface NavItem {
   label: string;
@@ -57,6 +58,9 @@ export class App implements OnInit {
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly currentUser = this.auth.currentUser;
   readonly notifications = this.notificationService.notifications;
+  /** Session-about-to-expiry warning banner (client UX; the backend enforces expiry). */
+  readonly sessionExpiry = inject(SessionExpiryService);
+  readonly renewingSession = signal(false);
   /** Program/zone scope shown in the header chip. */
   private readonly programContext = inject(ProgramContextService);
   readonly programScope = this.programContext.scope;
@@ -162,6 +166,24 @@ export class App implements OnInit {
   canAccess(section: ApplicationSection): boolean { return this.auth.canAccess(section); }
   userInitial(): string { return this.currentUser()?.displayName.charAt(0).toUpperCase() ?? '?'; }
   dismissNotification(id: number): void { this.notificationService.dismiss(id); }
+
+  dismissSessionWarning(): void { this.sessionExpiry.dismissWarning(); }
+
+  /**
+   * "Stay signed in": one authenticated call slides the server's inactivity
+   * window forward; the refreshed deadline flows back through the api client
+   * and the warning clears. A failed call leaves the warning visible (the
+   * backend decides — a definitive session error redirects to sign-in).
+   */
+  async staySignedIn(): Promise<void> {
+    if (this.renewingSession()) return;
+    this.renewingSession.set(true);
+    try {
+      await this.apiClient.getCurrentUser();
+    } finally {
+      this.renewingSession.set(false);
+    }
+  }
 
   /** Header user menu (My Account / Settings / Logout). */
   readonly userMenuOpen = signal(false);

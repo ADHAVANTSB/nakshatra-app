@@ -606,3 +606,68 @@ describe('ApiClientService — response contract alignment', () => {
     });
   });
 });
+
+describe('ApiClientService — sliding session window mirror (UX only)', () => {
+  let client: ApiClientService;
+  let auth: AuthService;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({}).compileComponents();
+
+    client = TestBed.inject(ApiClientService);
+    auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google',
+      email: 'spec@nakshatra.local',
+      displayName: 'Spec User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: SESSION_ID,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('takes the exact deadline from responses that carry data.session.expiresAt', async () => {
+    const authoritative = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+    stubFetchOnce(jsonResponse({
+      success: true,
+      data: { session: { expiresAt: authoritative } },
+    }));
+
+    await client.post('validateSession');
+
+    expect(auth.applicationSession()?.expiresAt).toBe(authoritative);
+  });
+
+  it('mirrors the 2h sliding window after authenticated activity without a session field', async () => {
+    const before = Date.now();
+    stubFetchOnce(jsonResponse({ success: true, data: {} }));
+
+    await client.post('listShelterHomes');
+
+    const expiresAt = auth.applicationSession()?.expiresAt ?? '';
+    const msLeft = Date.parse(expiresAt) - before;
+    // The backend rewards authenticated activity with a fresh 2h inactivity
+    // window (SESSION_INACTIVITY_TIMEOUT_HOURS); ±10s test slack.
+    expect(msLeft).toBeGreaterThan(2 * 60 * 60 * 1000 - 10_000);
+    expect(msLeft).toBeLessThanOrEqual(2 * 60 * 60 * 1000 + 10_000);
+  });
+
+  it('never creates a session from a session-less request', async () => {
+    stubFetchOnce(jsonResponse({ success: true, data: {} }));
+    auth.logout();
+
+    await client.post('listShelterHomes');
+
+    expect(auth.applicationSession()).toBeNull();
+  });
+});

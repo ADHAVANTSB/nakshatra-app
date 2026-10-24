@@ -357,6 +357,82 @@ describe('App', () => {
     expect(sessionStorage.getItem('nakshatra.applicationSession')).toBeNull();
   });
 
+  it('shows the session expiry warning banner with a Stay signed in action that renews', async () => {
+    // Create the shell unauthenticated first: boot session validation must
+    // not fire here (this test drives the warning purely from the session).
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    signIn(ADMIN_USER);
+    // Inside the 5-minute warning lead: the banner shows immediately.
+    const soon = new Date(Date.now() + 60_000).toISOString();
+    TestBed.inject(AuthService).setApplicationSession({ id: 'warning-session', expiresAt: soon });
+
+    // "Stay signed in" is one authenticated call; answer it with the renewed
+    // deadline the backend reports (mirrors getCurrentUser's session field).
+    const renewed = new Date(Date.now() + 7_200_000).toISOString();
+    vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+      fetchCallCount += 1;
+      expect(String(JSON.parse(init.body).action)).toBe('getCurrentUser');
+      return Promise.resolve(new Response(
+        JSON.stringify({
+          success: true,
+          data: { user: ADMIN_USER, session: { expiresAt: renewed } },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    TestBed.flushEffects();
+    fixture.detectChanges();
+
+    const element = host(fixture);
+    const banner = element.querySelector('.nk-toast--session');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Your session is about to expire');
+    expect(TestBed.inject(AuthService).applicationSession()?.expiresAt).toBe(soon);
+
+    const stayButton = banner?.querySelector<HTMLButtonElement>('.nk-session-stay');
+    expect(stayButton?.textContent?.trim()).toBe('Stay signed in');
+    stayButton?.click();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    TestBed.flushEffects();
+    fixture.detectChanges();
+
+    expect(fetchCallCount).toBe(1);
+    expect(TestBed.inject(AuthService).applicationSession()?.expiresAt).toBe(renewed);
+    expect(element.querySelector('.nk-toast--session')).toBeNull();
+  });
+
+  it('dismisses the session expiry warning without renewing the session', async () => {
+    // Same as above: no boot validation fetch must interfere with the count.
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    signIn(ADMIN_USER);
+    const soon = new Date(Date.now() + 60_000).toISOString();
+    TestBed.inject(AuthService).setApplicationSession({ id: 'warning-session', expiresAt: soon });
+
+    TestBed.flushEffects();
+    fixture.detectChanges();
+
+    const element = host(fixture);
+    const closeButton = element.querySelector<HTMLButtonElement>(
+      '.nk-toast--session [aria-label="Dismiss session warning"]');
+    expect(closeButton).not.toBeNull();
+    closeButton?.click();
+    fixture.detectChanges();
+
+    expect(element.querySelector('.nk-toast--session')).toBeNull();
+    // Dismissal is UX-only: the session itself is untouched and nothing called
+    // the backend.
+    expect(TestBed.inject(AuthService).applicationSession()?.expiresAt).toBe(soon);
+    expect(fetchCallCount).toBe(0);
+  });
+
   it('logout also removes the persisted session', async () => {
     signIn(ADMIN_USER);
     const auth = TestBed.inject(AuthService);

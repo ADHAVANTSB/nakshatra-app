@@ -190,6 +190,7 @@ export class ApiClientService {
         if (!response.ok) {
           return this.synthesizedFailure('API_REQUEST_FAILED', `The server reported HTTP ${response.status} for a successful payload.`, { action, httpStatus: response.status });
         }
+        this.refreshSessionExpiry(result);
         return result;
       }
 
@@ -1040,6 +1041,32 @@ export class ApiClientService {
     if (code !== 'SESSION_INVALID' && code !== 'SESSION_REQUIRED' && code !== 'USER_NOT_APPROVED') return;
     this.auth.logout();
     void this.router.navigateByUrl('/login');
+  }
+
+  /**
+   * Mirrors the backend's sliding inactivity window client-side (UX only —
+   * the backend stays authoritative and never trusts browser time). Responses
+   * carrying the effective deadline (`data.session.expiresAt`, e.g.
+   * validateSession / getCurrentUser) are exact; every other successful call
+   * was authenticated activity, which the backend rewards with a fresh
+   * SESSION_INACTIVITY_TIMEOUT_HOURS (2h) window.
+   */
+  private static readonly SESSION_INACTIVITY_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+  private refreshSessionExpiry(result: ApiResponse<unknown>): void {
+    const data: unknown = (result as { data?: unknown }).data;
+    const session: unknown = data && typeof data === 'object'
+      ? (data as { session?: unknown }).session
+      : undefined;
+    const expiresAt: unknown = session && typeof session === 'object'
+      ? (session as { expiresAt?: unknown }).expiresAt
+      : undefined;
+
+    this.auth.updateSessionExpiry(
+      typeof expiresAt === 'string' && !Number.isNaN(Date.parse(expiresAt))
+        ? expiresAt
+        : new Date(Date.now() + ApiClientService.SESSION_INACTIVITY_WINDOW_MS).toISOString()
+    );
   }
 
   private isApiResponse<T>(value: unknown): value is ApiResponse<T> {
