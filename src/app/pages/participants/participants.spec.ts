@@ -303,12 +303,10 @@ describe('Participants � event summary counts', () => {
     // Figures are the backend's own, never recomputed client-side.
     expect(component.eventSummary('participant-1')).toMatchObject({      total: 3, maxTotal: 6,
       arts: 2, literary: 0, cultural: 1, maxCategory: 2,
-      solo: 1, maxSolo: 3,
     });
     expect(component.eventSummary('participant-2')).toMatchObject({
       total: 1, maxTotal: 6,
       arts: 1, literary: 0, cultural: 0, maxCategory: 2,
-      solo: 1, maxSolo: 3,
     });
   });
 
@@ -389,7 +387,6 @@ describe('Participants � event summary counts', () => {
     expect(component.detailEventSummary()).toEqual({
       total: 3, maxTotal: 6,
       arts: 2, literary: 0, cultural: 1, maxCategory: 2,
-      solo: 1, maxSolo: 3,
     });
   });
 });
@@ -728,7 +725,8 @@ describe('Participants � participant table presentation', () => {
     expect(text).toContain('Arts 1/2');
     expect(text).toContain('Literary 0/2');
     expect(text).toContain('Cultural 1/2');
-    expect(text).toContain('Solo 1/3');
+    // The solo participation cap was removed: no Solo x/3 counter is shown.
+    expect(text).not.toContain('Solo ');
   });
 
   it('keeps long event lists compact until View all is used', async () => {
@@ -737,6 +735,10 @@ describe('Participants � participant table presentation', () => {
     const host = fixture.nativeElement as HTMLElement;
     const cell = host.querySelector('tbody .cell-events') as HTMLElement;
     expect(cell).toBeTruthy();
+
+    // 4 solo registrations (soloCount: 4) render without any solo counter:
+    // the participation cap is gone and only 6-total / 2-per-category show.
+    expect(cell.textContent).not.toContain('Solo');
 
     // Compact: not every name is dumped into the row.
     expect(cell.textContent).toContain('View all');

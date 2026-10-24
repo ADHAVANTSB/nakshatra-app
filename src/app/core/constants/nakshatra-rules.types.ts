@@ -3,5 +3,4 @@ export interface EventRuleConfig {
   maxCaretakersPerHome: number;
   maxTotalEventsPerParticipant: number;
   maxEventsPerCategory: number;
-  maxIndividualEvents: number;
 }

@@ -59,8 +59,6 @@ export interface ParticipantEventSummary {
   literary: number;
   cultural: number;
   maxCategory: number;
-  solo: number;
-  maxSolo: number;
   /** The backend summary entry the figures came from (real event names). */
   entry?: ParticipantEventSummaryEntry;
 }
@@ -1028,8 +1026,6 @@ export class Participants implements OnInit {
       literary: entry.literaryCount,
       cultural: entry.culturalCount,
       maxCategory: NAKSHATRA_EVENT_RULES.maxEventsPerCategory,
-      solo: entry.soloCount,
-      maxSolo: NAKSHATRA_EVENT_RULES.maxIndividualEvents,
       entry,
     };
   }
@@ -1156,7 +1152,6 @@ export class Participants implements OnInit {
     const registered = rows.filter(row => row.registrationStatus === 'REGISTERED');
     const categoryCount = (category: EventCategory) =>
       registered.filter(row => row.category === category).length;
-    const soloCount = registered.filter(row => row.mode === 'SOLO').length;
 
     return {
       total: registered.length,
@@ -1165,8 +1160,6 @@ export class Participants implements OnInit {
       literary: categoryCount('LITERARY'),
       cultural: categoryCount('CULTURAL'),
       maxCategory: NAKSHATRA_EVENT_RULES.maxEventsPerCategory,
-      solo: soloCount,
-      maxSolo: NAKSHATRA_EVENT_RULES.maxIndividualEvents,
     };
   }
 

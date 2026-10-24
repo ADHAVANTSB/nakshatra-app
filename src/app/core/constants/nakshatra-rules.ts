@@ -4,8 +4,7 @@ export const NAKSHATRA_EVENT_RULES: EventRuleConfig = {
   maxParticipantsPerHome: 35,
   maxCaretakersPerHome: 2,
   maxTotalEventsPerParticipant: 6,
-  maxEventsPerCategory: 2,
-  maxIndividualEvents: 3
+  maxEventsPerCategory: 2
 };
 
 export const PARTICIPANT_LEVEL_LABELS = {

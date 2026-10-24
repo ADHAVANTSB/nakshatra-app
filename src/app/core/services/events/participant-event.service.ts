@@ -264,15 +264,6 @@ export class ParticipantEventService {
       ).length;
   }
 
-  getParticipantIndividualCount(participantId: string): number {
-    return this.getParticipantRegistrations(participantId)
-      .filter(item => item.registrationStatus === 'REGISTERED')
-      .filter(registration =>
-        (this.eventService.getById(registration.eventId)?.mode
-          ?? registration.mode) === 'SOLO'
-      ).length;
-  }
-
   // ==========================================
   // EVENT-DAY REGISTRATION (check-in)
   // ==========================================
@@ -536,14 +527,6 @@ export class ParticipantEventService {
     if (categoryCount >= NAKSHATRA_EVENT_RULES.maxEventsPerCategory) {
       errors.push(
         `Maximum ${NAKSHATRA_EVENT_RULES.maxEventsPerCategory} events in the ${this.categoryLabel(event.category)} category has been reached.`
-      );
-    }
-
-    const individualCount = this.getParticipantIndividualCount(participantId);
-
-    if (event.mode === 'SOLO' && individualCount >= NAKSHATRA_EVENT_RULES.maxIndividualEvents) {
-      errors.push(
-        `Maximum ${NAKSHATRA_EVENT_RULES.maxIndividualEvents} individual events per participant has been reached.`
       );
     }
 

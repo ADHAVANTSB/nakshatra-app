@@ -8,7 +8,7 @@ import { EventService } from './event.service';
 import { ParticipantEventService } from './participant-event.service';
 
 /**
- * Count-helper tests: category and solo counts must fall back to the
+ * Count-helper tests: category counts must fall back to the
  * registration row's own denormalized `category`/`mode` when the event is not
  * in the cached master (e.g. a row whose event the catalogue no longer
  * returns). Backend rows are always the data source; nothing is inferred.
@@ -80,7 +80,6 @@ describe('ParticipantEventService — count helpers', () => {
 
     expect(service.getParticipantEventCount('participant-1')).toBe(1);
     expect(service.getParticipantCategoryCount('participant-1', 'CULTURAL')).toBe(1);
-    expect(service.getParticipantIndividualCount('participant-1')).toBe(1);
   });
 });
 
