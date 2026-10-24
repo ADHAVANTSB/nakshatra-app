@@ -69,21 +69,23 @@ describe('SelectZone', () => {
     )));
   }
 
-  it('renders one card per configured zone', () => {
+  it('renders only the event card — Zone 1 and Zone 2 stay hidden', () => {
     context.selectProgram('ARTS');
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
     const cards = Array.from(element.querySelectorAll('.nk-zone-card'));
 
-    expect(cards.length).toBe(ZONES.length);
+    // Zone 1 / Zone 2 cards were removed from this page (organiser decision);
+    // their scopes remain valid, they are just not selectable here.
+    expect(cards.length).toBe(ZONES.filter(zone => !zone.hidden).length);
     const cardText = cards.map(card => card.textContent ?? '').join('\n');
-    for (const zone of ZONES) {
-      expect(cardText).toContain(zone.label);
-    }
+    expect(cardText).toContain('Nakshatra Arts 25OCT');
+    expect(cardText).not.toContain('Zone 1');
+    expect(cardText).not.toContain('Zone 2');
   });
 
-  it('shows the confirmed date for Zone 1 and the to-be-confirmed note for the Test zone', () => {
+  it('shows no date and none of the removed copy on the event card', () => {
     context.selectProgram('ARTS');
     fixture.detectChanges();
 
@@ -92,11 +94,15 @@ describe('SelectZone', () => {
       .map(card => card.textContent ?? '')
       .join('\n');
 
-    expect(cardText).toContain('2026');
-    expect(cardText).toContain('Test date to be confirmed');
+    // Zone 1 / Zone 2 (the dated cards) are hidden, and the event card has
+    // no date — nothing is invented and the removed copy stays gone.
+    expect(cardText).not.toContain('2026');
+    expect(cardText).not.toContain('to be confirmed');
+    expect(cardText).not.toContain('Rehearsal scope');
+    expect(element.querySelector('.nk-zone-date')).toBeNull();
   });
 
-  it('marks the Test zone environment distinctly from live zones', () => {
+  it('renders the event badge on the only offered card', () => {
     context.selectProgram('ARTS');
     fixture.detectChanges();
 
@@ -104,8 +110,8 @@ describe('SelectZone', () => {
     const badges = Array.from(element.querySelectorAll('.nk-zone-card .nk-zone-environment'))
       .map(badge => badge.textContent?.trim() ?? '');
 
-    expect(badges).toContain('Live');
-    expect(badges).toContain('Test');
+    // The hidden live zones leave no 'Live' badge on this page any more.
+    expect(badges).toEqual(['Nakshatra Arts 25OCT']);
   });
 
   it('persists the scope on the server session and enters the dashboard', async () => {
@@ -113,12 +119,12 @@ describe('SelectZone', () => {
     const calls: Array<{ action: string; payload: Record<string, unknown> }> = [];
     stubScopeEndpoint({
       success: true,
-      data: { scope: { programId: 'ARTS', environmentId: 'ZONE_1' } },
+      data: { scope: { programId: 'ARTS', environmentId: 'TEST' } },
     });
     vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
       calls.push({ action: JSON.parse(init.body).action, payload: JSON.parse(init.body).payload });
       return Promise.resolve(new Response(
-        JSON.stringify({ success: true, data: { scope: { programId: 'ARTS', environmentId: 'ZONE_1' } } }),
+        JSON.stringify({ success: true, data: { scope: { programId: 'ARTS', environmentId: 'TEST' } } }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ));
     });
@@ -128,16 +134,16 @@ describe('SelectZone', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     const zoneCard = Array.from(element.querySelectorAll<HTMLButtonElement>('.nk-zone-card'))
-      .find(card => card.textContent?.includes('Zone 1'));
+      .find(card => card.textContent?.includes('Nakshatra Arts 25OCT'));
 
     zoneCard!.click();
     await fixture.whenStable();
     await new Promise(resolve => setTimeout(resolve, 0));
 
     expect(calls.some(c => c.action === 'selectScope' &&
-      c.payload['programId'] === 'ARTS' && c.payload['environmentId'] === 'ZONE_1')).toBe(true);
+      c.payload['programId'] === 'ARTS' && c.payload['environmentId'] === 'TEST')).toBe(true);
     expect(context.hasCompleteScope()).toBe(true);
-    expect(context.zone()?.id).toBe('ZONE_1');
+    expect(context.zone()?.id).toBe('TEST');
     expect(TestBed.inject(Router).url).toBe('/dashboard');
   });
 
@@ -153,7 +159,7 @@ describe('SelectZone', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     const zoneCard = Array.from(element.querySelectorAll<HTMLButtonElement>('.nk-zone-card'))
-      .find(card => card.textContent?.includes('Zone 1'));
+      .find(card => card.textContent?.includes('Nakshatra Arts 25OCT'));
 
     zoneCard!.click();
     await fixture.whenStable();

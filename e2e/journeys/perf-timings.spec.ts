@@ -92,7 +92,7 @@ test.describe('perf timings (SIMULATED - mocked backend)', () => {
     expect(secondVisit).toBeLessThan(15);
   });
 
-  test('zone switch round trip (scope chip -> program -> zone -> dashboard)', async ({ page, backend }) => {
+  test('scope switch round trip (scope chip -> program -> zone -> dashboard)', async ({ page, backend }) => {
     const pageErrors = monitorPageErrors(page);
     await signIn(page, { backend, scope: { program: 'ARTS', zone: 'TEST' } });
 
@@ -101,7 +101,7 @@ test.describe('perf timings (SIMULATED - mocked backend)', () => {
       await expect(page).toHaveURL(/#\/select-program/);
       await page.getByRole('button', { name: /Sports meets and tournaments/ }).click();
       await expect(page).toHaveURL(/#\/select-zone/);
-      await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+      await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
       await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     });
 

@@ -21,12 +21,18 @@ export interface ProgramDefinition {
 export interface ZoneDefinition {
   id: ZoneId;
   label: string;
-  description: string;
+  /** Optional zone blurb; omitted for zones that show no extra copy. */
+  description?: string;
   environment: ScopeEnvironment;
+  /**
+   * When true the zone card is not offered on the selection page. The scope
+   * itself stays valid for seeded sessions, deep links and the backend.
+   */
+  hidden?: boolean;
   /**
    * Event date for the zone as `YYYY-MM-DD`, or undefined while the committee
    * has not confirmed it. Configured in program-context.config.ts — never
-   * invented in the UI.
+   * invented in the UI. When undefined the UI shows no date line at all.
    */
   date?: string;
   /** Shown instead of a date when the date is not confirmed yet. */

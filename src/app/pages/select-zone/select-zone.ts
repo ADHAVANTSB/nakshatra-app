@@ -34,7 +34,8 @@ export class SelectZone {
   private readonly apiClient = inject(ApiClientService);
   readonly context = inject(ProgramContextService);
 
-  readonly zones = ZONES;
+  /** Hidden zones (Zone 1 / Zone 2) are not offered here — see program-context.config.ts. */
+  readonly zones = ZONES.filter(zone => !zone.hidden);
   readonly scopeNote = SCOPE_NOTE;
 
   readonly program = this.context.program;

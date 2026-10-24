@@ -34,16 +34,18 @@
             class="scope-card-environment"
             [class.scope-card-environment--test]="scope.zone.environment === 'TEST'"
           >
-            {{ scope.zone.environment === 'TEST' ? 'Test environment' : 'Live' }}
+            {{ scope.zone.environment === 'TEST' ? 'Nakshatra Arts 25OCT environment' : 'Live' }}
           </span>
         </div>
-        <p class="scope-card-date">
-          @if (scope.zone.date) {
-            Event date: {{ scope.zone.date | date: 'EEEE, d MMMM y' }}
-          } @else {
-            {{ scope.zone.dateNote }}
-          }
-        </p>
+        @if (scope.zone.date || scope.zone.dateNote) {
+          <p class="scope-card-date">
+            @if (scope.zone.date) {
+              Event date: {{ scope.zone.date | date: 'EEEE, d MMMM y' }}
+            } @else {
+              {{ scope.zone.dateNote }}
+            }
+          </p>
+        }
         <p class="scope-card-note">
           Scope currently filters this interface only; the backend does not yet
           enforce programme/zone isolation.

@@ -8,8 +8,8 @@ import {
  *
  * CONFIGURABLE VALUES: zone dates live here and nowhere else. ZONE_1 and
  * ZONE_2 dates were supplied by the programme team (2026-10-25 / 2026-11-01);
- * the Test zone date stays undefined until it is confirmed, and the UI shows a
- * "to be confirmed" note instead of an invented date.
+ * the event (TEST) zone carries no date and no blurb — the UI shows neither
+ * instead of inventing one.
  */
 
 export const PROGRAMS: readonly ProgramDefinition[] = [
@@ -28,12 +28,16 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
 ] as const;
 
 export const ZONES: readonly ZoneDefinition[] = [
+  // Hidden from the zone-selection page by organiser decision (2026-10-25):
+  // only the event card is offered. The scopes stay valid for seeded sessions,
+  // deep links and the backend — nothing else changes.
   {
     id: 'ZONE_1',
     label: 'Zone 1',
     description: 'Programme zone 1',
     environment: 'LIVE',
     date: '2026-10-25',
+    hidden: true,
   },
   {
     id: 'ZONE_2',
@@ -41,13 +45,12 @@ export const ZONES: readonly ZoneDefinition[] = [
     description: 'Programme zone 2',
     environment: 'LIVE',
     date: '2026-11-01',
+    hidden: true,
   },
   {
     id: 'TEST',
-    label: 'Test',
-    description: 'Rehearsal scope intended to use isolated test data',
+    label: 'Nakshatra Arts 25OCT',
     environment: 'TEST',
-    dateNote: 'Test date to be confirmed',
   },
 ] as const;
 

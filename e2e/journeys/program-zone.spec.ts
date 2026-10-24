@@ -4,10 +4,11 @@ import { certificateTeamUser, expect, monitorPageErrors, signIn, test, type Scop
  * Programme & zone scope journeys — MOCKED.
  *
  * After sign-in every user must pass through programme selection (Arts /
- * Sports) and zone selection (Zone 1 / Zone 2 / Test) before any scoped page
- * opens. The scope is kept in sessionStorage, survives refreshes, cannot be
- * bypassed by deep links, and is persisted on the server-side session via the
- * selectScope action (stubbed here).
+ * Sports) and zone selection (only the event zone card is offered; Zone 1 /
+ * Zone 2 are hidden by organiser decision but stay valid scopes) before any
+ * scoped page opens. The scope is kept in sessionStorage, survives refreshes,
+ * cannot be bypassed by deep links, and is persisted on the server-side
+ * session via the selectScope action (stubbed here).
  *
  * The selection screens render in a minimal shell (no sidebar / hamburger /
  * navigation controls). Operational pages keep the full shell. Zone data
@@ -18,7 +19,7 @@ import { certificateTeamUser, expect, monitorPageErrors, signIn, test, type Scop
 const ARTS_ZONE_1: ScopeSeed = { program: 'ARTS', zone: 'ZONE_1' };
 
 test.describe('programme and zone selection flow', () => {
-  test('sign-in without a scope lands on programme selection, then Arts → Zone 1 reaches the dashboard', async ({ page }) => {
+  test('sign-in without a scope lands on programme selection, then Arts → the event zone reaches the dashboard', async ({ page }) => {
     const pageErrors = monitorPageErrors(page);
 
     // Real selection flow: no scope is pre-seeded.
@@ -31,27 +32,28 @@ test.describe('programme and zone selection flow', () => {
     await expect(page.getByRole('heading', { name: 'Choose your zone' })).toBeVisible();
     // Zone page shows the chosen programme.
     await expect(page.getByText(/You are working in/)).toContainText('Arts');
+    // Zone 1 / Zone 2 cards were removed from this page (organiser decision).
+    await expect(page.getByRole('button', { name: /Zone 1/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Zone 2/ })).toHaveCount(0);
 
-    await page.getByRole('button', { name: /Zone 1 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page).toHaveURL(/#\/dashboard/);
 
     // Dashboard shows the scope prominently.
     const scopeCard = page.getByRole('region', { name: 'Current programme and zone' });
     await expect(scopeCard).toBeVisible();
     await expect(scopeCard).toContainText('Arts');
-    await expect(scopeCard).toContainText('Zone 1');
-    await expect(scopeCard).toContainText('Event date: Sunday, 25 October 2026');
+    await expect(scopeCard).toContainText('Nakshatra Arts 25OCT');
     // Header chip mirrors the scope app-wide.
     await expect(page.locator('.nk-scope-chip')).toContainText('Arts');
-    await expect(page.locator('.nk-scope-chip')).toContainText('Zone 1');
+    await expect(page.locator('.nk-scope-chip')).toContainText('Nakshatra Arts 25OCT');
     expect(pageErrors).toEqual([]);
   });
 
-  test('Arts → Zone 2 completes the scope with the Zone 2 date', async ({ page }) => {
-    await signIn(page, { scope: false });
-
-    await page.getByRole('button', { name: /Arts, Literary and Cultural events/ }).click();
-    await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+  test('a seeded Zone 2 scope renders the Zone 2 date on the dashboard', async ({ page }) => {
+    // Zone 2 is a valid scope but its card is hidden from the selection page,
+    // so the scope is seeded the way deep links and sessions restore it.
+    await signIn(page, { scope: { program: 'ARTS', zone: 'ZONE_2' } });
 
     await expect(page).toHaveURL(/#\/dashboard/);
     const scopeCard = page.getByRole('region', { name: 'Current programme and zone' });
@@ -66,30 +68,31 @@ test.describe('programme and zone selection flow', () => {
     await expect(page).toHaveURL(/#\/select-zone/);
     await expect(page.getByText(/You are working in/)).toContainText('Sports');
 
-    await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page).toHaveURL(/#\/dashboard/);
 
     const scopeCard = page.getByRole('region', { name: 'Current programme and zone' });
     await expect(scopeCard).toContainText('Sports');
-    await expect(scopeCard).toContainText('Zone 2');
+    await expect(scopeCard).toContainText('Nakshatra Arts 25OCT');
     await expect(page.locator('.nk-scope-chip')).toContainText('Sports');
   });
 
-  test('the Test zone is marked as a test environment without an invented date', async ({ page }) => {
+  test('the event zone shows no invented date and no test-data copy', async ({ page }) => {
     await signIn(page, { scope: false });
 
     await page.getByRole('button', { name: /Arts, Literary and Cultural events/ }).click();
 
-    const testCard = page.getByRole('button', { name: /Test date to be confirmed/ });
-    await expect(testCard).toBeVisible();
-    await expect(testCard).toContainText('Test date to be confirmed');
+    const eventCard = page.getByRole('button', { name: /Nakshatra Arts 25OCT/ });
+    await expect(eventCard).toBeVisible();
+    await expect(eventCard).not.toContainText('to be confirmed');
+    await expect(eventCard).not.toContainText('Rehearsal');
 
-    await testCard.click();
+    await eventCard.click();
     await expect(page).toHaveURL(/#\/dashboard/);
 
     const scopeCard = page.getByRole('region', { name: 'Current programme and zone' });
-    await expect(scopeCard).toContainText('Test');
-    await expect(scopeCard).toContainText('Test environment');
+    await expect(scopeCard).toContainText('Nakshatra Arts 25OCT');
+    await expect(scopeCard).toContainText('Nakshatra Arts 25OCT environment');
   });
 
   test('selection screens render without the sidebar, hamburger or navigation controls', async ({ page }) => {
@@ -153,7 +156,7 @@ test.describe('programme and zone selection flow', () => {
 
     await expect(page).toHaveURL(/#\/participants/);
     await expect(page.getByRole('heading', { name: 'Participants', exact: true })).toBeVisible();
-    await expect(page.locator('.nk-scope-chip')).toContainText('Test');
+    await expect(page.locator('.nk-scope-chip')).toContainText('Nakshatra Arts 25OCT');
   });
 
   test('switching the programme clears the zone and forces a fresh choice', async ({ page }) => {
@@ -166,15 +169,18 @@ test.describe('programme and zone selection flow', () => {
     await page.getByRole('button', { name: /Sports meets and tournaments/ }).click();
     // The zone step is mandatory again — no zone was silently reused.
     await expect(page).toHaveURL(/#\/select-zone/);
-    await page.getByRole('button', { name: /Zone 1 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
 
     await expect(page).toHaveURL(/#\/dashboard/);
     const scopeCard = page.getByRole('region', { name: 'Current programme and zone' });
     await expect(scopeCard).toContainText('Sports');
-    await expect(scopeCard).toContainText('Zone 1');
-    // Header chip reflects the new scope, not the stale one.
+    await expect(scopeCard).toContainText('Nakshatra Arts 25OCT');
+    // Header chip reflects the new scope, not the stale one. The programme
+    // segment is checked on its own: the zone label "Nakshatra Arts 25OCT"
+    // contains the substring "Arts", so a whole-chip negative assertion
+    // cannot distinguish programme from zone.
     await expect(page.locator('.nk-scope-chip')).toContainText('Sports');
-    await expect(page.locator('.nk-scope-chip')).not.toContainText('Arts');
+    await expect(page.locator('.nk-scope-chip-program')).toHaveText('Sports');
   });
 
   test('switching scope from the header chip works anywhere in the app', async ({ page }) => {
@@ -184,10 +190,10 @@ test.describe('programme and zone selection flow', () => {
     await expect(page).toHaveURL(/#\/select-program/);
 
     await page.getByRole('button', { name: /Arts, Literary and Cultural events/ }).click();
-    await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
 
     await expect(page).toHaveURL(/#\/dashboard/);
-    await expect(page.locator('.nk-scope-chip')).toContainText('Zone 2');
+    await expect(page.locator('.nk-scope-chip')).toContainText('Nakshatra Arts 25OCT');
   });
 
   test('a non-admin with a complete scope still cannot reach the settings section', async ({ page, backend }) => {
@@ -224,7 +230,7 @@ test.describe('programme and zone selection — reference screenshots (desktop o
     await expect(page.getByRole('heading', { name: 'Choose your zone' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'zone-selection.png'), fullPage: true });
 
-    await page.getByRole('button', { name: /Zone 1 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page.getByRole('region', { name: 'Current programme and zone' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'scoped-dashboard.png'), fullPage: true });
   });

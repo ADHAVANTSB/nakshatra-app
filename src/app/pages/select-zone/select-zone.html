@@ -35,22 +35,26 @@
               class="nk-zone-environment"
               [class.nk-zone-environment-test]="zone.environment === 'TEST'"
             >
-              {{ zone.environment === 'TEST' ? 'Test' : 'Live' }}
+              {{ zone.environment === 'TEST' ? 'Nakshatra Arts 25OCT' : 'Live' }}
             </span>
           </span>
-          <span class="nk-zone-description">{{ zone.description }}</span>
-          <span class="nk-zone-date">
-            @if (zone.date) {
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true"
-                stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
-                <path d="M3.5 9.5h17M8 3v4M16 3v4" />
-              </svg>
-              <span>{{ zone.date | date: 'EEE, d MMM y' }}</span>
-            } @else {
-              <span>{{ zone.dateNote }}</span>
-            }
-          </span>
+          @if (zone.description) {
+            <span class="nk-zone-description">{{ zone.description }}</span>
+          }
+          @if (zone.date || zone.dateNote) {
+            <span class="nk-zone-date">
+              @if (zone.date) {
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+                  <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+                </svg>
+                <span>{{ zone.date | date: 'EEE, d MMM y' }}</span>
+              } @else {
+                <span>{{ zone.dateNote }}</span>
+              }
+            </span>
+          }
           <span class="nk-zone-cta" aria-hidden="true">Enter {{ zone.label }} →</span>
         </button>
       }

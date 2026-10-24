@@ -84,7 +84,7 @@ test.describe('zone-switch isolation', () => {
     await expect(page).toHaveURL(/#\/select-program/);
     await page.getByRole('button', { name: /Sports meets and tournaments/ }).click();
     await expect(page).toHaveURL(/#\/select-zone/);
-    await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page).toHaveURL(/#\/dashboard/);
 
     // Nothing from the previous zone survives the switch.
@@ -128,7 +128,7 @@ test.describe('zone-switch isolation', () => {
     // Rapid zone switching while the previous scope's read is still open.
     await page.locator('.nk-scope-chip').click();
     await page.getByRole('button', { name: /Sports meets and tournaments/ }).click();
-    await page.getByRole('button', { name: /Zone 2 Live/ }).click();
+    await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page).toHaveURL(/#\/dashboard/);
 
     releaseFirst();

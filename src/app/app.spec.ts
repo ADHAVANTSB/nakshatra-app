@@ -566,7 +566,7 @@ describe('App programme/zone scope chip', () => {
 
     const chip = (fixture.nativeElement as HTMLElement).querySelector('.nk-scope-chip');
     expect(chip?.textContent).toContain('Sports');
-    expect(chip?.textContent).toContain('Test');
+    expect(chip?.textContent).toContain('Nakshatra Arts 25OCT');
   });
 
   it('renders no scope chip before a programme and zone are chosen', async () => {
@@ -847,7 +847,7 @@ describe('App scope selection layout', () => {
     await fixture.whenStable();
 
     const element = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('.nk-scope-chip')?.textContent).toContain('Test');
+    expect(element.querySelector('.nk-scope-chip')?.textContent).toContain('Nakshatra Arts 25OCT');
     expect(element.querySelector('aside.nk-sidebar')).not.toBeNull();
   });
 });
