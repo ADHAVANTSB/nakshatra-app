@@ -151,8 +151,7 @@
       <table data-testid="certificate-table">
         <thead>
           <tr>
-            <th>Event</th>
-            <th>Winner</th>
+            <th>Winner / participant</th>
             <th>Age</th>
             <th>Class</th>
             <th>Category / Level</th>
@@ -164,76 +163,101 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of filteredRows(); track row.scoreId) {
-            <tr>
-              <td data-l="Event">
-                <strong>{{ row.eventName }}</strong>
-                <small> · {{ row.eventCode }} · {{ row.category }}</small>
-              </td>
-              <td data-l="Winner">
-                <strong>{{ row.winnerName }}</strong>
-                <small class="winner-score">{{ formatScore(row.score) }}</small>
-                @for (line of row.memberDetails; track line) {
-                  <small class="member-detail">{{ line }}</small>
-                }
-              </td>
-              <td class="col-value" data-l="Age">{{ row.age }}</td>
-              <td class="col-value" data-l="Class">{{ row.className }}</td>
-              <td class="col-value" data-l="Category / Level">{{ row.levelLabel }}</td>
-              <td data-l="Shelter home">{{ row.shelterHomeName }}</td>
-              <td data-l="Position">
-                <span class="medal"
-                  [class.gold]="row.position === 1"
-                  [class.silver]="row.position === 2"
-                  [class.bronze]="row.position === 3">
-                  {{ row.position === 1 ? '🥇 1st' : row.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
-                </span>
-              </td>
-              @for (state of states; track state) {
-                <td class="distribution-cell" [attr.data-l]="awardLabel(state)">
-                  <label class="distribution-toggle">
-                    <input
-                      type="checkbox"
-                      data-testid="distribution-toggle"
-                      [checked]="stateFor(row, state).checked"
-                      [disabled]="!canToggle(row, state) || stateFor(row, state).saving"
-                      [attr.aria-describedby]="'distribution-state-' + row.scoreId + '-' + state"
-                      (change)="toggleDistribution(row, state, $any($event.target))" />
-                    <span class="distribution-toggle-label">{{ awardLabel(state) }}</span>
-                  </label>
-                  @if (state === 'CERTIFICATE' && !stateFor(row, 'CERTIFICATE_WRITTEN').checked) {
-                    <span class="distribution-hint">Written first</span>
-                  }
-                  <span
-                    class="distribution-state"
-                    [class.pending]="stateFor(row, state).saving"
-                    [id]="'distribution-state-' + row.scoreId + '-' + state">
-                    {{ distributionLabel(row, state) }}
+          @for (group of eventGroups(); track group.eventId) {
+            <tr class="event-group-header" data-testid="event-group-header">
+              <td colspan="9">
+                <button
+                  type="button"
+                  class="event-group-toggle"
+                  [attr.aria-expanded]="!isCollapsed(group.eventId)"
+                  [attr.aria-label]="'Collapse ' + group.eventName"
+                  (click)="toggleEventGroup(group.eventId)">
+                  <span class="event-group-icon" aria-hidden="true">{{ group.icon }}</span>
+                  <strong class="event-group-name">{{ group.eventName }}</strong>
+                  <span class="event-group-meta">
+                    · {{ group.eventCode }} · {{ group.category }}
+                    @if (group.levelLabel) {
+                      · {{ group.levelLabel }}
+                    }
+                    ({{ group.modeLabel }})
                   </span>
-                  @if (stateFor(row, state).saving) {
-                    <span class="distribution-saving" role="status">Saving…</span>
-                  }
-                  @if (stateFor(row, state).error) {
-                    <span class="distribution-error" role="alert">
-                      {{ stateFor(row, state).error }}
-                      @if (canRetry(row, state)) {
-                        <button
-                          type="button"
-                          class="distribution-retry"
-                          data-testid="distribution-retry"
-                          (click)="retryDistribution(row, state)">
-                          Retry
-                        </button>
-                      }
-                    </span>
-                  }
-                </td>
-              }
-              <td data-l="Last status update">{{ row.lastUpdate }}</td>
+                  <span class="event-group-chevron" aria-hidden="true">
+                    {{ isCollapsed(group.eventId) ? '▸' : '▾' }}
+                  </span>
+                </button>
+              </td>
             </tr>
+            @if (!isCollapsed(group.eventId)) {
+              @for (display of group.rows; track display.key) {
+                <tr class="certificate-row">
+                  <td data-l="Winner">
+                    <strong>{{ display.name }}</strong>
+                    @if (display.scoreText) {
+                      <small class="winner-score">{{ display.scoreText }}</small>
+                    }
+                    @for (line of display.memberDetails; track line) {
+                      <small class="member-detail">{{ line }}</small>
+                    }
+                  </td>
+                  <td class="col-value" data-l="Age">{{ display.age }}</td>
+                  <td class="col-value" data-l="Class">{{ display.className }}</td>
+                  <td class="col-value" data-l="Category / Level">{{ display.levelLabel }}</td>
+                  <td data-l="Shelter home">{{ display.winner.shelterHomeName }}</td>
+                  <td data-l="Position">
+                    <span class="medal"
+                      [class.gold]="display.winner.position === 1"
+                      [class.silver]="display.winner.position === 2"
+                      [class.bronze]="display.winner.position === 3">
+                      {{ display.winner.position === 1 ? '🥇 1st' : display.winner.position === 2 ? '🥈 2nd' : '🥉 3rd' }}
+                    </span>
+                  </td>
+                  @for (state of states; track state) {
+                    <td class="distribution-cell" [attr.data-l]="awardLabel(state)">
+                      <label class="distribution-toggle">
+                        <input
+                          type="checkbox"
+                          data-testid="distribution-toggle"
+                          [checked]="stateFor(display.winner, state).checked"
+                          [disabled]="!canToggle(display.winner, state) || stateFor(display.winner, state).saving"
+                          [attr.aria-describedby]="'distribution-state-' + display.key + '-' + state"
+                          (change)="toggleDistribution(display.winner, state, $any($event.target))" />
+                        <span class="distribution-toggle-label">{{ awardLabel(state) }}</span>
+                      </label>
+                      @if (state === 'CERTIFICATE' && !stateFor(display.winner, 'CERTIFICATE_WRITTEN').checked) {
+                        <span class="distribution-hint">Written first</span>
+                      }
+                      <span
+                        class="distribution-state"
+                        [class.pending]="stateFor(display.winner, state).saving"
+                        [id]="'distribution-state-' + display.key + '-' + state">
+                        {{ distributionLabel(display.winner, state) }}
+                      </span>
+                      @if (stateFor(display.winner, state).saving) {
+                        <span class="distribution-saving" role="status">Saving…</span>
+                      }
+                      @if (stateFor(display.winner, state).error) {
+                        <span class="distribution-error" role="alert">
+                          {{ stateFor(display.winner, state).error }}
+                          @if (canRetry(display.winner, state)) {
+                            <button
+                              type="button"
+                              class="distribution-retry"
+                              data-testid="distribution-retry"
+                              (click)="retryDistribution(display.winner, state)">
+                              Retry
+                            </button>
+                          }
+                        </span>
+                      }
+                    </td>
+                  }
+                  <td data-l="Last status update">{{ display.winner.lastUpdate }}</td>
+                </tr>
+              }
+            }
           } @empty {
             <tr class="empty-row">
-              <td colspan="10">
+              <td colspan="9">
                 <span class="certificates-empty" role="status">
                   <strong>No rows in this view.</strong>
                   <span>Adjust the filters or pick another view.</span>

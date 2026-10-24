@@ -181,7 +181,8 @@ function installTracking(
   return { store, saves };
 }
 
-const firstRow = (page: import('@playwright/test').Page) => page.locator('tbody tr').first();
+const firstRow = (page: import('@playwright/test').Page) =>
+  page.locator('tbody tr.certificate-row').first();
 const stateSpans = (page: import('@playwright/test').Page) =>
   firstRow(page).locator('.distribution-state');
 

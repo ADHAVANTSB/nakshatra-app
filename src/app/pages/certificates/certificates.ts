@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } 
 import { FormsModule } from '@angular/forms';
 
 import { WinnersEventGroup, WinnersService, WinnerMember, WinnerRow } from '../../core/services/certificates/winners.service';
+import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { TeamService } from '../../core/services/teams/team.service';
@@ -46,9 +47,15 @@ type CertificateView = 'ALL' | 'WRITTEN_DISTRIBUTED' | 'PENDING_DISTRIBUTION' | 
 /** One flattened winner row joined with its certificate-workflow state. */
 export interface CertificateRow {
   scoreId: string;
+  /** Stable event identity - the grouping key; never the display name. */
+  eventId: string;
   eventName: string;
   eventCode: string;
   category: string;
+  /** Event mode from the winners payload ('SOLO' / 'GROUP'). */
+  mode: string;
+  /** Non-empty for a group (team) winner entry. */
+  teamId: string;
   winnerName: string;
   /** Participant age as displayed ("9"); the neutral placeholder when unavailable. */
   age: string;
@@ -73,6 +80,41 @@ export interface CertificateRow {
   distributedLabel: string;
   /** Timestamp + user of the most recent confirmed status change. */
   lastUpdate: string;
+}
+
+/**
+ * One rendered table row = one participant. A group winner expands to one
+ * row per PRESENT member (never a combined names/ages/classes cell); a
+ * solo winner is its own row. Certificate states live on the winner entry
+ * (one record per score), so members of a team share their team's states.
+ */
+interface CertificateDisplayRow {
+  /** Unique per rendered row (score id, plus member id for team members). */
+  key: string;
+  /** The winner entry owning the certificate states (shared by team rows). */
+  winner: CertificateRow;
+  name: string;
+  age: string;
+  className: string;
+  levelLabel: string;
+  /** Official score under the name for individual entries; '' for members. */
+  scoreText: string;
+  /** Member lines only for a legacy team payload without a member list. */
+  memberDetails: string[];
+}
+
+/** One event's full-width header band + the display rows shown under it. */
+interface CertificateEventGroup {
+  /** Stable event identity - the grouping key; never the display name. */
+  eventId: string;
+  eventCode: string;
+  eventName: string;
+  category: string;
+  icon: string;
+  /** Applicable level(s) of the participants shown; '' when unavailable. */
+  levelLabel: string;
+  modeLabel: string;
+  rows: CertificateDisplayRow[];
 }
 
 /**
@@ -111,6 +153,7 @@ export class Certificates implements OnInit {
   private readonly shelterData = inject(ShelterDataService);
   private readonly participantService = inject(ParticipantService);
   private readonly teamService = inject(TeamService);
+  private readonly eventService = inject(EventService);
 
   readonly loading = this.winnersService.loading$;
   readonly loadError = this.winnersService.error$;
@@ -193,9 +236,12 @@ export class Certificates implements OnInit {
 
         rows.push({
           scoreId: winner.scoreId,
+          eventId: group.eventId,
           eventName: group.eventName,
           eventCode: group.eventCode,
           category: group.category,
+          mode: group.mode,
+          teamId: winner.teamId,
           winnerName: winner.name,
           age: Certificates.valueOrPlaceholder(detail.age),
           className: Certificates.valueOrPlaceholder(detail.className),
@@ -233,8 +279,8 @@ export class Certificates implements OnInit {
   readonly filterCategories = computed(() => [...new Set(this.rows().map(row => row.category))].sort());
   readonly filterHomes = computed(() => [...new Set(this.rows().map(row => row.shelterHomeName))].sort());
   readonly filterEvents = computed(() =>
-    [...new Map(this.rows().map(row => [row.eventCode + '|' + row.eventName, row])).values()]
-      .map(row => ({ key: row.eventCode + '|' + row.eventName, label: `${row.eventName} (${row.eventCode})` }))
+    [...new Map(this.rows().map(row => [row.eventId, row])).values()]
+      .map(row => ({ key: row.eventId, label: `${row.eventName} (${row.eventCode})` }))
       .sort((a, b) => a.label.localeCompare(b.label)));
 
   readonly view = signal<CertificateView>('ALL');
@@ -268,7 +314,7 @@ export class Certificates implements OnInit {
       if (view === 'PENDING_WRITING' && row.written) return false;
 
       if (category && row.category !== category) return false;
-      if (event && `${row.eventCode}|${row.eventName}` !== event) return false;
+      if (event && row.eventId !== event) return false;
       if (home && row.shelterHomeName !== home) return false;
       if (position && row.position !== Number(position)) return false;
       if (written === 'WRITTEN' && !row.written) return false;
@@ -279,6 +325,138 @@ export class Certificates implements OnInit {
       return true;
     });
   });
+
+  /* ------------------------------------------------------------------
+     EVENT GROUPS (one full-width header band per event, member rows for
+     group winners)
+     ------------------------------------------------------------------ */
+
+  /** Collapsed event groups (presentation only; never affects counts). */
+  private readonly collapsedEvents = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Display rows grouped under their event's header band. Grouping is by
+   * the stable event id - never the display name - so same-name events
+   * (the level-split families) keep separate headers and separate rows.
+   */
+  readonly eventGroups = computed<CertificateEventGroup[]>(() => {
+    const groups: CertificateEventGroup[] = [];
+    const byEvent = new Map<string, CertificateEventGroup>();
+    const levelsById = new Map(
+      this.eventService.getAll().map(event => [event.id, event.eligibleLevels]),
+    );
+
+    for (const row of this.filteredRows()) {
+      let group = byEvent.get(row.eventId);
+      if (!group) {
+        group = {
+          eventId: row.eventId,
+          eventCode: row.eventCode,
+          eventName: row.eventName,
+          category: row.category,
+          icon: Certificates.eventIcon(row.mode, row.category),
+          levelLabel: '',
+          modeLabel: row.mode === 'GROUP' ? 'Group Event' : 'Individual Event',
+          rows: [],
+        };
+        byEvent.set(row.eventId, group);
+        groups.push(group);
+      }
+      group.rows.push(...this.displayRowsFor(row));
+    }
+
+    for (const group of groups) {
+      group.levelLabel = Certificates.eventLevelLabel(levelsById.get(group.eventId), group.rows);
+    }
+
+    return groups;
+  });
+
+  isCollapsed(eventId: string): boolean {
+    return this.collapsedEvents().has(eventId);
+  }
+
+  toggleEventGroup(eventId: string): void {
+    this.collapsedEvents.update(current => {
+      const next = new Set(current);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  }
+
+  /** One row per PRESENT member for a team winner; one row otherwise. */
+  private displayRowsFor(row: CertificateRow): CertificateDisplayRow[] {
+    const members = row.members;
+    if (row.teamId && members.length) {
+      // The backend already filtered the roster to PRESENT members, so an
+      // absent team member can never earn a row (or a certificate) here.
+      return members.map((member, index) => ({
+        key: `${row.scoreId}::${member.participantId || index}`,
+        winner: row,
+        name: Certificates.valueOrPlaceholder(member.name),
+        age: Certificates.valueOrPlaceholder(member.age),
+        className: Certificates.valueOrPlaceholder(member.className),
+        levelLabel: Certificates.levelLabel(member.level),
+        scoreText: '',
+        memberDetails: [],
+      }));
+    }
+    return [
+      {
+        key: row.scoreId,
+        winner: row,
+        name: row.winnerName,
+        age: row.age,
+        className: row.className,
+        levelLabel: row.levelLabel,
+        scoreText: formatScore(row.score),
+        memberDetails: row.memberDetails,
+      },
+    ];
+  }
+
+  /** Header icon from the authoritative mode/category values only. */
+  private static eventIcon(mode: string, category: string): string {
+    if (mode === 'GROUP') {
+      return '👥';
+    }
+    return Certificates.CATEGORY_ICONS[category] ?? '🏅';
+  }
+
+  private static readonly CATEGORY_ICONS: Record<string, string> = {
+    ARTS: '🎨',
+    LITERARY: '📚',
+    CULTURAL: '🌸',
+  };
+
+  /**
+   * "Sub Juniors" / "Common" from the authoritative event catalogue's
+   * eligible levels; falls back to the shown rows' own level when the
+   * catalogue has no entry. Empty when no level is available at all.
+   */
+  private static eventLevelLabel(
+    levels: readonly string[] | undefined,
+    rows: CertificateDisplayRow[],
+  ): string {
+    if (levels && levels.length) {
+      return levels.length >= 4
+        ? 'Common'
+        : levels
+            .map(
+              level =>
+                PARTICIPANT_LEVEL_LABELS[level as keyof typeof PARTICIPANT_LEVEL_LABELS] ?? level,
+            )
+            .join(' + ');
+    }
+    const shown = [
+      ...new Set(rows.map(row => row.levelLabel).filter(label => label && label !== '-')),
+    ];
+    return shown.length === 1 ? shown[0] : '';
+  }
 
   setView(view: CertificateView): void {
     this.view.set(view);
@@ -378,6 +556,11 @@ export class Certificates implements OnInit {
     const report = await this.winnersService.load(force);
     this.events.set(report ? report.events : []);
     this.totalWinners.set(report ? report.totalWinners : 0);
+
+    // The authoritative event catalogue supplies each event's applicable
+    // level for its header band (shared cached store - one read per page
+    // load, never a per-row lookup).
+    void this.eventService.load().catch(() => false);
 
     // Group winners list their members without details until the team roster
     // is loaded - fetch it so each member's age / class / level can be shown.

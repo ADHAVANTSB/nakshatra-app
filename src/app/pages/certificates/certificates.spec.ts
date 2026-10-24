@@ -136,7 +136,7 @@ describe('Certificates — official score display', () => {
     const host = fixture.nativeElement as HTMLElement;
     const cell = (row: number, label: string): string =>
       host
-        .querySelectorAll('tbody tr')
+        .querySelectorAll('tbody tr.certificate-row')
         .item(row)
         .querySelector(`td[data-l="${label}"]`)
         ?.textContent?.trim() ?? '';
@@ -153,11 +153,12 @@ describe('Certificates — official score display', () => {
     expect(cell(2, 'Age')).toBe('—');
     expect(cell(2, 'Class')).toBe('—');
     expect(cell(2, 'Category / Level')).toBe('—');
-    // The header keeps the reference column order.
+    // The header keeps the reference column order (event identity lives in
+    // the full-width group band, so no Event column).
     const headers = Array.from(host.querySelectorAll('thead th'))
       .map(th => (th.textContent ?? '').trim());
     expect(headers).toEqual([
-      'Event', 'Winner', 'Age', 'Class', 'Category / Level', 'Shelter home',
+      'Winner / participant', 'Age', 'Class', 'Category / Level', 'Shelter home',
       'Position', 'Certificate Written', 'Certificate Distributed', 'Last status update',
     ]);
   });
@@ -331,13 +332,13 @@ describe('Certificates — written/distributed workflow tracking', () => {
   }
 
   function rowCheckboxes(host: HTMLElement, rowIndex = 0): HTMLInputElement[] {
-    const rows = Array.from(host.querySelectorAll('tbody tr:not(.empty-row)'));
+    const rows = Array.from(host.querySelectorAll('tbody tr.certificate-row'));
     return Array.from(rows[rowIndex].querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
   }
 
-  /** Data rows only (the empty-state row is not a winner row). */
+  /** Winner rows only (event header bands and the empty state are excluded). */
   function dataRows(host: HTMLElement): Element[] {
-    return Array.from(host.querySelectorAll('tbody tr:not(.empty-row)'));
+    return Array.from(host.querySelectorAll('tbody tr.certificate-row'));
   }
 
   afterEach(() => {
@@ -391,13 +392,14 @@ describe('Certificates — written/distributed workflow tracking', () => {
     expect(stateText).not.toContain('Unavailable');
 
     // Status controls and the actor/timestamp text sit in their own columns.
-    const cells = Array.from(host.querySelectorAll('tbody tr:first-child td'));
-    expect(cells).toHaveLength(10);
+    const firstRow = host.querySelector('tbody tr.certificate-row');
+    const cells = Array.from(firstRow?.querySelectorAll('td') ?? []);
+    expect(cells).toHaveLength(9);
+    expect(cells[6].querySelector('[data-testid="distribution-toggle"]')).not.toBeNull();
+    expect(cells[6].textContent ?? '').toContain('Praveen (E2E)');
     expect(cells[7].querySelector('[data-testid="distribution-toggle"]')).not.toBeNull();
-    expect(cells[7].textContent ?? '').toContain('Praveen (E2E)');
-    expect(cells[8].querySelector('[data-testid="distribution-toggle"]')).not.toBeNull();
-    expect(cells[8].textContent ?? '').toContain('Not distributed');
-    expect(cells[9].textContent ?? '').toMatch(/\d{1,2} Oct 2026/);
+    expect(cells[7].textContent ?? '').toContain('Not distributed');
+    expect(cells[8].textContent ?? '').toMatch(/\d{1,2} Oct 2026/);
   });
 
   it('a certificate cannot be distributed before it is written (UI gate + backend rejection)', async () => {
@@ -933,5 +935,297 @@ describe('Certificates — written/distributed workflow tracking', () => {
     expect(actions).toContain('saveDistributionStatus');
     expect(actions).not.toContain('issueCertificate');
     expect(actions).not.toContain('listCertificates');
+  });
+});
+
+// =====================================================================
+// Event grouping: one full-width header band per event (name, code,
+// category, applicable level) directly above that event's records.
+// Grouping is by the stable event id - never the display name - so
+// same-name events stay separate, and a group winner expands to one row
+// per PRESENT member (an absent member can never become a recipient).
+// =====================================================================
+
+describe('Certificates - event grouping headers', () => {
+  let fixture: ComponentFixture<Certificates>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Certificates],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  const respond = (data: unknown) => Promise.resolve(new Response(
+    JSON.stringify({ success: true, data }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  ));
+
+  const member = (participantId: string, name: string, age: string, className: string, level: string) =>
+    ({ participantId, name, age, className, level });
+
+  /** A group (team) winner entry; `name` mirrors the backend entryName. */
+  function teamWinner(
+    scoreId: string,
+    position: number,
+    members: Array<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    return {
+      position,
+      name: `Rangoli Team (${members.map(m => m['name']).join(', ')})`,
+      age: '',
+      className: '',
+      level: '',
+      shelterHomeName: 'Sunrise Home',
+      score: 30,
+      scoreId,
+      participantId: '',
+      teamId: 'team-1',
+      members,
+    };
+  }
+
+  function stubBackend(events: unknown[], catalogue: unknown[] = []): string[] {
+    const actions: string[] = [];
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      actions.push(request.action);
+      switch (request.action) {
+        case 'listWinners':
+          return respond({ events, totalEvents: events.length, totalWinners: 0 });
+        case 'listEvents':
+          return respond({ events: catalogue, registrationCounts: {} });
+        case 'getPageData':
+          return respond({ shelterHomes: [], participants: [], imports: [], validationResults: [] });
+        default:
+          return respond({ storage: AVAILABLE_STORAGE, distributions: [], recordedCount: 0, totalWinners: 0 });
+      }
+    });
+    return actions;
+  }
+
+  async function render(): Promise<HTMLElement> {
+    fixture = TestBed.createComponent(Certificates);
+    fixture.detectChanges();
+    // The page loads winners and the event catalogue concurrently; wait
+    // for the zone to settle before asserting on the rendered bands.
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const headerBands = (host: HTMLElement): HTMLElement[] =>
+    Array.from(host.querySelectorAll('tbody tr.event-group-header'));
+
+  it('renders exactly one header band per displayed event group', async () => {
+    stubBackend([
+      {
+        eventId: 'event-1', eventCode: 'ART-001', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Ana', 21, 'score-1'), winner(2, 'Bhavana', 18, 'score-2')],
+      },
+      {
+        eventId: 'event-2', eventCode: 'ART-002', eventName: 'Rangoli',
+        category: 'ARTS', mode: 'GROUP', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Chitra', 30, 'score-3')],
+      },
+    ]);
+
+    const host = await render();
+    const bands = headerBands(host);
+
+    // One band per event, in display order - never one per record.
+    expect(bands).toHaveLength(2);
+    expect(bands[0].textContent).toContain('Clay Modelling');
+    expect(bands[1].textContent).toContain('Rangoli');
+    // All records of an event sit under their band.
+    expect(host.querySelectorAll('tbody tr.certificate-row')).toHaveLength(3);
+  });
+
+  it('header carries the event name, official code, category and applicable level', async () => {
+    stubBackend(
+      [{
+        eventId: 'event-1', eventCode: 'ART-001', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Ana', 21, 'score-1')],
+      }],
+      [{ id: 'event-1', eventCode: 'ART-001', name: 'Clay Modelling', category: 'ARTS', mode: 'SOLO', status: 'ACTIVE', eligibleLevels: ['SUB_JUNIOR'] }],
+    );
+
+    const host = await render();
+    const band = headerBands(host)[0].textContent ?? '';
+
+    expect(band).toContain('Clay Modelling');
+    expect(band).toContain('ART-001');
+    expect(band).toContain('ARTS');
+    expect(band).toContain('Sub Juniors');
+    expect(band).toContain('Individual Event');
+  });
+
+  it('keeps same-name events in separate groups (stable identity, not display name)', async () => {
+    stubBackend([
+      {
+        eventId: 'evt-senior', eventCode: 'ART-001-S', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Ana', 21, 'score-1'), winner(2, 'Bhavana', 18, 'score-2')],
+      },
+      {
+        eventId: 'evt-junior', eventCode: 'ART-001-J', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Chitra', 15, 'score-3')],
+      },
+    ]);
+
+    const host = await render();
+    const bands = headerBands(host);
+
+    // Identical display names never merge the groups.
+    expect(bands).toHaveLength(2);
+    expect(bands[0].textContent).toContain('ART-001-S');
+    expect(bands[1].textContent).toContain('ART-001-J');
+    // Each record stays under its own event's band.
+    expect(host.querySelectorAll('tbody tr.certificate-row')).toHaveLength(3);
+  });
+
+  it('filters by stable event id and drops the bands of filtered-out events', async () => {
+    stubBackend([
+      {
+        eventId: 'evt-senior', eventCode: 'ART-001-S', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Ana', 21, 'score-1')],
+      },
+      {
+        eventId: 'evt-junior', eventCode: 'ART-001-J', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [winner(1, 'Chitra', 15, 'score-2')],
+      },
+    ]);
+
+    const host = await render();
+    fixture.componentInstance.setEvent('evt-junior');
+    fixture.detectChanges();
+
+    const bands = headerBands(host);
+    expect(bands).toHaveLength(1);
+    expect(bands[0].textContent).toContain('ART-001-J');
+    expect(host.querySelectorAll('tbody tr.certificate-row')).toHaveLength(1);
+  });
+
+  it('expands a group winner to one row per PRESENT member, each with its own columns', async () => {
+    stubBackend([
+      {
+        eventId: 'event-2', eventCode: 'ART-002', eventName: 'Rangoli',
+        category: 'ARTS', mode: 'GROUP', eventStatus: 'ACTIVE',
+        winners: [
+          teamWinner('score-1', 1, [
+            member('p-1', 'Nagaraj', '8', '3', 'SUB_JUNIOR'),
+            member('p-2', 'Umeshwar', '9', '4', 'SUB_JUNIOR'),
+          ]),
+        ],
+      },
+    ]);
+
+    const host = await render();
+    const rows = Array.from(host.querySelectorAll('tbody tr.certificate-row'));
+
+    // One row per member - names, ages and classes are never combined.
+    expect(rows).toHaveLength(2);
+    const cellText = (row: Element, label: string): string =>
+      row.querySelector(`td[data-l="${label}"]`)?.textContent?.trim() ?? '';
+    expect(cellText(rows[0], 'Winner')).toBe('Nagaraj');
+    expect(cellText(rows[0], 'Age')).toBe('8');
+    expect(cellText(rows[0], 'Class')).toBe('3');
+    expect(cellText(rows[1], 'Winner')).toBe('Umeshwar');
+    expect(cellText(rows[1], 'Age')).toBe('9');
+    expect(cellText(rows[1], 'Class')).toBe('4');
+    // The combined team-name cell is gone from member rows.
+    expect(host.textContent).not.toContain('Rangoli Team (Nagaraj, Umeshwar)');
+  });
+
+  it('never turns an absent team member into a certificate row', async () => {
+    // The backend roster lists only PRESENT members; the entryName still
+    // names the whole team. Grouping must add no extra recipients.
+    stubBackend([
+      {
+        eventId: 'event-2', eventCode: 'ART-002', eventName: 'Rangoli',
+        category: 'ARTS', mode: 'GROUP', eventStatus: 'ACTIVE',
+        winners: [
+          teamWinner('score-1', 1, [member('p-1', 'Nagaraj', '8', '3', 'SUB_JUNIOR')]),
+        ],
+      },
+    ]);
+
+    const host = await render();
+    const rows = Array.from(host.querySelectorAll('tbody tr.certificate-row'));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelector('td[data-l="Winner"]')?.textContent).toContain('Nagaraj');
+    expect(host.textContent).not.toContain('Chandru');
+  });
+
+  it('adds no per-row backend requests (one winners read, one catalogue read)', async () => {
+    const actions = stubBackend([
+      {
+        eventId: 'event-1', eventCode: 'ART-001', eventName: 'Clay Modelling',
+        category: 'ARTS', mode: 'SOLO', eventStatus: 'ACTIVE',
+        winners: [
+          winner(1, 'Ana', 21, 'score-1'),
+          winner(2, 'Bhavana', 18, 'score-2'),
+          winner(3, 'Chitra', 15, 'score-3'),
+        ],
+      },
+    ]);
+
+    await render();
+
+    expect(actions.filter(action => action === 'listWinners')).toHaveLength(1);
+    expect(actions.filter(action => action === 'listEvents').length).toBeLessThanOrEqual(1);
+    // Grouping is pure presentation: no extra reads per event or record.
+    expect(actions.filter(action => action === 'listTeams')).toHaveLength(0);
+    expect(actions.filter(action => action === 'listDistributionTracking').length).toBeLessThanOrEqual(1);
+  });
+
+  it('keeps written/distributed toggles working on every member row', async () => {
+    stubBackend([
+      {
+        eventId: 'event-2', eventCode: 'ART-002', eventName: 'Rangoli',
+        category: 'ARTS', mode: 'GROUP', eventStatus: 'ACTIVE',
+        winners: [
+          teamWinner('score-1', 1, [
+            member('p-1', 'Nagaraj', '8', '3', 'SUB_JUNIOR'),
+            member('p-2', 'Umeshwar', '9', '4', 'SUB_JUNIOR'),
+          ]),
+        ],
+      },
+    ]);
+
+    const host = await render();
+    const rows = Array.from(host.querySelectorAll('tbody tr.certificate-row'));
+    const checkboxes = Array.from(rows[0].querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+
+    // Both states are present and writable on a member row.
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0].disabled).toBe(false);
   });
 });
