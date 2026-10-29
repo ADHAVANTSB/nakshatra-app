@@ -1,10 +1,12 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService } from '../../core/services/auth/auth.service';
+import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { SyncAllHomesService } from '../../core/services/imports/sync-all-homes.service';
+import { friendlyError } from '../../core/permissions/friendly-error';
 import { Homes } from './homes';
 
 /**
@@ -1220,5 +1222,323 @@ describe('Homes — home sheet confirmation & locking', () => {
 
   it('shows no audit line for a sheet the backend has no history for', () => {
     expect(component.sheetAuditLines({ ...sheetRow } as never)).toEqual([]);
+  });
+});
+
+// =====================================================================
+// Zone 2 Step 6: cross-zone preview advisory + cross-zone connect
+// outcomes. The SERVER-side gate is the enforcement authority; the
+// preview advisory is display-only and must never gate the connection.
+// =====================================================================
+describe('Homes - Step 6 cross-zone advisory and outcomes', () => {
+  let component: Homes;
+  let fixture: ComponentFixture<Homes>;
+  let calls: Record<string, number>;
+
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/spec-connect-id/edit';
+
+  const PREVIEW_BASE = {
+    spreadsheetName: 'Anbu Illam 2026',
+    metadata: {},
+    metadataContactSource: 'ABSENT',
+    metadataEvidence: {},
+    metadataMissing: [],
+    caretakers: [],
+    caretakerCount: 0,
+    participantCount: null,
+    participantSheetDetected: false,
+    eventWiseSheetDetected: false,
+    workbookStructure: { sheetsInspected: 1, sheetsTotal: 1, sheets: [] },
+    warnings: [],
+    errors: [],
+  };
+
+  const CONNECT_SUCCESS = {
+    shelterHome: { id: 'home-9', homeCode: 'H-09', homeName: 'Lotus Home', status: 'ACTIVE' },
+    sheetSource: { id: 'src-9', spreadsheetName: 'Lotus Participants', sourceStatus: 'CONNECTED' },
+    connection: { status: 'SUCCEEDED' },
+    initialImport: { attempted: true, status: 'SUCCEEDED', importVersionId: 'import-9' },
+  };
+
+  function envelope(data: unknown): Promise<Response> {
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: true, data }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+  }
+
+  function failure(code: string, message: string): Promise<Response> {
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: false, error: { code, message } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+  }
+
+  function stubBackend(options: {
+    previewData?: Record<string, unknown>;
+    connectFailure?: { code: string; message: string };
+  } = {}): void {
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      calls[request.action] = (calls[request.action] ?? 0) + 1;
+
+      if (request.action === 'previewShelterSheet') {
+        return envelope(options.previewData ?? PREVIEW_BASE);
+      }
+      if (request.action === 'connectShelterSheet') {
+        if (options.connectFailure) {
+          return failure(options.connectFailure.code, options.connectFailure.message);
+        }
+        return envelope(CONNECT_SUCCESS);
+      }
+      if (request.action === 'syncShelterSheet') {
+        return failure('SHEET_SOURCE_AMBIGUOUS',
+          'This shelter home has more than one connected Google Sheet');
+      }
+      if (request.action === 'getImportStatus') return envelope({ imports: [] });
+      if (request.action === 'getValidationResults') return envelope({ validationResults: [] });
+      if (request.action === 'listParticipants') return envelope({ participants: [] });
+      if (request.action === 'listShelterHomes') return envelope({ shelterHomes: [] });
+      return failure('UNKNOWN_ACTION', request.action);
+    });
+  }
+
+  function rendered(): HTMLElement {
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Homes],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    fixture = TestBed.createComponent(Homes);
+    component = fixture.componentInstance;
+    component.openAddHome();
+    component.sheetUrl.set(SHEET_URL);
+    component.homeName.set('Lotus Home');
+    calls = {};
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  // ---- U1: claims advisory is display-only --------------------------
+  it('U1 surfaces a claims advisory at preview and never gates the connect', async () => {
+    stubBackend({
+      previewData: {
+        ...PREVIEW_BASE,
+        crossZoneConflict: {
+          claims: [{
+            environmentIds: ['ZONE_1'],
+            spreadsheetId: 'zone-1-registry',
+            sourceId: 'src-1',
+            shelterHomeId: 'home-1',
+            homeStatus: 'ACTIVE',
+            sourceStatus: 'CONNECTED',
+          }],
+          uninitializedRegistries: [],
+          unreachableRegistries: [],
+        },
+      },
+    });
+
+    await component.previewSheetMetadata();
+
+    const conflict = component.sheetPreview()?.crossZoneConflict;
+    expect(conflict?.claims.length).toBe(1);
+    const el = rendered();
+    expect(el.querySelector('.cross-zone-conflict')).not.toBeNull();
+    expect(el.textContent ?? '').toContain('already connected to a shelter home');
+
+    // Display only: the connection attempt still goes to the server,
+    // which alone decides (preview is never authorization).
+    await component.connectSheet();
+    expect(calls['connectShelterSheet']).toBe(1);
+  });
+
+  // ---- U2: uninitialized + unreachable registry advisories --------
+  it('U2 reports uninitialized and unreachable registries in the advisory', async () => {
+    stubBackend({
+      previewData: {
+        ...PREVIEW_BASE,
+        crossZoneConflict: {
+          claims: [],
+          uninitializedRegistries: [{
+            environmentIds: ['ZONE_2'],
+            spreadsheetId: 'zone-2-registry',
+            error: 'SheetSources table is missing - the registry is not initialized',
+          }],
+          unreachableRegistries: [{
+            environmentIds: ['ZONE_1'],
+            spreadsheetId: 'zone-1-registry',
+            error: 'Registry read timed out',
+          }],
+        },
+      },
+    });
+
+    await component.previewSheetMetadata();
+
+    const el = rendered();
+    expect(el.querySelector('.cross-zone-conflict')).not.toBeNull();
+    const text = el.textContent ?? '';
+    expect(text).toContain('not initialized');
+    expect(text).toContain('ZONE_1');
+    expect(text).toContain('could not be read');
+  });
+
+  // ---- U3: no conflict -> no advisory ------------------------------
+  it('U3 renders no advisory when the scan found nothing', async () => {
+    stubBackend({
+      previewData: {
+        ...PREVIEW_BASE,
+        crossZoneConflict: {
+          claims: [],
+          uninitializedRegistries: [],
+          unreachableRegistries: [],
+        },
+      },
+    });
+
+    await component.previewSheetMetadata();
+
+    const el = rendered();
+    expect(el.querySelector('.cross-zone-conflict')).toBeNull();
+
+    // The literal null/absent case from the plan renders nothing either.
+    stubBackend({ previewData: { ...PREVIEW_BASE, crossZoneConflict: null } });
+    await component.previewSheetMetadata();
+    expect(rendered().querySelector('.cross-zone-conflict')).toBeNull();
+  });
+
+  // ---- U4: SOURCE_CONNECTED_IN_OTHER_ZONE is terminal --------------
+  it('U4 maps SOURCE_CONNECTED_IN_OTHER_ZONE to a terminal outcome without retry', async () => {
+    stubBackend({
+      connectFailure: {
+        code: 'SOURCE_CONNECTED_IN_OTHER_ZONE',
+        message: 'This Google Spreadsheet is already connected to a shelter home in another zone',
+      },
+    });
+
+    await component.connectSheet();
+
+    const outcome = component.connectionOutcome();
+    expect(outcome?.state).toBe('CONNECTED_IN_OTHER_ZONE');
+    expect(outcome?.message).toContain('another zone');
+    expect(outcome?.technicalDetail).toBe('SOURCE_CONNECTED_IN_OTHER_ZONE');
+    // A definitive verdict never offers Retry (retrying cannot change it).
+    expect(component.retryImportAvailable()).toBe(false);
+    const el = rendered();
+    expect(el.textContent ?? '').toContain('cannot be connected here');
+  });
+
+  // ---- U5: SOURCE_CROSS_ZONE_CHECK_FAILED may be retried ------------
+  it('U5 maps SOURCE_CROSS_ZONE_CHECK_FAILED to an unverified outcome with retry guidance', async () => {
+    stubBackend({
+      connectFailure: {
+        code: 'SOURCE_CROSS_ZONE_CHECK_FAILED',
+        message: 'Another zone registry could not be verified, so registration is refused',
+      },
+    });
+
+    await component.connectSheet();
+
+    const outcome = component.connectionOutcome();
+    expect(outcome?.state).toBe('CROSS_ZONE_UNVERIFIED');
+    expect(outcome?.technicalDetail).toBe('SOURCE_CROSS_ZONE_CHECK_FAILED');
+    expect(component.retryImportAvailable()).toBe(false);
+    const el = rendered();
+    expect(el.textContent ?? '').toContain('try again');
+    expect(el.textContent ?? '').toContain('Nothing was registered');
+  });
+
+  // ---- U6: SOURCE_REGISTRY_NOT_INITIALIZED explains init -----------
+  it('U6 maps SOURCE_REGISTRY_NOT_INITIALIZED to an outcome naming the required initialization', async () => {
+    stubBackend({
+      connectFailure: {
+        code: 'SOURCE_REGISTRY_NOT_INITIALIZED',
+        message: 'Another zone registry is not initialized (its SheetSources table is missing), so registration is refused',
+      },
+    });
+
+    await component.connectSheet();
+
+    const outcome = component.connectionOutcome();
+    expect(outcome?.state).toBe('REGISTRY_NOT_INITIALIZED');
+    expect(outcome?.technicalDetail).toBe('SOURCE_REGISTRY_NOT_INITIALIZED');
+    expect(component.retryImportAvailable()).toBe(false);
+    const el = rendered();
+    const text = el.textContent ?? '';
+    expect(text).toContain('initialize');
+    // It must NOT encourage repeated ordinary retries.
+    expect(text).toContain('will not succeed');
+  });
+
+  // ---- U7: SHEET_SOURCE_AMBIGUOUS surfaces on sync -----------------
+  it('U7 surfaces the ambiguous-mapping message on a failed sync', async () => {
+    stubBackend();
+    const notifications = TestBed.inject(NotificationService);
+    const errorSpy = vi.spyOn(notifications, 'error');
+
+    await component.syncFromSheet({
+      id: 'home-1', homeCode: 'H-01', homeName: 'Sunrise Home',
+      spreadsheetName: 'Sunrise Participants', status: 'ACTIVE',
+    } as never);
+
+    expect(calls['syncShelterSheet']).toBe(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const detail = String(errorSpy.mock.calls[0]?.[1] ?? '');
+    expect(detail).toContain('more than one connected Google Sheet');
+  });
+
+  // ---- U8: friendly-error retry semantics --------------------------
+  it('U8 maps the Step 5 codes to correct retry semantics', () => {
+    expect(friendlyError('SOURCE_CONNECTED_IN_OTHER_ZONE', 'raw').retryable).toBe(false);
+    expect(friendlyError('SOURCE_CROSS_ZONE_CHECK_FAILED', 'raw').retryable).toBe(true);
+    expect(friendlyError('SOURCE_REGISTRY_NOT_INITIALIZED', 'raw').retryable).toBe(false);
+    expect(friendlyError('SHEET_SOURCE_AMBIGUOUS', 'raw').retryable).toBe(false);
+    expect(friendlyError('SHEET_SOURCE_NOT_FOUND', 'raw').retryable).toBe(false);
+    // Initialization message names the required action and discourages retries.
+    const init = friendlyError('SOURCE_REGISTRY_NOT_INITIALIZED', 'raw');
+    expect(init.message).toContain('initialize');
+    expect(init.message).toContain('not succeed');
+    // Unmapped codes keep the existing fall-through semantics.
+    expect(friendlyError('SOME_UNKNOWN_CODE', 'raw').retryable).toBe(true);
+  });
+
+  // ---- U10: generic fall-through unchanged -------------------------
+  it('U10 keeps the generic failure path for unhandled codes', async () => {
+    stubBackend({
+      connectFailure: {
+        code: 'SOME_BRAND_NEW_CODE',
+        message: 'A failure the UI has no special case for',
+      },
+    });
+
+    await component.connectSheet();
+
+    expect(component.connectionOutcome()).toBeNull();
+    expect(component.formError()).toContain('A failure the UI has no special case for');
   });
 });

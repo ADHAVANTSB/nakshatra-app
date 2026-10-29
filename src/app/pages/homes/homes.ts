@@ -1000,6 +1000,40 @@ export class Homes implements OnInit {
       return;
     }
 
+    // Step 6: definitive cross-zone verdicts from the server-side gate.
+    // The backend is the enforcement authority; these outcomes only
+    // present its decision. None of them set shelterHomeId, so no retry
+    // affordance is offered (retrying cannot change the verdict).
+    if (error.code === 'SOURCE_CONNECTED_IN_OTHER_ZONE') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'CONNECTED_IN_OTHER_ZONE',
+        message: error.message,
+        technicalDetail: error.code,
+      });
+      return;
+    }
+
+    if (error.code === 'SOURCE_CROSS_ZONE_CHECK_FAILED') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'CROSS_ZONE_UNVERIFIED',
+        message: error.message,
+        technicalDetail: error.code,
+      });
+      return;
+    }
+
+    if (error.code === 'SOURCE_REGISTRY_NOT_INITIALIZED') {
+      this.saving.set(false);
+      this.connectionOutcome.set({
+        state: 'REGISTRY_NOT_INITIALIZED',
+        message: error.message,
+        technicalDetail: error.code,
+      });
+      return;
+    }
+
     if (AMBIGUOUS_CONNECT_CODES.has(error.code)) {
       this.saving.set(false);
 
@@ -1226,6 +1260,9 @@ export type ConnectionOutcomeState =
   | 'ALREADY_CONNECTED'
   | 'ARCHIVED_SOURCE'
   | 'SOURCE_ACCESS_FAILED'
+  | 'CONNECTED_IN_OTHER_ZONE'
+  | 'CROSS_ZONE_UNVERIFIED'
+  | 'REGISTRY_NOT_INITIALIZED'
   | 'REQUEST_ERROR';
 
 export interface ConnectionOutcome {

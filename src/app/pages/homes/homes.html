@@ -295,6 +295,53 @@
               </ul>
             }
 
+            @if (preview.crossZoneConflict; as conflict) {
+              @if (conflict.claims.length
+                || conflict.uninitializedRegistries.length
+                || conflict.unreachableRegistries.length) {
+              <section class="cross-zone-conflict" aria-label="Cross-zone connection advisory">
+                <h4>Check before connecting</h4>
+                <p class="panel-note">
+                  This advisory comes from the server's cross-zone check. The
+                  connection itself is decided by the server when you submit.
+                </p>
+                @if (conflict.claims.length) {
+                  <ul class="cross-zone-claims">
+                    @for (claim of conflict.claims; track claim.sourceId) {
+                      <li>
+                        This workbook is already connected to a shelter home
+                        in {{ claim.environmentIds.join(' / ') }}
+                        (home {{ claim.shelterHomeId }}, source {{ claim.sourceId }}).
+                      </li>
+                    }
+                  </ul>
+                }
+                @if (conflict.uninitializedRegistries.length) {
+                  <ul class="cross-zone-registry-issues">
+                    @for (issue of conflict.uninitializedRegistries; track issue.spreadsheetId) {
+                      <li>
+                        The {{ issue.environmentIds.join(' / ') }} registry is
+                        not initialized, so its connections could not be
+                        checked.
+                      </li>
+                    }
+                  </ul>
+                }
+                @if (conflict.unreachableRegistries.length) {
+                  <ul class="cross-zone-registry-issues">
+                    @for (issue of conflict.unreachableRegistries; track issue.spreadsheetId) {
+                      <li>
+                        The {{ issue.environmentIds.join(' / ') }} registry
+                        could not be read, so its connections could not be
+                        checked.
+                      </li>
+                    }
+                  </ul>
+                }
+              </section>
+              }
+            }
+
             @if (preview.errors.length) {
               <ul class="sheet-preview-errors">
                 @for (error of preview.errors; track $index) {

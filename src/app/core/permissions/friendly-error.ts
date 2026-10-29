@@ -53,6 +53,29 @@ const MESSAGES: Record<string, { message: string; retryable: boolean }> = {
   SESSION_EXPIRED: { message: 'Your session has expired. Please sign in again.', retryable: false },
   SESSION_INVALID: { message: 'Your session has expired. Please sign in again.', retryable: false },
 
+  // Cross-zone connection gate (Zone 2 Step 5 server-side verdicts).
+  // The server decides; these entries only shape retry semantics.
+  SOURCE_CONNECTED_IN_OTHER_ZONE: {
+    message: 'This workbook is already registered in another zone, so it cannot be connected here. Manage it from the zone that owns it, or contact Support/Admin if that is unexpected.',
+    retryable: false,
+  },
+  SOURCE_CROSS_ZONE_CHECK_FAILED: {
+    message: 'The connection was refused because not every zone registry could be verified. This can be temporary; check the connection and try again. Nothing was registered.',
+    retryable: true,
+  },
+  SOURCE_REGISTRY_NOT_INITIALIZED: {
+    message: 'Another zone\'s database has not been initialized yet, so the server cannot confirm this workbook is unclaimed. An administrator must initialize that zone\'s database first; retrying before that will not succeed. Nothing was registered.',
+    retryable: false,
+  },
+  SHEET_SOURCE_AMBIGUOUS: {
+    message: 'This shelter home has more than one connected Google Sheet registered. An administrator must resolve the duplicate registration before syncing.',
+    retryable: false,
+  },
+  SHEET_SOURCE_NOT_FOUND: {
+    message: 'No connected Google Sheet is registered for this shelter home.',
+    retryable: false,
+  },
+
   // Genuine temporary failures: retrying is appropriate.
   NETWORK_ERROR: {
     message: 'We couldn’t load this information right now. Please try again later.',

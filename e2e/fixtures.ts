@@ -41,13 +41,19 @@ export interface ScopeSeed {
  * mid-test are never clobbered by a later navigation.
  */
 export function seedScope(page: Page, scope: ScopeSeed): Promise<void> {
+  // The same scope also rides a request header so the stub backend can
+  // echo it from validateSession synchronously (its stand-in for the
+  // selectScope call the stub never stored). Same { programId, zoneId }
+  // shape as the sessionStorage entry below.
+  const stored = { programId: scope.program, zoneId: scope.zone };
+  page.setExtraHTTPHeaders({ 'x-e2e-scope': JSON.stringify(stored) });
   return page.addInitScript(
     ([key, value]) => {
       if (!sessionStorage.getItem(key)) {
         sessionStorage.setItem(key, value);
       }
     },
-    [PROGRAM_SCOPE_STORAGE_KEY, JSON.stringify({ programId: scope.program, zoneId: scope.zone })] as const,
+    [PROGRAM_SCOPE_STORAGE_KEY, JSON.stringify(stored)] as const,
   );
 }
 

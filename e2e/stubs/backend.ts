@@ -165,6 +165,17 @@ export class BackendStub {
   private readonly overrides = new Map<string, StubResponder>();
 
   /**
+   * Scope the journey seeded into sessionStorage (its stand-in for a
+   * selectScope the stub never stored). Read synchronously from a request
+   * header - never a page.evaluate round-trip, which would delay the
+   * response and shift the app's boot-restore navigation race.
+   */
+  private seededScope: { programId: string; zoneId: string } | null = null;
+
+  /** Scope the app last persisted via selectScope (authoritative). */
+  private sessionScope: { programId: string; environmentId: string } | null = null;
+
+  /**
    * Response used for the sign-in credential verification POST (the request
    * whose body carries `{ credential }`). Defaults to an approved admin.
    */
@@ -221,6 +232,34 @@ export class BackendStub {
     }
     this.requests.push({ action, payload: request['payload'] });
 
+    // Synchronous scope sources for validateSession (see resolveAction):
+    // the header carries the scope the journey seeded (seedScope), and the
+    // selectScope payload is the scope the app just persisted server-side.
+    const seededHeader = route.request().headers()['x-e2e-scope'];
+    // Latest seedScope wins: a later reseed supersedes an earlier one.
+    if (seededHeader) {
+      try {
+        this.seededScope = JSON.parse(seededHeader) as {
+          programId: string;
+          zoneId: string;
+        };
+      } catch {
+        // Malformed seed header: leave the session unscoped.
+      }
+    }
+    if (action === 'selectScope') {
+      const scope = request['payload'] as {
+        programId?: string;
+        environmentId?: string;
+      };
+      if (scope && scope.programId && scope.environmentId) {
+        this.sessionScope = {
+          programId: scope.programId,
+          environmentId: scope.environmentId,
+        };
+      }
+    }
+
     // The store's batched snapshot read: composed from the same per-action
     // fixtures journeys install (listShelterHomes / listParticipants /
     // getImportStatus / getValidationResults) so journeys keep working.
@@ -246,6 +285,31 @@ export class BackendStub {
     }
     const sessionResponse = sessionActionResponse(action, adminUser);
     if (sessionResponse) {
+      if (action === 'validateSession') {
+        // The stub has no server-side session storage. The scope the app
+        // last persisted via selectScope is authoritative; failing that,
+        // the scope the journey seeded (see seedScope) stands in for the
+        // selectScope call the stub never stored. Echoed back exactly
+        // like the real backend does (its session payload carries
+        // programId/environmentId), so a reloaded page restores the same
+        // scope instead of seeing an unscoped session. Read synchronously
+        // from request state - never a page.evaluate round-trip, which
+        // would delay this response and shift the app's boot-restore
+        // navigation race. Journeys that override `validateSession` keep
+        // full control and never reach this branch.
+        const scope = this.sessionScope ?? this.seededScope;
+        const body = sessionResponse.body as {
+          data?: { session?: Record<string, unknown> };
+        };
+        if (scope && body.data?.session) {
+          body.data.session = {
+            ...body.data.session,
+            programId: scope.programId,
+            environmentId:
+              'environmentId' in scope ? scope.environmentId : scope.zoneId,
+          };
+        }
+      }
       return sessionResponse;
     }
     if (action in DEFAULT_DATA) {

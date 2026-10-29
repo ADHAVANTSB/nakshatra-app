@@ -284,6 +284,13 @@ export class App implements OnInit {
     const restoredScope = result.data.session;
     if (restoredScope.programId && restoredScope.environmentId) {
       this.programContext.restoreFromBackend(restoredScope.programId, restoredScope.environmentId);
+    } else if (this.programContext.program()) {
+      // Validation succeeded but the session carries no scope. A scope
+      // remembered in sessionStorage from an earlier session is stale here:
+      // the server-side session is the authority. Clear it (and only now -
+      // never before the session is validated) so the user re-enters the
+      // selection flow instead of seeing an unconfirmed scope.
+      this.programContext.clear();
     }
 
     // A visitor whose session was just restored while sitting on the sign-in

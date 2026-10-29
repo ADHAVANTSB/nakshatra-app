@@ -242,6 +242,37 @@ export interface SourceSheetCaretaker {
   participantName: string;
 }
 
+/**
+ * Advisory-only result of the backend's cross-zone workbook scan
+ * (`previewShelterSheet` -> `crossZoneConflict`). NEVER an authorization
+ * decision: the connection handler enforces the cross-zone rule
+ * server-side on its own. Displayed so an operator sees the conflict
+ * before submitting; absent or null when the scan found nothing.
+ */
+export interface CrossZoneSourceClaim {
+  /** Zones mapped to the claiming registry (TEST/ZONE_1 share one). */
+  environmentIds: string[];
+  /** Registry spreadsheet that holds the claim (never a secret). */
+  spreadsheetId: string;
+  sourceId: string;
+  shelterHomeId: string;
+  homeStatus: string;
+  sourceStatus: string;
+}
+
+/** A registry whose claim state could not be determined (or is uninitialized). */
+export interface CrossZoneRegistryIssue {
+  environmentIds: string[];
+  spreadsheetId: string;
+  error: string;
+}
+
+export interface CrossZoneConflictReport {
+  claims: CrossZoneSourceClaim[];
+  uninitializedRegistries: CrossZoneRegistryIssue[];
+  unreachableRegistries: CrossZoneRegistryIssue[];
+}
+
 /** The validated result of `previewShelterSheet` (Code.gs 3898-3922). */
 export interface ShelterSheetPreviewData {
   /** Workbook display name — never a spreadsheet id. */
@@ -261,6 +292,12 @@ export interface ShelterSheetPreviewData {
     sheetsTotal: number;
     sheets: Array<Record<string, unknown>>;
   };
+  /**
+   * Advisory only - never an authorization decision. The server-side
+   * connection handler enforces the cross-zone rule independently.
+   * Optional so older backend responses (and fixtures) stay valid.
+   */
+  crossZoneConflict?: CrossZoneConflictReport | null;
   warnings: string[];
   errors: string[];
 }

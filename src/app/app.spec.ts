@@ -329,6 +329,86 @@ describe('App', () => {
     expect(fetchCallCount).toBeGreaterThanOrEqual(1);
   });
 
+  // Zone 2 Step 6 (U9): a stale local scope must never outlive a
+  // SUCCESSFULLY validated session that carries no scope. Clearing
+  // happens only in that case - never before validation completes.
+  it('clears a stale local scope when a validated session carries no scope', async () => {
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'persisted-session-1', expiresAt: future }),
+    );
+    // A scope remembered from an earlier session sits in local storage.
+    sessionStorage.setItem(
+      'nakshatra.programScope',
+      JSON.stringify({ programId: 'ARTS', zoneId: 'ZONE_1' }),
+    );
+
+    vi.stubGlobal('fetch', (_url: string, init: { body: string }) => {
+      fetchCallCount += 1;
+      expect(String(JSON.parse(init.body).action)).toBe('validateSession');
+      return Promise.resolve(new Response(
+        JSON.stringify({
+          success: true,
+          access: 'APPROVED',
+          user: ADMIN_USER,
+          // Validation succeeded but the session carries NO scope.
+          data: { session: { expiresAt: future } },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+
+    const router = TestBed.inject(Router);
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl =
+      vi.fn(() => Promise.resolve(true));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const context = TestBed.inject(ProgramContextService);
+    expect(context.hasCompleteScope()).toBe(false);
+    expect(sessionStorage.getItem('nakshatra.programScope')).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the local scope when session validation does not succeed', async () => {
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    sessionStorage.setItem(
+      'nakshatra.applicationSession',
+      JSON.stringify({ id: 'persisted-session-1', expiresAt: future }),
+    );
+    sessionStorage.setItem(
+      'nakshatra.programScope',
+      JSON.stringify({ programId: 'ARTS', zoneId: 'ZONE_1' }),
+    );
+
+    // Ambiguous transport failure: the backend never said the session is
+    // invalid, so nothing is cleared (scope included).
+    vi.stubGlobal('fetch', () => {
+      fetchCallCount += 1;
+      return Promise.reject(new Error('network down'));
+    });
+
+    const router = TestBed.inject(Router);
+    (router as unknown as { navigateByUrl: (url: string) => Promise<boolean> }).navigateByUrl =
+      vi.fn(() => Promise.resolve(true));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const context = TestBed.inject(ProgramContextService);
+    expect(context.hasCompleteScope()).toBe(true);
+    expect(sessionStorage.getItem('nakshatra.programScope')).not.toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
   it('clears a stale persisted session when the backend rejects it', async () => {
     sessionStorage.setItem(
       'nakshatra.applicationSession',
