@@ -69,20 +69,21 @@ describe('SelectZone', () => {
     )));
   }
 
-  it('renders only the event card — Zone 1 and Zone 2 stay hidden', () => {
+  it('offers the Zone 2 and event cards — Zone 1 stays hidden', () => {
     context.selectProgram('ARTS');
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
     const cards = Array.from(element.querySelectorAll('.nk-zone-card'));
 
-    // Zone 1 / Zone 2 cards were removed from this page (organiser decision);
-    // their scopes remain valid, they are just not selectable here.
+    // Zone 1 stays hidden (organiser decision); its scope remains valid,
+    // it is just not selectable here. Zone 2 is offered next to the event
+    // card.
     expect(cards.length).toBe(ZONES.filter(zone => !zone.hidden).length);
     const cardText = cards.map(card => card.textContent ?? '').join('\n');
     expect(cardText).toContain('Nakshatra Arts 25OCT');
+    expect(cardText).toContain('Zone 2');
     expect(cardText).not.toContain('Zone 1');
-    expect(cardText).not.toContain('Zone 2');
   });
 
   it('shows no date and none of the removed copy on the event card', () => {
@@ -90,19 +91,22 @@ describe('SelectZone', () => {
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    const cardText = Array.from(element.querySelectorAll('.nk-zone-card'))
-      .map(card => card.textContent ?? '')
-      .join('\n');
+    const cards = Array.from(element.querySelectorAll('.nk-zone-card'));
+    const allText = cards.map(card => card.textContent ?? '').join('\n');
+    const eventCard = cards.find(card =>
+      (card.textContent ?? '').includes('Nakshatra Arts 25OCT')) as HTMLElement;
 
-    // Zone 1 / Zone 2 (the dated cards) are hidden, and the event card has
-    // no date — nothing is invented and the removed copy stays gone.
-    expect(cardText).not.toContain('2026');
-    expect(cardText).not.toContain('to be confirmed');
-    expect(cardText).not.toContain('Rehearsal scope');
-    expect(element.querySelector('.nk-zone-date')).toBeNull();
+    // The event card has no date — nothing is invented and the removed
+    // copy stays gone. Zone 2 is a dated live card and shows its date.
+    expect(eventCard.querySelector('.nk-zone-date')).toBeNull();
+    expect(allText).not.toContain('to be confirmed');
+    expect(allText).not.toContain('Rehearsal scope');
+    const zone2Card = cards.find(card =>
+      (card.textContent ?? '').includes('Zone 2')) as HTMLElement;
+    expect(zone2Card.querySelector('.nk-zone-date')).not.toBeNull();
   });
 
-  it('renders the event badge on the only offered card', () => {
+  it('renders the environment badge on each offered card', () => {
     context.selectProgram('ARTS');
     fixture.detectChanges();
 
@@ -110,8 +114,8 @@ describe('SelectZone', () => {
     const badges = Array.from(element.querySelectorAll('.nk-zone-card .nk-zone-environment'))
       .map(badge => badge.textContent?.trim() ?? '');
 
-    // The hidden live zones leave no 'Live' badge on this page any more.
-    expect(badges).toEqual(['Nakshatra Arts 25OCT']);
+    // Live zones show 'Live'; the event zone shows its UI label.
+    expect(badges).toEqual(['Live', 'Nakshatra Arts 25OCT']);
   });
 
   it('persists the scope on the server session and enters the dashboard', async () => {

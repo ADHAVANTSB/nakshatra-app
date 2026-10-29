@@ -4,8 +4,9 @@ import { certificateTeamUser, expect, monitorPageErrors, signIn, test, type Scop
  * Programme & zone scope journeys — MOCKED.
  *
  * After sign-in every user must pass through programme selection (Arts /
- * Sports) and zone selection (only the event zone card is offered; Zone 1 /
- * Zone 2 are hidden by organiser decision but stay valid scopes) before any
+ * Sports) and zone selection (the event zone card and the Zone 2 card are
+ * offered; Zone 1 stays hidden by organiser decision but is a valid scope)
+ * before any
  * scoped page opens. The scope is kept in sessionStorage, survives refreshes,
  * cannot be bypassed by deep links, and is persisted on the server-side
  * session via the selectScope action (stubbed here).
@@ -32,9 +33,9 @@ test.describe('programme and zone selection flow', () => {
     await expect(page.getByRole('heading', { name: 'Choose your zone' })).toBeVisible();
     // Zone page shows the chosen programme.
     await expect(page.getByText(/You are working in/)).toContainText('Arts');
-    // Zone 1 / Zone 2 cards were removed from this page (organiser decision).
+    // Zone 1 card stays hidden (organiser decision); Zone 2 is offered.
     await expect(page.getByRole('button', { name: /Zone 1/ })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /Zone 2/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Zone 2/ })).toHaveCount(1);
 
     await page.getByRole('button', { name: /Nakshatra Arts 25OCT/ }).click();
     await expect(page).toHaveURL(/#\/dashboard/);
@@ -51,8 +52,8 @@ test.describe('programme and zone selection flow', () => {
   });
 
   test('a seeded Zone 2 scope renders the Zone 2 date on the dashboard', async ({ page }) => {
-    // Zone 2 is a valid scope but its card is hidden from the selection page,
-    // so the scope is seeded the way deep links and sessions restore it.
+    // Seeded the way deep links and sessions restore it - this proves the
+    // restore path independently of clicking the (now visible) Zone 2 card.
     await signIn(page, { scope: { program: 'ARTS', zone: 'ZONE_2' } });
 
     await expect(page).toHaveURL(/#\/dashboard/);

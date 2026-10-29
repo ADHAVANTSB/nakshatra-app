@@ -28,9 +28,9 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
 ] as const;
 
 export const ZONES: readonly ZoneDefinition[] = [
-  // Hidden from the zone-selection page by organiser decision (2026-10-25):
-  // only the event card is offered. The scopes stay valid for seeded sessions,
-  // deep links and the backend — nothing else changes.
+  // ZONE_1 hidden from the zone-selection page by organiser decision
+  // (2026-10-25); the scope stays valid for seeded sessions, deep links
+  // and the backend. ZONE_2 is offered since 2026-10-30 (user decision).
   {
     id: 'ZONE_1',
     label: 'Zone 1',
@@ -45,7 +45,6 @@ export const ZONES: readonly ZoneDefinition[] = [
     description: 'Programme zone 2',
     environment: 'LIVE',
     date: '2026-11-01',
-    hidden: true,
   },
   {
     id: 'TEST',
