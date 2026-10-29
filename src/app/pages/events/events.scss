@@ -183,6 +183,17 @@
   border-radius: 12px;
 }
 
+.export-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.export-actions .secondary-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .search-wrapper {
   position: relative;
   flex: 1;

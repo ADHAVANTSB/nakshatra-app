@@ -209,6 +209,27 @@
 
     </select>
 
+
+    <div class="export-actions">
+
+      <button
+        type="button"
+        class="secondary-button"
+        [disabled]="rosterExporting()"
+        (click)="downloadRosterPdf()">
+        Download Master Roster (PDF)
+      </button>
+
+      <button
+        type="button"
+        class="secondary-button"
+        [disabled]="rosterExporting()"
+        (click)="exportRosterCsv()">
+        Export Master Roster (CSV)
+      </button>
+
+    </div>
+
   </div>
 
 

@@ -33,7 +33,17 @@ import {
   TeamLoadState,
   TeamService
 } from '../../core/services/teams/team.service';
+import { ReportService } from '../../core/services/reports/report.service';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { canEditRegistrations } from '../../core/permissions/role-matrix';
+import {
+  MasterRoster,
+  RosterTeamInput,
+  buildMasterRoster,
+  rosterFileStem,
+  rosterToCsv,
+  rosterToHtml
+} from './roster';
 import { EVENT_FINALIZED_MESSAGE } from '../../core/permissions/friendly-error';
 
 type RegistrationLoadStatus = 'LOADING' | 'LOADED' | 'ERROR';
@@ -88,6 +98,12 @@ export class Events implements OnInit {
 
   private readonly route =
     inject(ActivatedRoute);
+
+  private readonly reportService =
+    inject(ReportService);
+
+  private readonly programContext =
+    inject(ProgramContextService);
 
   /**
    * Registration writes (add / cancel / reactivate) are hidden for the Events
@@ -1699,6 +1715,208 @@ export class Events implements OnInit {
     };
 
     return labels[status];
+  }
+
+
+  // =========================================================
+  // MASTER ROSTER EXPORT (PDF + CSV)
+  // =========================================================
+  //
+  // Both exports are assembled from ONE snapshot of the same backend
+  // data - the scoped participant business table (with its distinct
+  // ACTIVE registrations), the event master already loaded on this
+  // page, and the GROUP-event team rosters - so the PDF and the CSV
+  // can never disagree with each other or with the counts shown here.
+  // Exports always cover EVERY event of the selected programme; the
+  // page's search/category/mode/status filters are a view concern and
+  // never narrow an export. Every read is already scoped to the
+  // session's programme/zone by the backend.
+
+  /** True while the roster is being assembled; both export buttons stay disabled. */
+  readonly rosterExporting = signal(false);
+
+  /**
+   * Downloads the master roster as a CSV - one row per
+   * participant-event registration, quoted for Excel.
+   */
+  async exportRosterCsv(): Promise<void> {
+    if (this.rosterExporting()) {
+      return;
+    }
+
+    this.rosterExporting.set(true);
+
+    try {
+      const roster = await this.assembleMasterRoster();
+
+      const blob = new Blob([rosterToCsv(roster)], {
+        type: 'text/csv;charset=utf-8'
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = rosterFileStem(roster.programLabel) + '.csv';
+      anchor.click();
+      URL.revokeObjectURL(url);
+
+      this.notifications.success(
+        'Master roster exported',
+        roster.totalRegistrations + ' registration rows downloaded.'
+      );
+    } catch (error) {
+      this.notifications.error(
+        'Master roster export failed',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    } finally {
+      this.rosterExporting.set(false);
+    }
+  }
+
+  /**
+   * Downloads the master roster as a PDF through the browser print
+   * dialog (Save as PDF) - no PDF library is involved. The print view
+   * carries its own page-break and repeated-header styles.
+   */
+  async downloadRosterPdf(): Promise<void> {
+    if (this.rosterExporting()) {
+      return;
+    }
+
+    this.rosterExporting.set(true);
+
+    try {
+      const roster = await this.assembleMasterRoster();
+
+      this.printRosterDocument(rosterToHtml(roster));
+    } catch (error) {
+      this.notifications.error(
+        'Master roster download failed',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    } finally {
+      this.rosterExporting.set(false);
+    }
+  }
+
+  /**
+   * One snapshot of the whole programme roster. Every value comes from
+   * the backend: the participant business table (getReports) carries the
+   * identity of each registration, the event master supplies the record
+   * identity (code / eligible levels), and each GROUP event contributes
+   * its team roster. Nothing is counted or inferred on the client.
+   */
+  private async assembleMasterRoster(): Promise<MasterRoster> {
+    const events = this.events();
+    const groupEvents = events.filter(event => event.mode === 'GROUP');
+
+    await this.reportService.loadReports({});
+    await Promise.all(
+      groupEvents.map(event => this.teamService.loadTeams(event.id))
+    );
+
+    const rows = this.reportService.reportsState().data;
+
+    if (!rows) {
+      throw new Error(
+        this.reportService.reportsError() ||
+          'The backend did not return roster data.'
+      );
+    }
+
+    // The house honesty contract: a collection the backend omitted is an
+    // error for this export, never an empty roster that looks complete.
+    if (!rows.supplied.participants) {
+      throw new Error(
+        'The backend did not supply the participant roster; the export ' +
+          'was not produced.'
+      );
+    }
+
+    const allTeams = this.teamService.teams$();
+    const teams: RosterTeamInput[] = [];
+
+    groupEvents.forEach(event => {
+      allTeams
+        .filter(team => team.eventId === event.id)
+        .forEach(team => {
+          teams.push({
+            eventId: team.eventId,
+            teamId: team.id,
+            teamName: team.name,
+            memberParticipantIds: this.teamService
+              .getMembers(team.id)
+              .map(member => member.participantId)
+          });
+        });
+    });
+
+    return buildMasterRoster({
+      programLabel: this.programContext.program()?.label ?? 'Nakshatra',
+      events: events.map(event => ({
+        eventId: event.id,
+        eventCode: event.eventCode,
+        name: event.name,
+        category: event.category,
+        mode: event.mode,
+        status: event.status,
+        eligibleLevels: event.eligibleLevels
+      })),
+      participants: rows.participants.map(participant => ({
+        participantId: participant.participantId,
+        participantCode: participant.participantCode,
+        fullName: participant.fullName,
+        shelterHomeId: participant.shelterHomeId,
+        homeName: participant.homeName,
+        gender: participant.gender,
+        age: participant.age,
+        standard: participant.standard,
+        level: participant.level ?? ''
+      })),
+      registrations: rows.participants.flatMap(participant =>
+        participant.events.map(registration => ({
+          participantId: participant.participantId,
+          eventId: registration.eventId,
+          status: 'REGISTERED'
+        }))
+      ),
+      teams
+    });
+  }
+
+  /**
+   * Renders the roster in a hidden frame and prints it. The frame's own
+   * <title> becomes the browser's default Save-as-PDF filename, so no
+   * PDF dependency is needed. The frame is removed after printing.
+   */
+  private printRosterDocument(html: string): void {
+    const frame = document.createElement('iframe');
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    document.body.appendChild(frame);
+
+    const doc = frame.contentDocument;
+
+    if (!doc) {
+      frame.remove();
+      throw new Error('The roster print view could not be opened.');
+    }
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    frame.contentWindow?.addEventListener('afterprint', () => frame.remove());
+    frame.contentWindow?.focus();
+    frame.contentWindow?.print();
+
+    // Belt and braces: some browsers never fire afterprint - the frame
+    // is still removed so no stale node survives the page.
+    setTimeout(() => frame.remove(), 60000);
   }
 }
 
