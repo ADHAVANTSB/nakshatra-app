@@ -1,0 +1,354 @@
+// Nakshatra Arts '26 ceremony slide. Recreates the reference artwork in
+// CSS/SVG: parchment centre bleeding to terracotta watercolour edges,
+// marigold garland, cream winner panel with gold laurels, maroon prize
+// plaque. Every LAYOUT metric is `cqw` (1cqw = 1% of slide width, the
+// slide's root em) - never `em`, because `em` offsets resolve against the
+// element's OWN font-size and would silently jump when a rule sets one.
+// `em` is kept only for text-relative sizing (font-sizes, text margins).
+
+.stage-slide-frame {
+  container-type: inline-size;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.8cqw;
+  background: #e8c9a0;
+}
+
+.stage-slide {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  font-size: 1cqw;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #4a2c14;
+  overflow: hidden;
+  // Parchment centre -> terracotta watercolour edges.
+  background:
+    radial-gradient(ellipse 62% 52% at 50% 46%, rgba(250, 240, 214, 0.98) 0%, rgba(248, 231, 195, 0.9) 46%, rgba(233, 178, 118, 0) 72%),
+    radial-gradient(ellipse 38% 46% at 6% 34%, rgba(188, 92, 46, 0.75), rgba(188, 92, 46, 0) 70%),
+    radial-gradient(ellipse 34% 42% at 96% 30%, rgba(188, 92, 46, 0.7), rgba(188, 92, 46, 0) 70%),
+    radial-gradient(ellipse 46% 30% at 20% 96%, rgba(176, 78, 38, 0.85), rgba(176, 78, 38, 0) 72%),
+    radial-gradient(ellipse 46% 30% at 84% 98%, rgba(176, 78, 38, 0.85), rgba(176, 78, 38, 0) 72%),
+    radial-gradient(ellipse 30% 26% at 50% 2%, rgba(198, 104, 52, 0.6), rgba(198, 104, 52, 0) 72%),
+    linear-gradient(160deg, #d98a52 0%, #e9b985 22%, #f2e2bd 50%, #e6ab74 78%, #c8703c 100%);
+}
+
+// Optional drop-in replacement artwork; never distorted (cover keeps ratio).
+.stage-slide-artwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// ---------------------------------------------------------------------------
+// Marigold garland
+// ---------------------------------------------------------------------------
+
+.stage-slide-garland {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 9.2cqw;
+  filter: drop-shadow(0 0.18cqw 0.25cqw rgba(90, 40, 10, 0.35));
+}
+
+// ---------------------------------------------------------------------------
+// Kolam motifs, left and right
+// ---------------------------------------------------------------------------
+
+.stage-slide-kolam {
+  position: absolute;
+  top: 42%;
+  width: 13cqw;
+  height: 13cqw;
+  opacity: 0.5;
+  transform: translateY(-50%);
+}
+
+.stage-slide-kolam--left {
+  left: 3.2cqw;
+}
+
+.stage-slide-kolam--right {
+  right: 3.2cqw;
+}
+
+// ---------------------------------------------------------------------------
+// Logos
+// ---------------------------------------------------------------------------
+
+.stage-slide-logos {
+  position: absolute;
+  top: 8.6cqw;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 1.8cqw;
+  transform: translateX(-50%);
+}
+
+.stage-slide-bhumi {
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+
+  svg {
+    width: 3.6cqw;
+    height: 2.4cqw;
+  }
+
+  span {
+    font-family: 'Trebuchet MS', Verdana, sans-serif;
+    font-size: 2.1em;
+    font-weight: 700;
+    color: #e07b1f;
+  }
+}
+
+.stage-slide-logo-divider {
+  width: 0.12cqw;
+  height: 3.1cqw;
+  background: rgba(90, 50, 20, 0.45);
+}
+
+.stage-slide-nakshatra {
+  width: 4.1cqw;
+  height: 4.1cqw;
+  object-fit: contain;
+}
+
+// ---------------------------------------------------------------------------
+// Event branding
+// ---------------------------------------------------------------------------
+
+.stage-slide-title {
+  position: absolute;
+  top: 13.6cqw;
+  left: 0;
+  width: 100%;
+  margin: 0;
+  text-align: center;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 800;
+  font-size: 6em;
+  letter-spacing: 0.02em;
+  color: #8c1d18;
+  text-shadow:
+    0.04em 0.05em 0 rgba(120, 40, 20, 0.45),
+    0 0.02em 0 #f8ecd2;
+}
+
+.stage-slide-tagline {
+  position: absolute;
+  top: 21.1cqw;
+  left: 0;
+  width: 100%;
+  margin: 0;
+  text-align: center;
+  font-size: 2.35em;
+  letter-spacing: 0.06em;
+  color: #5a2d12;
+}
+
+// ---------------------------------------------------------------------------
+// Prize banner: crown + flourishes + maroon plaque
+// ---------------------------------------------------------------------------
+
+.stage-slide-banner {
+  position: absolute;
+  top: 25.7cqw;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6cqw;
+  transform: translateX(-50%);
+}
+
+.stage-slide-crown {
+  position: absolute;
+  top: -2.2cqw;
+  left: 50%;
+  width: 4.6cqw;
+  height: 3cqw;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0.12cqw 0.2cqw rgba(90, 50, 10, 0.4));
+}
+
+.stage-slide-flourish {
+  width: 8.2cqw;
+  height: 2.75cqw;
+  flex: none;
+}
+
+.stage-slide-banner-plaque {
+  padding: 0.42cqw 2.7cqw;
+  border: 0.16cqw solid #e8b23a;
+  border-radius: 0.55cqw;
+  background: linear-gradient(180deg, #7c2317 0%, #5e170f 100%);
+  box-shadow:
+    0 0 0 0.24cqw rgba(232, 178, 58, 0.35),
+    0 0.35cqw 0.8cqw rgba(80, 25, 10, 0.45);
+
+  span {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 700;
+    font-size: 2.9em;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    color: #f6e3b2;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Winner panel
+// ---------------------------------------------------------------------------
+
+.stage-slide-panel {
+  position: absolute;
+  top: 31.8cqw;
+  left: 50%;
+  width: 58cqw;
+  min-height: 21.2cqw;
+  padding: 1.5cqw 10cqw 1.7cqw;
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  text-align: center;
+  border: 0.13cqw solid #b98a45;
+  border-radius: 1.5cqw;
+  background: rgba(246, 235, 206, 0.9);
+  box-shadow: 0 0.4cqw 1.4cqw rgba(110, 55, 20, 0.28);
+}
+
+.stage-slide-laurel {
+  position: absolute;
+  top: 50%;
+  width: 6.6cqw;
+  height: 19cqw;
+  transform: translateY(-50%);
+}
+
+.stage-slide-laurel--left {
+  left: 1.6cqw;
+}
+
+.stage-slide-laurel--right {
+  right: 1.6cqw;
+}
+
+.stage-slide-event {
+  margin: 0 0 0.12em;
+  font-size: 3em;
+  font-weight: 700;
+  color: #4a2410;
+  overflow-wrap: break-word;
+}
+
+.stage-slide-ornament {
+  position: relative;
+  width: 26cqw;
+  height: 1.3cqw;
+  margin: 0.35cqw auto 0.7cqw;
+
+  // Thin rule with a central diamond flourish.
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 0.09cqw;
+    transform: translateY(-50%);
+    background: rgba(122, 82, 42, 0.6);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.85cqw;
+    height: 0.85cqw;
+    transform: translate(-50%, -50%) rotate(45deg);
+    border: 0.09cqw solid rgba(122, 82, 42, 0.75);
+    background: #f3e6c6;
+  }
+}
+
+.stage-slide-label {
+  font-family: 'Trebuchet MS', Verdana, sans-serif;
+  font-size: 1.28em;
+  letter-spacing: 0.04em;
+  color: #7a5230;
+}
+
+.stage-slide-winner {
+  margin: 0.06em 0 0.32em;
+  font-size: 2.72em;
+  font-weight: 700;
+  color: #8c1d18;
+  overflow-wrap: break-word;
+}
+
+.stage-slide-home {
+  margin: 0.06em 0 0.32em;
+  font-size: 2.15em;
+  font-weight: 700;
+  color: #4a2410;
+  overflow-wrap: break-word;
+}
+
+.stage-slide-position {
+  margin: 0.06em 0 0.15em;
+  font-size: 2.4em;
+  font-weight: 700;
+  color: #a4761e;
+}
+
+.stage-slide-subtitle {
+  margin: 0.5em auto 0;
+  max-width: 38cqw;
+  font-size: 1.35em;
+  font-style: italic;
+  color: #6b4a2c;
+  overflow-wrap: break-word;
+}
+
+// ---------------------------------------------------------------------------
+// Provenance badges (demo / manual / official)
+// ---------------------------------------------------------------------------
+
+.stage-slide-badge {
+  position: absolute;
+  right: 1.4cqw;
+  bottom: 1.4cqw;
+  padding: 0.45cqw 1.1cqw;
+  border-radius: 0.5cqw;
+  font-family: 'Trebuchet MS', Verdana, sans-serif;
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stage-slide-badge--demo {
+  border: 0.14cqw solid #8c1d18;
+  background: rgba(140, 29, 24, 0.92);
+  color: #ffe9c9;
+}
+
+.stage-slide-badge--manual {
+  border: 0.14cqw solid #a4761e;
+  background: rgba(164, 118, 30, 0.92);
+  color: #fff6e0;
+}
+
+.stage-slide-badge--official {
+  border: 0.14cqw solid #1f6b45;
+  background: rgba(31, 107, 69, 0.92);
+  color: #eafcef;
+}

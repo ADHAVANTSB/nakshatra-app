@@ -156,6 +156,11 @@ export class App implements OnInit {
       icon: '□', section: 'CERTIFICATES'
     },
     {
+      label: 'Stage Presentation',
+      route: '/stage-presentation',
+      icon: '▶', section: 'CERTIFICATES'
+    },
+    {
       label: 'Reports',
       route: '/reports',
       icon: '▤', section: 'REPORTS'

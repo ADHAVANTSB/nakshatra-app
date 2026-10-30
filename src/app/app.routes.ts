@@ -27,6 +27,9 @@ export const routes: Routes = [
   // Legacy approval URL: guard-protected redirect into the unified Results workspace.
   { path: 'results-approval', ...protectedRoute('RESULTS'), loadComponent: () => import('./pages/results/results-approval-redirect').then(m => m.ResultsApprovalRedirect) },
   { path: 'certificates', ...protectedRoute('CERTIFICATES'), loadComponent: () => import('./pages/certificates/certificates').then(m => m.Certificates) },
+  // Ceremony slide deck for the prize distribution (same scope gate as the
+  // certificates team's other screens; no new auth mechanism).
+  { path: 'stage-presentation', ...protectedRoute('CERTIFICATES'), loadComponent: () => import('./pages/stage-presentation/stage-presentation').then(m => m.StagePresentation) },
   { path: 'reports', ...protectedRoute('REPORTS'), loadComponent: () => import('./pages/reports/reports').then(m => m.Reports) },
   { path: 'settings', canActivate: [frontendAuthGuard, programSelectedGuard, zoneSelectedGuard, adminAccessGuard], loadComponent: () => import('./pages/settings/settings').then(m => m.Settings) },
 

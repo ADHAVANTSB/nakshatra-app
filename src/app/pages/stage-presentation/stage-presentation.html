@@ -1,0 +1,379 @@
+<div class="stage-page">
+  <!-- Left panel: slide management -->
+  <section class="stage-panel">
+    <header class="stage-head">
+      <h1>Stage Presentation</h1>
+      <p class="stage-sub">Create and manage slides for prize distribution</p>
+    </header>
+
+    @if (deck.hasDemoSlides()) {
+      <div class="stage-notice stage-notice--demo" role="status">
+        {{ notice }} — sample slides only, never written to any live record.
+        <button type="button" class="link-button" (click)="removeDemoSlides()">
+          Remove demo slides
+        </button>
+      </div>
+    } @else if (deck.hasRealSlides()) {
+      <div class="stage-notice stage-notice--real" role="status">REAL DATA</div>
+    }
+
+    <app-view-only-banner section="DISTRIBUTION"></app-view-only-banner>
+
+    <div class="stage-actions">
+      @if (canEdit()) {
+        <button
+          type="button"
+          class="primary-button"
+          data-testid="add-slide"
+          (click)="startAdd()">
+          + Add Slide
+        </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-testid="load-demo"
+          (click)="loadDemoSlides()">
+          Load demo slides
+        </button>
+      }
+    </div>
+
+    <!-- Slide list -->
+    @if (deck.slides().length === 0) {
+      <p class="stage-empty" role="status">
+        No slides yet. Add a slide or load the demo set to try the presentation.
+      </p>
+    } @else {
+      <ol class="stage-list" data-testid="slide-list">
+        @for (slide of deck.slides(); track slide.id; let i = $index) {
+          <li
+            class="stage-list-item"
+            [class.stage-list-item--selected]="i === playerIndex()"
+            draggable="true"
+            (dragstart)="onDragStart(i)"
+            (dragover)="$event.preventDefault()"
+            (drop)="onDrop(i)">
+            <span class="stage-list-num">{{ i + 1 }}</span>
+            <button
+              type="button"
+              class="stage-list-pick"
+              (click)="selectSlide(i)">
+              <span class="stage-list-event">{{ slide.eventName }}</span>
+              <span class="stage-list-who">{{ whoLabel(slide) }}</span>
+              <span class="stage-list-pos">🏆 {{ positionLabels[slide.position] }}</span>
+              @if (slide.source === 'DEMO') {
+                <span class="stage-list-tag stage-list-tag--demo">DEMO</span>
+              } @else if (slide.source === 'MANUAL_ADMIN') {
+                <span class="stage-list-tag stage-list-tag--manual">Manual</span>
+              } @else {
+                <span class="stage-list-tag stage-list-tag--official">Official</span>
+              }
+            </button>
+            <span class="stage-list-tools">
+              <button
+                type="button"
+                class="icon-button"
+                title="Move up"
+                [disabled]="i === 0"
+                (click)="moveUp(i)">↑</button>
+              <button
+                type="button"
+                class="icon-button"
+                title="Move down"
+                [disabled]="i === deck.slides().length - 1"
+                (click)="moveDown(i)">↓</button>
+              @if (canEdit()) {
+                <button
+                  type="button"
+                  class="icon-button"
+                  title="Edit slide"
+                  data-testid="edit-slide"
+                  (click)="startEdit(slide)">✎</button>
+                <button
+                  type="button"
+                  class="icon-button"
+                  title="Delete slide"
+                  data-testid="delete-slide"
+                  (click)="deleteSlide(slide.id)">🗑</button>
+              }
+            </span>
+          </li>
+        }
+      </ol>
+    }
+
+    <!-- Slide editor -->
+    @if (editorOpen()) {
+      <form class="stage-editor" data-testid="slide-editor" (submit)="$event.preventDefault(); saveSlide()">
+        <h2>{{ editingId() ? 'Edit Slide' : 'New Slide' }}</h2>
+
+        @if (editorErrors().length) {
+          <div class="stage-errors" role="alert">
+            @for (error of editorErrors(); track error) {
+              <p>{{ error }}</p>
+            }
+          </div>
+        }
+
+        <!-- Winner source: official results when they exist -->
+        @if (officialCandidates().length) {
+          <label class="stage-field">
+            <span>From official results</span>
+            <select
+              data-testid="official-candidate"
+              (change)="applyOfficialCandidate($any($event.target).value)">
+              <option value="">— pick a finalized winner —</option>
+              @for (candidate of officialCandidates(); track candidate.key) {
+                <option [value]="candidate.key">{{ candidate.label }}</option>
+              }
+            </select>
+          </label>
+        } @else if (!winnersLoading() && !winnersError()) {
+          <p class="stage-hint">
+            No official finalized results yet. Slides created now are marked as
+            manually entered — they are never presented as verified winners.
+          </p>
+        }
+
+        <label class="stage-field">
+          <span>Event</span>
+          <!-- No `required`: native constraint validation would silently
+               block submit; validateSlide shows the friendly errors. -->
+          <select
+            data-testid="editor-event"
+            [value]="editorEventId()"
+            (change)="onEditorEventChange($any($event.target).value)">
+            <option value="">— choose —</option>
+            @for (event of events(); track event.id) {
+              <option [value]="event.id">
+                {{ event.name }} ({{ event.mode === 'GROUP' ? 'Group' : 'Individual' }})
+              </option>
+            }
+          </select>
+        </label>
+
+        <label class="stage-field">
+          <span>Event type</span>
+          <input
+            type="text"
+            [value]="editorMode() === 'GROUP' ? 'Group event' : 'Individual event'"
+            readonly />
+        </label>
+
+        <label class="stage-field">
+          <span>Search homes &amp; children</span>
+          <input
+            type="search"
+            data-testid="editor-search"
+            placeholder="Type to filter…"
+            [value]="editorSearch()"
+            (input)="editorSearch.set($any($event.target).value)" />
+        </label>
+
+        <label class="stage-field">
+          <span>Home Name</span>
+          <select
+            data-testid="editor-home"
+            [value]="editorHomeName()"
+            (change)="editorHomeName.set($any($event.target).value)">
+            <option value="">— choose —</option>
+            @for (home of homeOptions(); track home) {
+              <option [value]="home">{{ home }}</option>
+            }
+          </select>
+        </label>
+
+        @if (editorMode() === 'SOLO') {
+          <label class="stage-field">
+            <span>Child Name (registered for this event)</span>
+            <select
+              data-testid="editor-child"
+              [value]="editorChildId()"
+              (change)="editorChildId.set($any($event.target).value)">
+              <option value="">— choose —</option>
+              @for (child of childOptions(); track child.participantId) {
+                <option [value]="child.participantId">
+                  {{ child.fullName }} ({{ child.participantCode }})
+                </option>
+              }
+            </select>
+          </label>
+        } @else {
+          <label class="stage-field">
+            <span>Team Name (optional)</span>
+            <input
+              type="text"
+              data-testid="editor-team"
+              [value]="editorTeamName()"
+              (input)="editorTeamName.set($any($event.target).value)" />
+          </label>
+        }
+
+        <label class="stage-field">
+          <span>Position</span>
+          <select
+            data-testid="editor-position"
+            [value]="editorPosition()"
+            (change)="editorPosition.set($any($event.target).value)">
+            @for (position of positionOptions; track position) {
+              <option [value]="position">{{ positionLabels[position] }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="stage-field">
+          <span>Optional subtitle / announcement</span>
+          <input
+            type="text"
+            data-testid="editor-subtitle"
+            [value]="editorSubtitle()"
+            (input)="editorSubtitle.set($any($event.target).value)" />
+        </label>
+
+        <div class="stage-editor-actions">
+          <button type="submit" class="primary-button" data-testid="save-slide">
+            {{ editingId() ? 'Update Slide' : 'Add Slide' }}
+          </button>
+          <button type="button" class="secondary-button" (click)="previewDraft()">
+            Preview Slide
+          </button>
+          <button type="button" class="secondary-button" (click)="cancelEdit()">Cancel</button>
+          @if (editingId()) {
+            <button
+              type="button"
+              class="danger-button"
+              data-testid="editor-delete"
+              (click)="deleteFromEditor()">
+              Delete
+            </button>
+          }
+        </div>
+      </form>
+    }
+  </section>
+
+  <!-- Right panel: preview, controls, thumbnails -->
+  <section class="stage-view">
+    <div class="stage-preview" data-testid="slide-preview">
+      @if (previewSlide(); as slide) {
+        <nk-stage-slide-view [slide]="slide" [demoNotice]="notice"></nk-stage-slide-view>
+      } @else {
+        <div class="stage-preview-empty">
+          <p>Add a slide or load the demo set to see the preview.</p>
+        </div>
+      }
+    </div>
+
+    <div class="stage-controls">
+      <span class="stage-counter">{{ currentSlideLabel() }}</span>
+      <button type="button" class="secondary-button" (click)="previousSlide()" title="Previous slide">◀</button>
+      <button
+        type="button"
+        class="secondary-button"
+        data-testid="play-pause"
+        (click)="togglePlay()">
+        {{ playerPlaying() ? '⏸ Pause' : '▶ Play' }}
+      </button>
+      <button type="button" class="secondary-button" (click)="nextSlide()" title="Next slide">▶</button>
+
+      <label class="stage-toggle">
+        <input
+          type="checkbox"
+          data-testid="autoplay"
+          [checked]="playerPlaying()"
+          (change)="setAutoPlay($any($event.target).checked)" />
+        Auto play
+      </label>
+
+      <select
+        class="stage-duration"
+        data-testid="duration"
+        (change)="setDuration(+$any($event.target).value)">
+        <option value="5">5 seconds</option>
+        <option value="10" selected>10 seconds</option>
+        <option value="15">15 seconds</option>
+        <option value="20">20 seconds</option>
+      </select>
+
+      <label class="stage-toggle">
+        <input
+          type="checkbox"
+          (change)="setRepeat($any($event.target).checked)" />
+        Repeat
+      </label>
+
+      <select
+        class="stage-zoom"
+        data-testid="zoom"
+        [value]="zoomPercent().toString()"
+        (change)="setZoom(+$any($event.target).value)">
+        <option value="50">50%</option>
+        <option value="75">75%</option>
+        <option value="100">100%</option>
+        <option value="125">125%</option>
+        <option value="150">150%</option>
+      </select>
+      <button type="button" class="secondary-button" (click)="fitToScreen()">Fit</button>
+      <button type="button" class="secondary-button" (click)="toggleFullscreen()">⛶ Fullscreen</button>
+
+      @if (deck.slides().length) {
+        <button
+          type="button"
+          class="primary-button"
+          data-testid="start-presentation"
+          (click)="startPresentation()">
+          Start Presentation
+        </button>
+      }
+    </div>
+
+    <!-- Thumbnails -->
+    @if (deck.slides().length) {
+      <div class="stage-thumbs" data-testid="thumbnails">
+        @for (slide of deck.slides(); track slide.id; let i = $index) {
+          <button
+            type="button"
+            class="stage-thumb"
+            [class.stage-thumb--selected]="i === playerIndex()"
+            [attr.data-testid]="'thumb-' + i"
+            draggable="true"
+            (dragstart)="onDragStart(i)"
+            (dragover)="$event.preventDefault()"
+            (drop)="onDrop(i)"
+            (click)="selectSlide(i)">
+            <span class="stage-thumb-num">{{ i + 1 }}</span>
+            <nk-stage-slide-view [slide]="slide"></nk-stage-slide-view>
+          </button>
+        }
+      </div>
+    }
+  </section>
+</div>
+
+<!-- Projector mode: slide only + subtle auto-hiding toolbar -->
+@if (presenting()) {
+  <div class="stage-projector" data-testid="projector" (mousemove)="onMouseMove()">
+    <div
+      class="stage-projector-slide"
+      [style.transform]="'scale(' + zoomPercent() / 100 + ')'">
+      @if (previewSlide(); as slide) {
+        <nk-stage-slide-view [slide]="slide" [demoNotice]="notice"></nk-stage-slide-view>
+      }
+    </div>
+
+    <div
+      class="stage-projector-bar"
+      [class.stage-projector-bar--hidden]="!controlsVisible()">
+      <span class="stage-counter">{{ currentSlideLabel() }}</span>
+      <button type="button" (click)="previousSlide()">◀</button>
+      <button type="button" (click)="togglePlay()">
+        {{ playerPlaying() ? '⏸' : '▶' }}
+      </button>
+      <button type="button" (click)="nextSlide()">▶</button>
+      <button type="button" (click)="toggleFullscreen()">⛶</button>
+      <button type="button" data-testid="exit-presentation" (click)="exitPresentation()">
+        ✕ Exit
+      </button>
+    </div>
+  </div>
+}

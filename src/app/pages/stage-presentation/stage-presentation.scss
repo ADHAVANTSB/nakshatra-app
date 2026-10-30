@@ -1,0 +1,543 @@
+// Stage Presentation organizer workspace: two-panel layout (slide list +
+// editor left, 16:9 preview + controls + thumbnails right) and the
+// full-screen projector overlay. Metrics follow the app's global tokens
+// (--nk-*) and the pages' flat kebab-case class convention.
+
+.stage-page {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  max-width: var(--nk-page-max-width);
+  margin: 0 auto;
+  padding: 20px;
+}
+
+// ---------------------------------------------------------------------------
+// Left panel: slide management
+// ---------------------------------------------------------------------------
+
+.stage-panel {
+  flex: 0 0 380px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-sm);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.stage-head {
+  h1 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 800;
+    color: var(--nk-text);
+  }
+}
+
+.stage-sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--nk-muted);
+}
+
+.stage-notice {
+  padding: 10px 12px;
+  border-radius: var(--nk-radius-md);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stage-notice--demo {
+  border: 1px solid var(--nk-warning);
+  background: var(--nk-yellow-light);
+  color: var(--nk-text-dark);
+}
+
+.stage-notice--real {
+  border: 1px solid var(--nk-success);
+  background: #e7f8f1;
+  color: var(--nk-text-dark);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stage-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stage-empty {
+  margin: 0;
+  padding: 18px 14px;
+  border: 1px dashed var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  color: var(--nk-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.stage-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--nk-primary);
+  background: var(--nk-primary-light);
+  color: var(--nk-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  color: var(--nk-primary-dark);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+// Slide list ----------------------------------------------------------------
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--nk-border-light);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-background-soft);
+  cursor: grab;
+
+  &--selected {
+    border-color: var(--nk-primary);
+    background: var(--nk-primary-light);
+  }
+}
+
+.stage-list-num {
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--nk-primary);
+  color: var(--nk-white);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stage-list-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.stage-list-event {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--nk-text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-list-who {
+  font-size: 12px;
+  color: var(--nk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-list-pos {
+  font-size: 11px;
+  color: var(--nk-text-soft);
+}
+
+.stage-list-tag {
+  align-self: flex-start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stage-list-tag--demo {
+  background: var(--nk-yellow-light);
+  color: var(--nk-warning);
+  border: 1px solid var(--nk-warning);
+}
+
+.stage-list-tag--manual {
+  background: var(--nk-purple-light);
+  color: var(--nk-purple-dark);
+  border: 1px solid var(--nk-purple);
+}
+
+.stage-list-tag--official {
+  background: #e7f8f1;
+  color: var(--nk-success);
+  border: 1px solid var(--nk-success);
+}
+
+.stage-list-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-sm);
+  background: var(--nk-white);
+  color: var(--nk-text-soft);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--nk-primary);
+    color: var(--nk-primary-dark);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// Editor --------------------------------------------------------------------
+
+.stage-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--nk-primary-light);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-background-soft);
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--nk-text-dark);
+  }
+}
+
+.stage-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--nk-text-soft);
+  }
+
+  input,
+  select {
+    padding: 8px 10px;
+    border: 1px solid var(--nk-border);
+    border-radius: var(--nk-radius-sm);
+    font: inherit;
+    font-size: 13px;
+    color: var(--nk-text);
+    background: var(--nk-white);
+
+    &:focus {
+      outline: 2px solid var(--nk-primary-light);
+      border-color: var(--nk-primary);
+    }
+
+    &[readonly] {
+      background: var(--nk-background);
+      color: var(--nk-muted);
+    }
+  }
+}
+
+.stage-errors {
+  padding: 8px 10px;
+  border: 1px solid var(--nk-danger);
+  border-radius: var(--nk-radius-sm);
+  background: #fdeef2;
+
+  p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--nk-danger);
+    line-height: 1.5;
+  }
+}
+
+.stage-editor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.danger-button {
+  padding: 8px 16px;
+  border: 1px solid var(--nk-danger);
+  border-radius: var(--nk-radius-sm);
+  background: var(--nk-white);
+  color: var(--nk-danger);
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--nk-danger);
+    color: var(--nk-white);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Right panel: preview, controls, thumbnails
+// ---------------------------------------------------------------------------
+
+.stage-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stage-preview {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  overflow: hidden;
+  background: var(--nk-text-dark);
+  box-shadow: var(--nk-shadow-md);
+
+  nk-stage-slide-view {
+    display: block;
+  }
+}
+
+.stage-preview-empty {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nk-muted-light);
+  font-size: 14px;
+}
+
+.stage-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-surface);
+}
+
+.stage-counter {
+  min-width: 52px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--nk-text-dark);
+}
+
+.stage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--nk-text-soft);
+  cursor: pointer;
+}
+
+.stage-duration,
+.stage-zoom {
+  padding: 6px 8px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-sm);
+  font: inherit;
+  font-size: 13px;
+  background: var(--nk-white);
+}
+
+// Thumbnails ----------------------------------------------------------------
+
+.stage-thumbs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.stage-thumb {
+  flex: 0 0 180px;
+  position: relative;
+  padding: 0;
+  border: 2px solid var(--nk-border);
+  border-radius: var(--nk-radius-sm);
+  overflow: hidden;
+  background: var(--nk-text-dark);
+  cursor: pointer;
+
+  nk-stage-slide-view {
+    display: block;
+    pointer-events: none;
+  }
+
+  &--selected {
+    border-color: var(--nk-primary);
+    box-shadow: var(--nk-shadow-primary);
+  }
+}
+
+.stage-thumb-num {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(16, 47, 67, 0.85);
+  color: var(--nk-white);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+// ---------------------------------------------------------------------------
+// Projector mode
+// ---------------------------------------------------------------------------
+
+.stage-projector {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+
+.stage-projector-slide {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+
+  nk-stage-slide-view {
+    display: block;
+    width: min(100vw, 177.78vh); // fill 16:9 without distortion
+  }
+}
+
+.stage-projector-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(16, 47, 67, 0.82);
+  color: var(--nk-white);
+  transition: opacity 0.25s ease;
+
+  button {
+    border: 0;
+    border-radius: var(--nk-radius-sm);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--nk-white);
+    font: inherit;
+    padding: 6px 10px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.24);
+    }
+  }
+
+  .stage-counter {
+    color: var(--nk-white);
+  }
+
+  &--hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Responsive
+// ---------------------------------------------------------------------------
+
+@media (max-width: 1100px) {
+  .stage-page {
+    flex-direction: column;
+  }
+
+  .stage-panel {
+    flex: 1 1 auto;
+    max-width: none;
+    width: 100%;
+    max-height: none;
+  }
+
+  .stage-view {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .stage-page {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .stage-controls {
+    justify-content: center;
+  }
+
+  .stage-thumb {
+    flex-basis: 140px;
+  }
+}
