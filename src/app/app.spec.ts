@@ -174,12 +174,12 @@ describe('App', () => {
 
     expect(sidebarNavLabels(element)).toEqual([
       'Dashboard',
-      'Homes',
-      'Participants',
       'Events',
+      'Shelter Homes',
+      'Participants',
       'Attendance',
       'Judging',
-      'Scoring',
+      'Scores',
       'Results',
       'Certificates',
       'Stage Presentation',

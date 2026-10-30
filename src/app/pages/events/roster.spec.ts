@@ -13,9 +13,12 @@ import {
 /**
  * Master roster export tests: one row per participant-event registration,
  * group vs solo structure, cancelled/ineligible exclusion, empty events,
- * CSV escaping (commas, quotes, newlines, non-English names), PDF/CSV
- * count consistency and programme isolation. The builders are pure, so
- * every case runs without TestBed or a network.
+ * CSV escaping (commas, quotes, newlines, non-English names), CSV row
+ * count consistency, programme isolation and the approved PDF review
+ * feedback (individual columns Home Name/Child Name/Category/Code, group
+ * events home-names-only, no registration counts in the PDF, no invented
+ * codes or categories). The builders are pure, so every case runs without
+ * TestBed or a network.
  */
 
 function baseInput(overrides: Partial<RosterInput> = {}): RosterInput {
@@ -285,7 +288,7 @@ describe('master roster CSV', () => {
     expect(csv.split('\r\n')).toHaveLength(2);
   });
 
-  it('CSV row count always equals the PDF registration count', () => {
+  it('CSV keeps one detailed row per registration while the PDF prints no counts', () => {
     const roster = buildMasterRoster(baseInput({
       registrations: [
         { participantId: 'P-1', eventId: 'E-ART-1', status: 'REGISTERED' },
@@ -302,8 +305,12 @@ describe('master roster CSV', () => {
     const html = rosterToHtml(roster);
 
     expect(csvRows).toHaveLength(roster.totalRegistrations);
-    // The PDF prints the same count in its header line.
-    expect(html).toContain(roster.totalRegistrations + ' active registrations');
+    // The PDF carries no registration counts at all: no header total, no
+    // event-level totals, no summaries and no derived replacement counts.
+    expect(html).not.toContain('active registration');
+    expect(html).not.toContain('ensemble');
+    expect(html).not.toMatch(/\(\d+\)/);
+    expect(html).not.toMatch(/\d+\s+active\s+registrations?/i);
   });
 
   it('carries the programme name in the title and every CSV row', () => {
@@ -342,6 +349,176 @@ describe('master roster PDF print view', () => {
     })));
 
     expect(html).toContain('CANCELLED');
+  });
+});
+
+describe('master roster PDF review feedback', () => {
+  function soloRoster() {
+    return buildMasterRoster(baseInput({
+      participants: [
+        { participantId: 'P-1', participantCode: 'NK26-H1-001', fullName: 'Asha',
+          shelterHomeId: 'H-1', homeName: 'Arun Rainbow Nest', gender: 'FEMALE',
+          age: 9, standard: 2, level: 'SUB_JUNIOR' },
+        { participantId: 'P-2', participantCode: 'NK26-H1-002', fullName: 'Chandra',
+          shelterHomeId: 'H-1', homeName: 'Arun Rainbow Nest', gender: 'MALE',
+          age: 9, standard: 2, level: 'SUB_JUNIOR' },
+        { participantId: 'P-3', participantCode: 'NK26-H2-001', fullName: 'Deepa',
+          shelterHomeId: 'H-2', homeName: 'Bala Mandir', gender: 'FEMALE',
+          age: 12, standard: 5, level: 'JUNIOR' },
+      ],
+      registrations: [
+        { participantId: 'P-1', eventId: 'E-ART-1', status: 'REGISTERED' },
+        { participantId: 'P-2', eventId: 'E-ART-1', status: 'REGISTERED' },
+        { participantId: 'P-3', eventId: 'E-ART-1', status: 'REGISTERED' },
+      ],
+    }));
+  }
+
+  function groupRoster() {
+    return buildMasterRoster(baseInput({
+      // Group-only catalogue: the assertions below are about the
+      // group-event PDF section in isolation.
+      events: [
+        { eventId: 'E-ART-2', eventCode: 'ART-002', name: 'Rangoli', category: 'ARTS',
+          mode: 'GROUP', status: 'ACTIVE',
+          eligibleLevels: ['SUB_JUNIOR', 'JUNIOR', 'SENIOR', 'SUPER_SENIOR'] },
+      ],
+      participants: [
+        { participantId: 'P-1', participantCode: 'NK26-H1-001', fullName: 'Asha',
+          shelterHomeId: 'H-1', homeName: 'Arun Rainbow Nest', gender: 'FEMALE',
+          age: 9, standard: 2, level: 'SUB_JUNIOR' },
+        { participantId: 'P-2', participantCode: 'NK26-H2-001', fullName: 'Chandra',
+          shelterHomeId: 'H-2', homeName: 'Bala Mandir', gender: 'MALE',
+          age: 13, standard: 6, level: 'JUNIOR' },
+      ],
+      registrations: [
+        { participantId: 'P-1', eventId: 'E-ART-2', status: 'REGISTERED' },
+        { participantId: 'P-2', eventId: 'E-ART-2', status: 'REGISTERED' },
+      ],
+      teams: [{
+        eventId: 'E-ART-2', teamId: 'T-1', teamName: 'Rainbow Stars',
+        memberParticipantIds: ['P-1', 'P-2'],
+      }],
+    }));
+  }
+
+  it('individual events show Home Name, Child Name, Category, Code in that order', () => {
+    const html = rosterToHtml(soloRoster());
+
+    expect(html).toContain(
+      '<thead><tr><th>Home Name</th><th>Child Name</th><th>Category</th><th>Code</th></tr></thead>',
+    );
+
+    // Row cells follow the same order: home, child name, category, code.
+    const homeCell = html.indexOf('<td class="home">Arun Rainbow Nest</td>');
+    const nameCell = html.indexOf('<td>Asha</td>');
+    const categoryCell = html.indexOf('<td>Sub Juniors</td>');
+    const codeCell = html.indexOf('<td>NK26-H1-001</td>');
+
+    expect(homeCell).toBeGreaterThan(-1);
+    expect(homeCell).toBeLessThan(nameCell);
+    expect(nameCell).toBeLessThan(categoryCell);
+    expect(categoryCell).toBeLessThan(codeCell);
+  });
+
+  it('uses the heading Category and never Age Category', () => {
+    const html = rosterToHtml(soloRoster());
+
+    expect(html).toContain('<th>Category</th>');
+    expect(html).not.toContain('Age Category');
+    expect(html).not.toContain('Age category');
+    expect(ROSTER_CSV_HEADER as readonly string[]).not.toContain('Age category');
+    expect(ROSTER_CSV_HEADER as readonly string[]).toContain('Category');
+  });
+
+  it('group events list participating home names only', () => {
+    const html = rosterToHtml(groupRoster());
+
+    // The group heading is the code plus participation type - no age band.
+    expect(html).toContain('ART-002 · Group');
+    expect(html).toContain('<table class="group-table">');
+    expect(html).toContain('Arun Rainbow Nest');
+    expect(html).toContain('Bala Mandir');
+
+    // No child names, no participant codes, no team names.
+    expect(html).not.toContain('Asha');
+    expect(html).not.toContain('Chandra');
+    expect(html).not.toContain('NK26-');
+    expect(html).not.toContain('Rainbow Stars');
+
+    // No age/category breakdowns in a group-event PDF.
+    expect(html).not.toContain('Sub Juniors');
+    expect(html).not.toContain('all levels');
+  });
+
+  it('lists each participating home once, never one row per child', () => {
+    const html = rosterToHtml(groupRoster());
+
+    // Two children across two homes -> exactly two home rows.
+    expect(html.split('<td class="home">').length - 1).toBe(2);
+    expect(html).not.toContain('<th>Child Name</th>');
+  });
+
+  it('never invents missing participant codes or categories', () => {
+    const roster = buildMasterRoster(baseInput({
+      participants: [{
+        participantId: 'P-1', participantCode: '', fullName: 'Asha',
+        shelterHomeId: 'H-1', homeName: 'Arun Rainbow Nest', gender: '',
+        age: null, standard: null, level: '',
+      }],
+    }));
+
+    const html = rosterToHtml(roster);
+
+    expect(html).toContain('<td>Asha</td>');
+    expect(html).toContain('<td>-</td>');
+    expect(html).not.toContain('NK26');
+  });
+
+  it('keeps CSV participant-level detail hidden by the group PDF', () => {
+    const roster = groupRoster();
+    const csvRows = rosterToCsvRows(roster);
+
+    // CSV: detailed registration records - names, codes and team names.
+    expect(csvRows.map(row => row[7])).toEqual(['Asha', 'Chandra']);
+    expect(csvRows.every(row => row[6].startsWith('NK26-'))).toBe(true);
+    expect(csvRows.map(row => row[9])).toEqual(['Rainbow Stars', 'Rainbow Stars']);
+    expect(rosterToHtml(roster)).not.toContain('Asha');
+  });
+
+  it('groups individual entries by home, printing each home once', () => {
+    const html = rosterToHtml(soloRoster());
+
+    // Two of the three children share a home; the grouped home cell
+    // prints each home name exactly once.
+    expect(html.split('Arun Rainbow Nest').length - 1).toBe(1);
+    expect(html.split('Bala Mandir').length - 1).toBe(1);
+  });
+
+  it('renders long home and child names in full with wrapped cells', () => {
+    const longName = 'Aishwarya Venkatesan Ramanathan Subramanian Ganapathy';
+    const longHome = "St. Joseph's Charitable Shelter Home for Children, Chennai";
+    const roster = buildMasterRoster(baseInput({
+      participants: [{
+        participantId: 'P-1', participantCode: 'NK26-H1-001', fullName: longName,
+        shelterHomeId: 'H-1', homeName: longHome, gender: 'FEMALE',
+        age: 9, standard: 2, level: 'SUB_JUNIOR',
+      }],
+    }));
+
+    const html = rosterToHtml(roster);
+
+    expect(html).toContain(longName);
+    expect(html).toContain(longHome);
+    expect(html).toContain('overflow-wrap: anywhere');
+  });
+
+  it('keeps the branding, repeated headers and page-break rules', () => {
+    const html = rosterToHtml(soloRoster());
+
+    expect(html).toContain('NAKSHATRA 2026-27');
+    expect(html).toContain('@page');
+    expect(html).toContain('table-header-group');
   });
 });
 

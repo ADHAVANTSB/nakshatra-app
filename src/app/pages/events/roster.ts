@@ -8,18 +8,28 @@
  * rosters (listTeams). Nothing here counts, ranks or invents anything on
  * the client: every value is passed in from a backend response field.
  *
- * Export rules - identical for both outputs:
+ * Shared export rules:
  *   - the SELECTED PROGRAMME only; every read is already scoped by the
  *     server-side session, and the program label here is display text;
  *   - ACTIVE registrations only (status 'REGISTERED'). Cancelled rows are
  *     history and never appear;
  *   - one row per participant-event registration - a participant in three
  *     events appears three times;
- *   - a missing age category stays empty, never invented;
- *   - a group participant with no team keeps an empty team name (listed
- *     as unteamed in the PDF);
+ *   - a missing category or participant code stays empty, never invented;
  *   - an event with no registrations is still printed in the PDF with an
  *     explicit "No registrations" line; a flat CSV carries no rows for it.
+ *
+ * Output split (approved review feedback):
+ *   - PDF: presentation-ready roster. Individual events list
+ *     Home Name | Child Name | Category | Code, grouped by home.
+ *     Group events list participating HOME NAMES ONLY - never child
+ *     names, participant codes or individual rows, and no age/category
+ *     breakdowns. No registration counts anywhere: no totals beside
+ *     headings, no event-level totals, no summaries and no derived
+ *     replacement counts.
+ *   - CSV: detailed registration data for administrative use - one row
+ *     per registration, keeping participant names, codes, categories and
+ *     team names even where the PDF hides them (e.g. group events).
  */
 
 import {
@@ -94,6 +104,7 @@ export interface RosterSubEvent {
   subEventLabel: string;
   participationType: string;
   eventStatus: string;
+  /** Rows in this sub-event (empty-event detection); never printed in the PDF. */
   registeredCount: number;
   /** SOLO: every registered participant, sorted home -> age category -> name. */
   soloRows: RosterRow[];
@@ -120,7 +131,10 @@ export interface MasterRoster {
   season: string;
   generatedAt: string;
   wings: RosterWing[];
-  /** Total exported registrations - equals CSV row count by construction. */
+  /**
+   * Total exported registrations - equals the CSV row count by
+   * construction. Bookkeeping only: the PDF prints no counts.
+   */
   totalRegistrations: number;
 }
 
@@ -347,15 +361,17 @@ export const ROSTER_CSV_HEADER = [
   'Shelter home',
   'Participant code',
   'Participant name',
-  'Age category',
+  'Category',
   'Team/ensemble name',
   'Registration status',
 ] as const;
 
 /**
- * One CSV row per participant-event registration, in roster order.
- * `totalRegistrations` of the roster equals the returned row count by
- * construction - the PDF and the CSV can never disagree.
+ * One CSV row per participant-event registration, in roster order - the
+ * DETAILED administrative export: participant names, codes, categories
+ * and team names are kept even where the PDF hides them (e.g. group
+ * events, whose PDF shows home names only). The returned row count
+ * equals `totalRegistrations` by construction.
  */
 export function rosterToCsvRows(roster: MasterRoster): string[][] {
   const rows: string[][] = [];
@@ -408,17 +424,25 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** One individual-event row: Home Name | Child Name | Category | Code. */
 function rosterRowHtml(row: RosterRow, previousHome: string): string {
   const home = row.homeName === previousHome ? '' : row.homeName;
 
   return (
     '<tr>' +
     '<td class="home">' + escapeHtml(home) + '</td>' +
-    '<td>' + escapeHtml(row.ageCategory || '-') + '</td>' +
     '<td>' + escapeHtml(row.participantName) + '</td>' +
-    '<td>' + escapeHtml(row.participantCode) + '</td>' +
+    '<td>' + escapeHtml(row.ageCategory || '-') + '</td>' +
+    '<td>' + escapeHtml(row.participantCode || '-') + '</td>' +
     '</tr>'
   );
+}
+
+/** Distinct participating home names of a group event; blanks dropped, sorted. */
+function participatingHomes(subEvent: RosterSubEvent): string[] {
+  return [...new Set(subEvent.ensemble.map((row) => row.homeName))]
+    .filter((homeName) => homeName.trim() !== '')
+    .sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -435,9 +459,12 @@ export function rosterToHtml(roster: MasterRoster): string {
   body.push('<h1>' + escapeHtml(roster.title) + '</h1>');
   body.push(
     '<div class="meta">' + escapeHtml(roster.programLabel) +
-      ' programme · Generated ' + escapeHtml(roster.generatedAt) +
-      ' · ' + roster.totalRegistrations + ' active registration' +
-      (roster.totalRegistrations === 1 ? '' : 's') + '</div>',
+      ' programme · Generated ' + escapeHtml(roster.generatedAt) + '</div>',
+  );
+  body.push(
+    '<div class="note">Presentation roster. Individual events list Home Name, ' +
+      'Child Name, Category and Code; group events list participating home ' +
+      'names only. Detailed registration data is in the CSV export.</div>',
   );
   body.push('</div>');
 
@@ -448,9 +475,15 @@ export function rosterToHtml(roster: MasterRoster): string {
       body.push('<h3>' + escapeHtml(group.eventName) + '</h3>');
 
       group.subEvents.forEach((subEvent) => {
+        // GROUP sub-event headings carry no age/category band - the PDF
+        // avoids age/category breakdowns for group events entirely.
+        const identity =
+          subEvent.participationType === 'Group'
+            ? escapeHtml(subEvent.eventCode)
+            : escapeHtml(subEvent.subEventLabel);
+
         body.push(
-          '<h4>' + escapeHtml(subEvent.subEventLabel) + ' · ' +
-            escapeHtml(subEvent.participationType) +
+          '<h4>' + identity + ' · ' + escapeHtml(subEvent.participationType) +
             (subEvent.eventStatus === 'ACTIVE'
               ? ''
               : ' · ' + escapeHtml(subEvent.eventStatus)) +
@@ -464,8 +497,8 @@ export function rosterToHtml(roster: MasterRoster): string {
 
         if (subEvent.soloRows.length) {
           body.push(
-            '<table><thead><tr><th>Shelter home</th><th>Age category</th>' +
-              '<th>Participant name</th><th>Participant code</th></tr></thead><tbody>',
+            '<table class="solo-table"><thead><tr><th>Home Name</th><th>Child Name</th>' +
+              '<th>Category</th><th>Code</th></tr></thead><tbody>',
           );
 
           let previousHome = '';
@@ -479,58 +512,25 @@ export function rosterToHtml(roster: MasterRoster): string {
           return;
         }
 
-        subEvent.teamAllocations.forEach((allocation) => {
-          body.push('<div class="team">Team: ' + escapeHtml(allocation.teamName) + '</div>');
-          body.push(
-            '<table><thead><tr><th>Shelter home</th><th>Age category</th>' +
-              '<th>Participant name</th><th>Participant code</th></tr></thead><tbody>',
-          );
+        // GROUP: participating home names ONLY - child names, codes,
+        // team rosters and age/category detail live in the CSV export.
+        const homes = participatingHomes(subEvent);
 
-          let previousHome = '';
-
-          allocation.members.forEach((row) => {
-            body.push(rosterRowHtml(row, previousHome));
-            previousHome = row.homeName;
-          });
-
-          body.push('</tbody></table>');
-        });
-
-        if (subEvent.unteamedMembers.length) {
-          body.push('<div class="team">Registered, no team</div>');
-          body.push(
-            '<table><thead><tr><th>Shelter home</th><th>Age category</th>' +
-              '<th>Participant name</th><th>Participant code</th></tr></thead><tbody>',
-          );
-
-          let previousHome = '';
-
-          subEvent.unteamedMembers.forEach((row) => {
-            body.push(rosterRowHtml(row, previousHome));
-            previousHome = row.homeName;
-          });
-
-          body.push('</tbody></table>');
+        if (!homes.length) {
+          body.push('<p class="empty">No participating homes recorded.</p>');
+          return;
         }
 
-        body.push('<div class="team">Full registered ensemble (' +
-          subEvent.registeredCount + ')</div>');
         body.push(
-          '<table><thead><tr><th>Shelter home</th><th>Age category</th>' +
-            '<th>Participant name</th><th>Participant code</th>' +
-            '<th>Team/ensemble</th></tr></thead><tbody>',
+          '<p class="note">Participating homes only. Child names, codes and ' +
+            'team rosters are listed in the CSV export.</p>',
+        );
+        body.push(
+          '<table class="group-table"><thead><tr><th>Home Name</th></tr></thead><tbody>',
         );
 
-        subEvent.ensemble.forEach((row) => {
-          body.push(
-            '<tr>' +
-              '<td class="home">' + escapeHtml(row.homeName) + '</td>' +
-              '<td>' + escapeHtml(row.ageCategory || '-') + '</td>' +
-              '<td>' + escapeHtml(row.participantName) + '</td>' +
-              '<td>' + escapeHtml(row.participantCode) + '</td>' +
-              '<td>' + escapeHtml(row.teamName || '-') + '</td>' +
-              '</tr>',
-          );
+        homes.forEach((homeName) => {
+          body.push('<tr><td class="home">' + escapeHtml(homeName) + '</td></tr>');
         });
 
         body.push('</tbody></table>');
@@ -553,11 +553,13 @@ export function rosterToHtml(roster: MasterRoster): string {
     ' padding-bottom: 3px; }' +
     'h3 { font-size: 13px; margin: 14px 0 4px; }' +
     'h4 { font-size: 11px; margin: 10px 0 4px; color: #37474f; }' +
-    '.team { font-weight: 600; margin: 8px 0 2px; }' +
+    '.note { color: #4a5561; font-size: 9px; margin: 2px 0 8px; }' +
     '.empty { color: #6b7280; font-style: italic; margin: 2px 0 8px; }' +
     'table { border-collapse: collapse; width: 100%; margin: 2px 0 8px; }' +
-    'th, td { border: 1px solid #c9d2dc; padding: 3px 6px; text-align: left; }' +
+    'th, td { border: 1px solid #c9d2dc; padding: 3px 6px; text-align: left;' +
+    ' overflow-wrap: anywhere; }' +
     'th { background: #eef2f6; font-weight: 600; }' +
+    '.group-table th { background: #d8e4ee; }' +
     'thead { display: table-header-group; }' +
     'tr { break-inside: avoid; }' +
     'h2, h3, h4 { break-after: avoid; }' +
