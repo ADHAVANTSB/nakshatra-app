@@ -2,7 +2,7 @@ import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { WinnersEventGroup, WinnersService, WinnerMember, WinnerRow } from '../../core/services/certificates/winners.service';
+import { PendingApprovalEvent, WinnersEventGroup, WinnersService, WinnerMember, WinnerRow } from '../../core/services/certificates/winners.service';
 import { EventService } from '../../core/services/events/event.service';
 import { ParticipantService } from '../../core/services/participants/participant.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
@@ -158,6 +158,8 @@ export class Certificates implements OnInit {
   readonly loading = this.winnersService.loading$;
   readonly loadError = this.winnersService.error$;
   readonly events = signal<WinnersEventGroup[]>([]);
+  /** Calculated results awaiting explicit reviewer approval (never winners). */
+  readonly pendingApprovalEvents = signal<PendingApprovalEvent[]>([]);
   readonly totalWinners = signal(0);
 
   readonly trackingStorage = this.distributionService.storage$;
@@ -556,6 +558,7 @@ export class Certificates implements OnInit {
     const report = await this.winnersService.load(force);
     this.events.set(report ? report.events : []);
     this.totalWinners.set(report ? report.totalWinners : 0);
+    this.pendingApprovalEvents.set(report ? (report.pendingApprovalEvents ?? []) : []);
 
     // The authoritative event catalogue supplies each event's applicable
     // level for its header band (shared cached store - one read per page

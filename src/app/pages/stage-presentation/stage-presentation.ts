@@ -12,6 +12,7 @@ import { Event as CatalogueEvent, Participant } from '../../core/models';
 import { canEditModule } from '../../core/permissions/role-matrix';
 import { AuthService } from '../../core/services/auth/auth.service';
 import {
+  PendingApprovalEvent,
   WinnerRow,
   WinnersEventGroup,
   WinnersService,
@@ -158,6 +159,11 @@ export class StagePresentation implements OnDestroy {
 
     return this.officialCandidates().length ? 'ready' : 'empty';
   });
+
+  /** Calculated results awaiting explicit reviewer approval (never slides). */
+  readonly pendingApprovalEvents = computed<PendingApprovalEvent[]>(
+    () => this.winners.report$()?.pendingApprovalEvents ?? [],
+  );
 
   /** Slides that can be created from official finalized results. */
   readonly officialCandidates = computed<OfficialCandidate[]>(() => {
@@ -896,6 +902,7 @@ export class StagePresentation implements OnDestroy {
       eventId: group.eventId,
       eventCode: group.eventCode,
       eventName: group.eventName,
+      category: group.category,
       mode: isGroup ? 'GROUP' : 'SOLO',
       position,
       // A group winner is a home/team: its roster members are NEVER shown
@@ -941,6 +948,7 @@ export class StagePresentation implements OnDestroy {
       eventId: event.id,
       eventCode: event.eventCode,
       eventName: event.name,
+      category: event.category,
       mode: this.editorMode(),
       position: this.editorPosition(),
       homeName: this.editorHomeName(),

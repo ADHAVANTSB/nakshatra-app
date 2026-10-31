@@ -6,10 +6,12 @@ import { DEMO_DATA_NOTICE, DEMO_SLIDES } from './demo-slides';
 import { StageSlide } from './stage-slide';
 
 /**
- * Stage slide visual rules: individual slides show Child Name + Home Name,
- * group slides show Home/Team ONLY (never an individual child), the prize
- * banner and event name are prominent, and provenance badges keep demo and
- * manually entered slides from ever posing as official results.
+ * Stage slide visual rules: individual slides show Child Name then the
+ * combined Home / Team line, group slides show Home / Team ONLY (never an
+ * individual child), the event category sits above the event name, the
+ * prize position renders exactly once (the banner), and provenance badges
+ * keep demo and manually entered slides from ever posing as official
+ * results.
  */
 describe('StageSlideView', () => {
   let fixture: ComponentFixture<StageSlideView>;
@@ -56,19 +58,19 @@ describe('StageSlideView', () => {
     }).compileComponents();
   });
 
-  it('renders individual slides as Child Name then Home Name', () => {
+  it('renders individual slides as Child Name then Home / Team', () => {
     const element = render(soloSlide);
     const text = element.textContent ?? '';
 
     expect(text).toContain('Story Telling');
     expect(text).toContain('Child Name');
     expect(text).toContain('Ananya');
-    expect(text).toContain('Home Name');
+    expect(text).toContain('Home / Team');
     expect(text).toContain('Rainbow Children Home');
     expect(text.indexOf('Ananya')).toBeLessThan(text.indexOf('Rainbow Children Home'));
   });
 
-  it('renders group slides as Home Name plus Team Name', () => {
+  it('renders group slides as one Home / Team line (never a child)', () => {
     const element = render(groupSlide);
     const text = element.textContent ?? '';
 
@@ -85,11 +87,51 @@ describe('StageSlideView', () => {
     expect(text).not.toContain('Ananya');
   });
 
-  it('omits the Team Name block when a group slide has no team', () => {
+  it('shows the home alone with no leftover separator when a group slide has no team', () => {
     const element = render({ ...groupSlide, teamName: '' });
+    const home = element.querySelector('.stage-slide-home');
 
-    expect(element.textContent ?? '').not.toContain('Team Name');
-    expect(element.textContent ?? '').toContain('Rainbow Children Home');
+    expect(home?.textContent?.trim()).toBe('Rainbow Children Home');
+    expect(home?.textContent ?? '').not.toContain('·');
+  });
+
+  it('shows child name plus home/team for individuals, home/team only for groups', () => {
+    const solo = render(soloSlide);
+    expect(solo.querySelector('.stage-slide-winner')?.textContent?.trim()).toBe('Ananya');
+    expect(solo.querySelector('.stage-slide-home')?.textContent?.trim())
+      .toBe('Rainbow Children Home');
+
+    const group = render(groupSlide);
+    expect(group.querySelector('.stage-slide-winner')).toBeNull();
+    expect(group.querySelector('.stage-slide-home')?.textContent?.trim())
+      .toBe('Rainbow Children Home · Rainbow Stars');
+    expect(group.textContent ?? '').not.toContain('Ananya');
+  });
+
+  it('joins home and team with a middot on one line when both exist', () => {
+    const element = render(groupSlide);
+    const home = element.querySelectorAll('.stage-slide-home');
+
+    expect(home).toHaveLength(1);
+    expect(home[0].textContent?.trim()).toBe('Rainbow Children Home · Rainbow Stars');
+  });
+
+  it('renders the event category above the event name', () => {
+    const element = render({ ...soloSlide, category: 'LITERARY' });
+    const text = element.textContent ?? '';
+
+    expect(element.querySelector('.stage-slide-category')?.textContent?.trim())
+      .toBe('LITERARY');
+    expect(text.indexOf('LITERARY')).toBeLessThan(text.indexOf('Story Telling'));
+    expect(element.querySelector('.stage-slide-category--missing')).toBeNull();
+  });
+
+  it('shows a neutral Category unavailable indicator when the category is missing', () => {
+    const element = render(soloSlide);
+    const category = element.querySelector('.stage-slide-category');
+
+    expect(category?.textContent?.trim()).toBe('Category unavailable');
+    expect(category?.classList.contains('stage-slide-category--missing')).toBe(true);
   });
 
   it('shows the prize banner label prominently', () => {
@@ -101,8 +143,15 @@ describe('StageSlideView', () => {
       .toContain('PARTICIPATION');
   });
 
-  it('shows the friendly position label beside the winner', () => {
-    expect(render(soloSlide).textContent ?? '').toContain('Third Prize');
+  it('shows the prize position exactly once, on the banner row', () => {
+    const element = render(soloSlide);
+
+    expect(element.querySelector('.stage-slide-banner')?.textContent?.trim())
+      .toBe('THIRD PRIZE');
+    // The duplicate friendly-label row is gone: no second prize element.
+    expect(element.querySelector('.stage-slide-position')).toBeNull();
+    const prizeLabels = (element.textContent ?? '').match(/THIRD PRIZE|Third Prize/g) ?? [];
+    expect(prizeLabels).toHaveLength(1);
   });
 
   it('keeps the event name visible on every slide', () => {

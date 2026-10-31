@@ -332,6 +332,30 @@ describe('StagePresentation page', () => {
     expect(element.querySelector('.stage-list-tag--manual')).toBeNull();
   });
 
+  it('maps the catalogue category onto official and manual slides', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the async official-result reconcile settle
+    fixture.detectChanges();
+
+    // Official slide: the winners-group category, verbatim from the catalogue.
+    const official = fixture.componentInstance.deck
+      .slides()
+      .find((slide) => slide.source === 'OFFICIAL_RESULT');
+    expect(official?.category).toBe('ARTS');
+
+    // Manual slide: the selected event's category from the event catalogue.
+    click('add-slide');
+    selectOption('editor-event', 'E-2');
+    selectOption('editor-home', 'Sunrise Home');
+    setInput('editor-team', 'Sunrise Stars');
+    click('save-slide');
+
+    const manual = fixture.componentInstance.deck
+      .slides()
+      .find((slide) => slide.source === 'MANUAL_ADMIN');
+    expect(manual?.category).toBe('CULTURAL');
+  });
+
   it('reorders slides with move up/down', async () => {
     await setup();
     click('load-demo');

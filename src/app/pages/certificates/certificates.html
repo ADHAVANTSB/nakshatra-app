@@ -26,8 +26,15 @@
     </div>
   } @else if (!events().length) {
     <div class="certificates-empty" role="status">
-      <strong>No finalized events yet</strong>
-      <span>Once an event is finalized in Scoring, its top-three winners appear here automatically.</span>
+      @if (pendingApprovalEvents().length) {
+        <strong>Results pending reviewer approval</strong>
+        <span>Calculated results exist for {{ pendingApprovalEvents().length }} event(s)
+          but have not been accepted by a reviewer yet. Official winners appear here
+          once the results are accepted.</span>
+      } @else {
+        <strong>No finalized events yet</strong>
+        <span>Once an event is finalized in Scoring, its top-three winners appear here automatically.</span>
+      }
     </div>
   } @else {
 

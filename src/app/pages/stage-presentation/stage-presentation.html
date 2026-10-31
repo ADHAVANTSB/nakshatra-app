@@ -168,10 +168,19 @@
             </select>
           </label>
         } @else if (!winnersLoading() && !winnersError()) {
-          <p class="stage-hint">
-            No official finalized results yet. Slides created now are marked as
-            manually entered — they are never presented as verified winners.
-          </p>
+          @if (pendingApprovalEvents().length) {
+            <p class="stage-hint">
+              Results are awaiting reviewer approval for
+              {{ pendingApprovalEvents().length }} event(s). Official winner slides
+              load automatically once the results are accepted; slides created now
+              are marked as manually entered - never verified winners.
+            </p>
+          } @else {
+            <p class="stage-hint">
+              No official finalized results yet. Slides created now are marked as
+              manually entered — they are never presented as verified winners.
+            </p>
+          }
         }
 
         <label class="stage-field">

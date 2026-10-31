@@ -282,7 +282,7 @@ test.describe('Stage Presentation - ceremony slide deck', () => {
     const frameBox = await frame.boundingBox();
     expect(frameBox).not.toBeNull();
 
-    for (const selector of ['.stage-slide-winner', '.stage-slide-home', '.stage-slide-position']) {
+    for (const selector of ['.stage-slide-winner', '.stage-slide-home']) {
       const line = frame.locator(selector);
       await expect(line).toBeVisible();
       const box = await line.boundingBox();
@@ -293,6 +293,29 @@ test.describe('Stage Presentation - ceremony slide deck', () => {
       expect(box!.y + box!.height, selector + ' bottom').toBeLessThanOrEqual(
         frameBox!.y + frameBox!.height + 1,
       );
+    }
+
+    // The same winner lines must also sit inside the frame at the other
+    // projector sizes: a smaller laptop and full HD (the desktop default
+    // viewport above covers the small-laptop case).
+    for (const viewport of [
+      { width: 1366, height: 768 },
+      { width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const resizedFrameBox = await frame.boundingBox();
+      expect(resizedFrameBox).not.toBeNull();
+
+      for (const selector of ['.stage-slide-winner', '.stage-slide-home']) {
+        const line = frame.locator(selector);
+        await expect(line).toBeVisible();
+        const box = await line.boundingBox();
+        expect(box, selector).not.toBeNull();
+        expect(box!.y, selector + ' top').toBeGreaterThanOrEqual(resizedFrameBox!.y - 1);
+        expect(box!.y + box!.height, selector + ' bottom').toBeLessThanOrEqual(
+          resizedFrameBox!.y + resizedFrameBox!.height + 1,
+        );
+      }
     }
 
     expect(pageErrors).toEqual([]);

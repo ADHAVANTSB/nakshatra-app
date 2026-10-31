@@ -45,10 +45,22 @@ export interface WinnersEventGroup {
   winners: WinnerRow[];
 }
 
+/** A calculated (finalized) result that is NOT yet reviewer-accepted. */
+export interface PendingApprovalEvent {
+  eventId: string;
+  eventCode: string;
+  eventName: string;
+  /** 'RETURNED' when the reviewer sent it back; null when never reviewed. */
+  decision: string | null;
+  calculatedWinnerCount: number;
+}
+
 export interface WinnersReport {
   events: WinnersEventGroup[];
   totalEvents: number;
   totalWinners: number;
+  /** Calculated-but-unaccepted results: never winners, reported as pending. */
+  pendingApprovalEvents?: PendingApprovalEvent[];
 }
 
 @Injectable({ providedIn: 'root' })

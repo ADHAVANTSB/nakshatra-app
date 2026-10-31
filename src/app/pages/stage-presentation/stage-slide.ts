@@ -34,6 +34,13 @@ export interface StageSlide {
   eventId: string;
   eventCode: string;
   eventName: string;
+  /**
+   * Event category straight from the event catalogue ('ARTS',
+   * 'LITERARY', 'CULTURAL', ...). OPTIONAL: slides persisted before
+   * categories existed are cast back from localStorage as-is, so the
+   * template must tolerate it being missing.
+   */
+  category?: string;
   mode: StageMode;
   position: PrizePosition;
   /** Required for both modes. */

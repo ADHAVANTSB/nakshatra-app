@@ -27,24 +27,25 @@
     }
 
     <div class="stage-slide-content">
+      <div
+        class="stage-slide-category"
+        [class.stage-slide-category--missing]="categoryMissing()">
+        {{ categoryMissing() ? 'Category unavailable' : categoryLabel() }}
+      </div>
       <h2 class="stage-slide-event">{{ slide().eventName }}</h2>
       <div class="stage-slide-banner">{{ bannerLabel() }}</div>
 
       @if (slide().mode === 'SOLO') {
         <div class="stage-slide-label">Child Name</div>
         <div class="stage-slide-winner">{{ slide().childName }}</div>
-        <div class="stage-slide-label">Home Name</div>
-        <div class="stage-slide-home">{{ slide().homeName }}</div>
-      } @else {
-        <div class="stage-slide-label">Home Name</div>
-        <div class="stage-slide-winner">{{ slide().homeName }}</div>
-        @if (slide().teamName) {
-          <div class="stage-slide-label">Team Name</div>
-          <div class="stage-slide-home">{{ slide().teamName }}</div>
-        }
       }
 
-      <div class="stage-slide-position">{{ positionLabel() }}</div>
+      <div class="stage-slide-label">Home / Team</div>
+      <div
+        class="stage-slide-home"
+        [class.stage-slide-home--lead]="slide().mode === 'GROUP'">
+        {{ homeTeamLabel() }}
+      </div>
 
       @if (slide().subtitle) {
         <div class="stage-slide-subtitle">{{ slide().subtitle }}</div>

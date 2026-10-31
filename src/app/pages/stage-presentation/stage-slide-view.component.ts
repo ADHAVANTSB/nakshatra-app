@@ -8,7 +8,6 @@ import {
 
 import {
   POSITION_BANNER_LABELS,
-  POSITION_LABELS,
   StageSlide,
 } from './stage-slide';
 
@@ -25,9 +24,10 @@ import {
  * locked to 16:9 and the optional artwork uses `object-fit: cover`).
  *
  * Winner rules enforced here (and in validateSlide):
- *   - SOLO slides show Child Name + Home Name;
+ *   - SOLO slides show Child Name, then the combined Home / Team line;
  *   - GROUP slides show Home / Team only - a group child list must never
  *     reach the stage screen;
+ *   - the prize position is shown exactly once (the banner row);
  *   - DEMO slides carry the DEMO DATA notice, MANUAL_ADMIN slides carry a
  *     "not an official result" badge, and only OFFICIAL_RESULT slides are
  *     badged as verified.
@@ -57,7 +57,20 @@ export class StageSlideView {
     () => POSITION_BANNER_LABELS[this.slide().position],
   );
 
-  readonly positionLabel = computed(() => POSITION_LABELS[this.slide().position]);
+  /**
+   * Home / team as one logical field: joined with ' · ' when both
+   * exist, just the single value otherwise (never a leftover separator).
+   */
+  readonly homeTeamLabel = computed(() =>
+    [this.slide().homeName, this.slide().teamName]
+      .filter((part) => part.trim() !== '')
+      .join(' · '),
+  );
+
+  /** Event category from the catalogue; '' when the slide carries none. */
+  readonly categoryLabel = computed(() => this.slide().category?.trim() ?? '');
+
+  readonly categoryMissing = computed(() => this.categoryLabel() === '');
 
   /** Marigold garland: flower centres along eight scalloped garland arcs. */
   readonly garlandFlowers = computed(() => {
