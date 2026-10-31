@@ -24,6 +24,13 @@ export type SlideSource = 'OFFICIAL_RESULT' | 'MANUAL_ADMIN' | 'DEMO';
 
 export interface StageSlide {
   id: string;
+
+  /**
+   * Stable identity of the official result behind this slide
+   * (`eventId|scoreId`), empty for manual and demo slides. Refresh
+   * matches on it to update a slide in place instead of duplicating it.
+   */
+  resultKey?: string;
   eventId: string;
   eventCode: string;
   eventName: string;

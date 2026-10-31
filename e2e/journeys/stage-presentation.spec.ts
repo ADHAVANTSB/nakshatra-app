@@ -255,4 +255,38 @@ test.describe('Stage Presentation - ceremony slide deck', () => {
 
     expect(pageErrors).toEqual([]);
   });
+
+  test('every winner line stays inside the slide frame — names never clip', async ({
+    page,
+    backend,
+  }) => {
+    const pageErrors = monitorPageErrors(page);
+    stubStageData(backend);
+    backend.on('listWinners', () => ({ body: { success: true, data: WINNERS } }));
+
+    await signIn(page, { user: adminUser, backend });
+    await page.goto('/#/stage-presentation');
+    await expect(page.getByTestId('slide-preview')).toBeVisible();
+
+    const frame = page.getByTestId('slide-preview').locator('[data-testid="stage-slide"]');
+    await expect(frame.locator('.stage-slide-winner')).toHaveText('Ananya');
+
+    const frameBox = await frame.boundingBox();
+    expect(frameBox).not.toBeNull();
+
+    for (const selector of ['.stage-slide-winner', '.stage-slide-home', '.stage-slide-position']) {
+      const line = frame.locator(selector);
+      await expect(line).toBeVisible();
+      const box = await line.boundingBox();
+      expect(box, selector).not.toBeNull();
+      // The whole line must sit inside the 16:9 slide: a name clipped by
+      // the frame edge is not a rendered winner.
+      expect(box!.y, selector + ' top').toBeGreaterThanOrEqual(frameBox!.y - 1);
+      expect(box!.y + box!.height, selector + ' bottom').toBeLessThanOrEqual(
+        frameBox!.y + frameBox!.height + 1,
+      );
+    }
+
+    expect(pageErrors).toEqual([]);
+  });
 });

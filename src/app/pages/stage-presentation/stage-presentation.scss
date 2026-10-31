@@ -67,6 +67,23 @@
   letter-spacing: 0.04em;
 }
 
+.stage-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.stage-results-line {
+  color: var(--nk-muted);
+  font-size: 0.85rem;
+}
+
+.stage-results-line--error {
+  color: var(--nk-error-text, #b3261e);
+}
+
 .stage-actions {
   display: flex;
   gap: 8px;

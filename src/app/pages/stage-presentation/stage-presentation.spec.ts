@@ -255,6 +255,8 @@ describe('StagePresentation page', () => {
 
   it('rejects an individual slide with no registered child selected', async () => {
     await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the async official-result reconcile settle
+    const before = element.querySelectorAll('[data-testid="slide-list"] li').length;
     click('add-slide');
     selectOption('editor-event', 'E-1');
     selectOption('editor-home', 'Rainbow Children Home');
@@ -264,20 +266,25 @@ describe('StagePresentation page', () => {
     click('save-slide');
 
     expect(element.textContent ?? '').toContain('Child name is required for individual events.');
-    expect(element.querySelectorAll('[data-testid="slide-list"] li')).toHaveLength(0);
+    // The rejected save adds nothing, whatever the deck already holds.
+    expect(element.querySelectorAll('[data-testid="slide-list"] li')).toHaveLength(before);
   });
 
   it('adds a manual slide and badges it as Manual (never official)', async () => {
     await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the async official-result reconcile settle
+    const before = element.querySelectorAll('[data-testid="slide-list"] li').length;
     click('add-slide');
     selectOption('editor-event', 'E-1');
     selectOption('editor-home', 'Rainbow Children Home');
     selectOption('editor-child', 'P-1');
     click('save-slide');
 
-    expect(element.querySelectorAll('[data-testid="slide-list"] li')).toHaveLength(1);
-    expect(element.querySelector('.stage-list-tag--manual')).not.toBeNull();
-    expect(element.querySelector('.stage-list-tag--official')).toBeNull();
+    const items = Array.from(element.querySelectorAll('[data-testid="slide-list"] li'));
+    expect(items).toHaveLength(before + 1);
+    const added = items.find((li) => li.querySelector('.stage-list-tag--manual'));
+    expect(added).toBeDefined();
+    expect(added!.querySelector('.stage-list-tag--official')).toBeNull();
   });
 
   it('builds a verified slide from official results', async () => {
@@ -357,6 +364,10 @@ describe('StagePresentation page', () => {
     click('add-slide');
     selectOption('editor-event', 'E-1');
 
+    const counter = () =>
+      (element.textContent ?? '').match(/\d+ \/ \d+/)?.[0] ?? '';
+    const before = counter();
+
     const search = element.querySelector('[data-testid="editor-search"]') as HTMLInputElement;
     search.focus();
     search.dispatchEvent(
@@ -364,7 +375,9 @@ describe('StagePresentation page', () => {
     );
     fixture.detectChanges();
 
-    expect(element.textContent ?? '').toContain('0 / 0');
+    // The keystroke is text input, never a slideshow control: the deck
+    // and the player counter are exactly as they were.
+    expect(counter()).toBe(before);
   });
 
   it('renders long names in full in the slide list', async () => {

@@ -17,6 +17,7 @@ import {
   WinnersService,
 } from '../../core/services/certificates/winners.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
+import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { ViewOnlyBannerComponent } from '../../shared/view-only-banner/view-only-banner.component';
 import { DEMO_DATA_NOTICE, DEMO_SLIDES } from './demo-slides';
@@ -106,6 +107,57 @@ export class StagePresentation implements OnDestroy {
   readonly winnersLoading = this.winners.loading$;
   readonly winnersError = this.winners.error$;
 
+  /** Time of the last successful official-results read ('' before the first). */
+  readonly lastRefreshedAt = signal('');
+
+  /** Result identities the organizer removed; a refresh never resurrects them. */
+  private readonly dismissedResultKeys = new Set<string>();
+
+  /**
+   * Finalized rows whose prize position carries no label. Surfaced in the
+   * workspace instead of being silently dropped; zero unless the results
+   * schema grows beyond the supported prize positions.
+   */
+  readonly skippedOfficialResults = computed(() => {
+    let skipped = 0;
+
+    for (const group of this.winners.report$()?.events ?? []) {
+      for (const row of group.winners) {
+        if (!POSITION_BY_RANK[row.position]) {
+          skipped += 1;
+        }
+      }
+    }
+
+    return skipped;
+  });
+
+  /**
+   * Status of the official-results read for the status strip: the three
+   * failure modes are told apart - a failed read (error), no finalized
+   * results yet (empty), and nothing loaded for the current scope
+   * (unloaded, e.g. after a programme switch mid-read).
+   */
+  readonly resultsStatus = computed<
+    'loading' | 'error' | 'unloaded' | 'empty' | 'ready'
+  >(() => {
+    if (this.winnersLoading()) {
+      return 'loading';
+    }
+
+    if (this.winnersError()) {
+      return 'error';
+    }
+
+    const report = this.winners.report$();
+
+    if (!report) {
+      return 'unloaded';
+    }
+
+    return this.officialCandidates().length ? 'ready' : 'empty';
+  });
+
   /** Slides that can be created from official finalized results. */
   readonly officialCandidates = computed<OfficialCandidate[]>(() => {
     const report = this.winners.report$();
@@ -169,6 +221,15 @@ export class StagePresentation implements OnDestroy {
   readonly editorSubtitle = signal('');
   readonly editorSource = signal<SlideSource>('MANUAL_ADMIN');
   readonly editorSearch = signal('');
+
+  /** Result identity behind the slide being edited ('' for manual/demo). */
+  readonly editorResultKey = signal('');
+
+  /** Validation renders only after an explicit save attempt - never on open. */
+  readonly editorSubmitAttempted = signal(false);
+
+  /** True while the organizer is previewing the demo sample set. */
+  readonly demoPreviewing = signal(false);
 
   readonly editorEvent = computed(() =>
     this.events().find(event => event.id === this.editorEventId()) ?? null,
@@ -254,8 +315,137 @@ export class StagePresentation implements OnDestroy {
   constructor() {
     void this.shelterData.ensureLoaded();
     void this.shelterData.loadEvents();
-    void this.winners.load();
+    // Official results are the initial source of the presentation: the
+    // deck is reconciled with them as soon as the read lands.
+    void this.loadOfficialResults();
     this.syncDeck();
+  }
+
+  /**
+   * Fetches the official finalized results and reconciles the deck with
+   * them. Called on open and by the Refresh Results button.
+   */
+  async refreshOfficialResults(): Promise<void> {
+    await this.winners.load(true);
+    this.applyOfficialResults();
+    this.syncDeck();
+    this.lastRefreshedAt.set(new Date().toLocaleTimeString());
+  }
+
+  private async loadOfficialResults(): Promise<void> {
+    await this.winners.load();
+    this.applyOfficialResults();
+    this.syncDeck();
+    this.lastRefreshedAt.set(new Date().toLocaleTimeString());
+  }
+
+  /**
+   * Reconciles the deck with the latest official results. Every eligible
+   * finalized result becomes exactly one OFFICIAL_RESULT slide, matched
+   * by result identity (`resultKey`) so a refresh never duplicates slides
+   * and never disturbs organizer ordering or the display-only subtitle
+   * edits. A result that is no longer finalized is removed from the deck
+   * with an explicit notification instead of silently staying on stage
+   * as an official winner. Manual and demo slides are never touched, and
+   * demo slides never end up mixed with real results.
+   */
+  private applyOfficialResults(): void {
+    // An explicit demo preview never mixes with real results: the
+    // organizer asked for sample slides and gets exactly those.
+    if (this.demoPreviewing()) {
+      return;
+    }
+
+    const candidates = this.officialCandidates();
+    const report = this.winners.report$();
+
+    if (!report) {
+      // The read failed or has not landed: never touch the organizer's
+      // deck on a failed read and never fall back to demo slides.
+      return;
+    }
+
+    // Sample slides left over from an earlier session never mix with
+    // real results either.
+    const demoSlides = this.deck
+      .slides()
+      .filter((slide) => slide.source === 'DEMO');
+
+    if (demoSlides.length && candidates.length) {
+      demoSlides.forEach((slide) => this.deck.deleteSlide(slide.id));
+      this.notifications.success(
+        'Demo slides removed',
+        'Official results are now loaded; sample slides never mix with real data.',
+      );
+    }
+
+    const vanished: string[] = [];
+    const updatedKeys = new Set<string>();
+
+    // Update matched official slides in place (ordering and the
+    // organizer's subtitle survive), and retire vanished ones.
+    for (const slide of [...this.deck.slides()]) {
+      if (slide.source !== 'OFFICIAL_RESULT') {
+        continue;
+      }
+
+      const key = slide.resultKey ?? '';
+
+      if (!key) {
+        // Pre-identity official slide (stale browser data): replaced by
+        // the fresh result below instead of being trusted.
+        this.deck.deleteSlide(slide.id);
+        continue;
+      }
+
+      if (this.dismissedResultKeys.has(key)) {
+        // The organizer removed this slide from the presentation on
+        // purpose; a refresh must not resurrect it.
+        updatedKeys.add(key);
+        continue;
+      }
+
+      const fresh = candidates.find((candidate) => candidate.key === key);
+
+      if (!fresh) {
+        vanished.push(slide.eventName + ' · ' + this.whoLabel(slide));
+        this.deck.deleteSlide(slide.id);
+        continue;
+      }
+
+      this.deck.updateSlide(slide.id, {
+        ...fresh.slide,
+        // Display-only edits survive; official fields follow the backend.
+        subtitle: slide.subtitle,
+      });
+      updatedKeys.add(key);
+    }
+
+    // Append results that are not in the deck yet (never duplicating,
+    // never resurrecting a slide the organizer removed).
+    for (const candidate of candidates) {
+      if (updatedKeys.has(candidate.key)) {
+        continue;
+      }
+
+      if (this.dismissedResultKeys.has(candidate.key)) {
+        continue;
+      }
+
+      this.deck.addSlide({ ...candidate.slide, id: '' });
+    }
+
+    if (vanished.length) {
+      this.notifications.warning(
+        'Official results changed',
+        vanished.join('; ') +
+          ' — no longer finalized results and removed from the presentation.',
+      );
+    }
+
+    if (this.deck.slides().length) {
+      this.selectSlide(Math.min(this.playerIndex(), this.deck.slides().length - 1));
+    }
   }
 
   ngOnDestroy(): void {
@@ -272,11 +462,12 @@ export class StagePresentation implements OnDestroy {
     this.editorOpen.set(true);
     this.resetEditor('MANUAL_ADMIN');
   }
-
   startEdit(slide: StageSlide): void {
     this.editingId.set(slide.id);
     this.editorOpen.set(true);
     this.editorErrors.set([]);
+    this.editorSubmitAttempted.set(false);
+    this.editorResultKey.set(slide.resultKey ?? '');
     this.editorEventId.set(slide.eventId);
     this.editorHomeName.set(slide.homeName);
     this.editorTeamName.set(slide.teamName);
@@ -300,6 +491,9 @@ export class StagePresentation implements OnDestroy {
   }
 
   saveSlide(): void {
+    // Validation runs only here: on an explicit save attempt. Nothing is
+    // ever flagged before the organizer submits the form.
+    this.editorSubmitAttempted.set(true);
     const composed = this.composeSlide();
 
     if (!composed) {
@@ -331,9 +525,21 @@ export class StagePresentation implements OnDestroy {
       this.deck.updateSlide(editingId, composed);
       this.notifications.success('Slide updated', composed.eventName + ' updated.');
     } else {
-      this.deck.addSlide(composed);
-      this.notifications.success('Slide added', composed.eventName + ' added to the deck.');
-      this.selectSlide(this.deck.slides().length - 1);
+      // A result picked from the official list may already be in the deck
+      // (it was auto-loaded); saving it again updates that slide instead of
+      // creating a duplicate.
+      const existing = composed.resultKey
+        ? this.deck.slides().find(item => item.resultKey === composed.resultKey)
+        : undefined;
+
+      if (existing) {
+        this.deck.updateSlide(existing.id, composed);
+        this.notifications.success('Slide updated', composed.eventName + ' updated.');
+      } else {
+        this.deck.addSlide(composed);
+        this.notifications.success('Slide added', composed.eventName + ' added to the deck.');
+        this.selectSlide(this.deck.slides().length - 1);
+      }
     }
 
     this.cancelEdit();
@@ -343,6 +549,13 @@ export class StagePresentation implements OnDestroy {
   deleteSlide(id: string): void {
     const slide = this.deck.slides().find(item => item.id === id);
     this.deck.deleteSlide(id);
+
+    // Removing an official slide is a presentation-deck decision only -
+    // the result itself is never touched, and a later refresh must not
+    // silently put the slide back on stage.
+    if (slide?.source === 'OFFICIAL_RESULT' && slide.resultKey) {
+      this.dismissedResultKeys.add(slide.resultKey);
+    }
 
     if (slide) {
       this.notifications.success('Slide deleted', slide.eventName + ' removed from the deck.');
@@ -419,14 +632,8 @@ export class StagePresentation implements OnDestroy {
       return;
     }
 
-    const errors = validateSlide(composed);
-
-    if (errors.length) {
-      this.editorErrors.set(errors);
-      return;
-    }
-
-    this.editorErrors.set([]);
+    // A draft preview is not a save attempt: it shows the draft as typed
+    // without flagging problems - validation runs on save only.
     this.draftPreview.set({ ...composed, id: 'draft-preview' });
   }
 
@@ -435,6 +642,7 @@ export class StagePresentation implements OnDestroy {
   // ------------------------------------------------------------------
 
   loadDemoSlides(): void {
+    this.demoPreviewing.set(true);
     this.deck.setSlides([...DEMO_SLIDES]);
     this.syncDeck();
     this.selectSlide(0);
@@ -442,6 +650,7 @@ export class StagePresentation implements OnDestroy {
   }
 
   removeDemoSlides(): void {
+    this.demoPreviewing.set(false);
     const kept = this.deck.slides().filter(slide => slide.source !== 'DEMO');
     this.deck.setSlides(kept);
     this.syncDeck();
@@ -464,6 +673,8 @@ export class StagePresentation implements OnDestroy {
     this.editingId.set(null);
     this.editorOpen.set(true);
     this.editorErrors.set([]);
+    this.editorSubmitAttempted.set(false);
+    this.editorResultKey.set(candidate.key);
     this.editorSource.set('OFFICIAL_RESULT');
     this.editorEventId.set(slide.eventId);
     this.editorHomeName.set(slide.homeName);
@@ -643,19 +854,39 @@ export class StagePresentation implements OnDestroy {
     const isGroup = group.mode === 'GROUP';
 
     return {
+      resultKey: group.eventId + '|' + row.scoreId,
       eventId: group.eventId,
       eventCode: group.eventCode,
       eventName: group.eventName,
       mode: isGroup ? 'GROUP' : 'SOLO',
       position,
-      homeName: row.shelterHomeName,
       // A group winner is a home/team: its roster members are NEVER shown
-      // on the stage screen.
+      // on the stage screen - `row.name` for teams carries the member list,
+      // so only the plain team name (recovered from the structured member
+      // roster, never guessed from text) may reach a slide.
+      homeName: row.shelterHomeName,
       childName: isGroup ? '' : row.name,
-      teamName: isGroup ? row.name : '',
+      teamName: isGroup ? this.teamNameOf(row) : '',
       subtitle: '',
       source: 'OFFICIAL_RESULT',
     };
+  }
+
+  /**
+   * The winners report composes a team winner's `name` as
+   * "TeamName (Kid One, Kid Two)" for the certificates page. The stage
+   * screen must never list group children, so that exact member suffix -
+   * rebuilt from the structured member list, never fuzzy-matched - is
+   * removed to recover the plain team name.
+   */
+  private teamNameOf(row: WinnerRow): string {
+    const suffix = row.members.length
+      ? ' (' + row.members.map(member => member.name).join(', ') + ')'
+      : '';
+
+    return suffix && row.name.endsWith(suffix)
+      ? row.name.slice(0, -suffix.length)
+      : row.name;
   }
 
   private composeSlide(): StageSlide | null {
@@ -668,6 +899,7 @@ export class StagePresentation implements OnDestroy {
 
     return {
       id: this.editingId() ?? '',
+      resultKey: this.editorResultKey(),
       eventId: event.id,
       eventCode: event.eventCode,
       eventName: event.name,
@@ -683,6 +915,8 @@ export class StagePresentation implements OnDestroy {
 
   private resetEditor(source: SlideSource): void {
     this.editorErrors.set([]);
+    this.editorSubmitAttempted.set(false);
+    this.editorResultKey.set('');
     this.editorEventId.set('');
     this.editorHomeName.set('');
     this.editorChildId.set('');

@@ -1,206 +1,34 @@
 <!--
-  Nakshatra Arts '26 ceremony slide. Recreates the supplied reference
-  artwork in CSS/SVG: parchment field with terracotta watercolour edges,
-  marigold garland top, kolam motifs, laurel-flanked winner panel and the
-  prize banner with crown. All sizing is in em against a 1cqw root so the
-  slide keeps identical proportions at projector, preview and thumbnail
-  sizes. Every displayed value comes from the slide input.
+  Nakshatra Arts '26 ceremony slide. The approved template PNG
+  (public/logo/adhavan - template for web page .png, 3840x2560) IS the
+  background: its own artwork carries the Bhumi/Nakshatra branding, the
+  "NAKSHATRA ARTS '26" title, the marigold garland, the kolam motifs and
+  the cultural illustrations. Nothing is recreated or approximated here.
+
+  The artwork is fitted with `object-fit: contain` (see the SCSS for the
+  exact calculation): a 16:9 frame cannot show a 3:2 image with `cover`
+  without cropping either the garland at the top or the illustrations at
+  the bottom, so the image is shown whole and letterboxed against a
+  neutral mat - never stretched, cropped or distorted.
+
+  Winner information is typeset over the open central area in em against
+  a 1cqw root, so the slide keeps identical proportions at projector,
+  preview and thumbnail sizes. Every displayed value comes from the
+  slide input.
 -->
 <div class="stage-slide-frame" data-testid="stage-slide">
   <div class="stage-slide" [class.stage-slide--demo]="slide().source === 'DEMO'">
     @if (artworkAvailable()) {
       <img
         class="stage-slide-artwork"
-        src="logo/stage-artwork.png"
+        src="logo/adhavan - template for web page .png"
         alt=""
         (error)="artworkAvailable.set(false)" />
     }
 
-    <!-- Marigold garland -->
-    <svg
-      class="stage-slide-garland"
-      viewBox="0 0 1600 130"
-      preserveAspectRatio="none"
-      aria-hidden="true">
-      <defs>
-        <g id="garland-leaf">
-          <ellipse cx="0" cy="14" rx="13" ry="26" fill="#2e7d32"></ellipse>
-          <ellipse cx="0" cy="14" rx="6" ry="18" fill="#43a047"></ellipse>
-        </g>
-      </defs>
-      <rect x="0" y="0" width="1600" height="12" fill="#2e7d32"></rect>
-      @for (leafX of [75, 275, 475, 675, 875, 1075, 1275, 1475]; track leafX) {
-        <use href="#garland-leaf" [attr.x]="leafX" y="-2"></use>
-      }
-      <path
-        [attr.d]="garlandArcs"
-        fill="none"
-        stroke="#e07b1f"
-        stroke-width="14"
-        stroke-linecap="round"></path>
-      @for (flower of garlandFlowers(); track $index) {
-        <circle
-          [attr.cx]="flower.cx"
-          [attr.cy]="flower.cy"
-          r="17"
-          [attr.fill]="flower.alternate ? '#f9a825' : '#f57c1f'"></circle>
-        <circle
-          [attr.cx]="flower.cx"
-          [attr.cy]="flower.cy"
-          r="8"
-          [attr.fill]="flower.alternate ? '#fbc02d' : '#ef6c12'"></circle>
-      }
-    </svg>
-
-    <!-- Kolam motifs (left / right), from the reference template -->
-    @for (side of ['left', 'right']; track side) {
-      <svg
-        class="stage-slide-kolam"
-        [class.stage-slide-kolam--left]="side === 'left'"
-        [class.stage-slide-kolam--right]="side === 'right'"
-        viewBox="0 0 200 200"
-        aria-hidden="true">
-        @for (cell of [0, 1, 2, 3]; track cell) {
-          <rect
-            [attr.x]="40 + cell * 30"
-            [attr.y]="40 + cell * 30"
-            width="60"
-            height="60"
-            rx="18"
-            fill="none"
-            stroke="#b98a5a"
-            stroke-width="3"
-            [attr.transform]="'rotate(45 100 100)'"></rect>
-          <circle
-            [attr.cx]="100"
-            [attr.cy]="100"
-            [attr.r]="22 + cell * 22"
-            fill="none"
-            stroke="#b98a5a"
-            stroke-width="3"></circle>
-        }
-      </svg>
-    }
-
-    <!-- Logos: Bhumi wordmark + Nakshatra roundel -->
-    <div class="stage-slide-logos">
-      <div class="stage-slide-bhumi" aria-label="Bhumi">
-        <svg viewBox="0 0 60 40" aria-hidden="true">
-          <circle cx="30" cy="17" r="11" fill="#f57c1f"></circle>
-          <path
-            d="M6 26 Q30 38 54 26"
-            fill="none"
-            stroke="#2e7d32"
-            stroke-width="5"
-            stroke-linecap="round"></path>
-          <path
-            d="M12 12 Q30 -2 48 12"
-            fill="none"
-            stroke="#f9a825"
-            stroke-width="4"
-            stroke-linecap="round"></path>
-        </svg>
-        <span>Bhumi</span>
-      </div>
-      <div class="stage-slide-logo-divider"></div>
-      <img
-        class="stage-slide-nakshatra"
-        src="logo/nakshatra-logo.png"
-        alt="Nakshatra" />
-    </div>
-
-    <!-- Event branding -->
-    <h1 class="stage-slide-title">NAKSHATRA ARTS &#8217;26</h1>
-    <p class="stage-slide-tagline">dream. discover. dazzle</p>
-
-    <!-- Prize banner -->
-    <div class="stage-slide-banner">
-      <svg class="stage-slide-crown" viewBox="0 0 80 52" aria-hidden="true">
-        <path
-          d="M8 44 L4 14 L22 28 L40 6 L58 28 L76 14 L72 44 Z"
-          fill="#e8b23a"
-          stroke="#b8860b"
-          stroke-width="3"
-          stroke-linejoin="round"></path>
-        <circle cx="4" cy="12" r="5" fill="#e8b23a"></circle>
-        <circle cx="40" cy="5" r="5" fill="#e8b23a"></circle>
-        <circle cx="76" cy="12" r="5" fill="#e8b23a"></circle>
-        <rect x="8" y="44" width="64" height="6" rx="3" fill="#b8860b"></rect>
-      </svg>
-      <svg
-        class="stage-slide-flourish stage-slide-flourish--left"
-        viewBox="0 0 120 40"
-        aria-hidden="true">
-        <path
-          d="M118 20 Q90 2 70 20 Q52 38 30 20 Q16 8 2 20"
-          fill="none"
-          stroke="#c9971f"
-          stroke-width="3"
-          stroke-linecap="round"></path>
-        <circle cx="70" cy="20" r="5" fill="#c9971f"></circle>
-      </svg>
-      <div class="stage-slide-banner-plaque">
-        <span>{{ bannerLabel() }}</span>
-      </div>
-      <svg
-        class="stage-slide-flourish stage-slide-flourish--right"
-        viewBox="0 0 120 40"
-        aria-hidden="true">
-        <path
-          d="M2 20 Q30 2 50 20 Q68 38 90 20 Q104 8 118 20"
-          fill="none"
-          stroke="#c9971f"
-          stroke-width="3"
-          stroke-linecap="round"></path>
-        <circle cx="50" cy="20" r="5" fill="#c9971f"></circle>
-      </svg>
-    </div>
-
-    <!-- Winner panel -->
-    <div class="stage-slide-panel">
-      <svg
-        class="stage-slide-laurel stage-slide-laurel--left"
-        viewBox="0 0 90 260"
-        aria-hidden="true">
-        <path
-          d="M78 8 Q22 130 78 252"
-          fill="none"
-          stroke="#c99a4e"
-          stroke-width="7"
-          stroke-linecap="round"></path>
-        @for (leaf of [30, 62, 94, 126, 158, 190, 222]; track leaf) {
-          <ellipse
-            [attr.cx]="42"
-            [attr.cy]="leaf"
-            rx="22"
-            ry="10"
-            fill="#c99a4e"
-            [attr.transform]="'rotate(-38 42 ' + leaf + ')'"></ellipse>
-        }
-      </svg>
-      <svg
-        class="stage-slide-laurel stage-slide-laurel--right"
-        viewBox="0 0 90 260"
-        aria-hidden="true">
-        <path
-          d="M12 8 Q68 130 12 252"
-          fill="none"
-          stroke="#c99a4e"
-          stroke-width="7"
-          stroke-linecap="round"></path>
-        @for (leaf of [30, 62, 94, 126, 158, 190, 222]; track leaf) {
-          <ellipse
-            [attr.cx]="48"
-            [attr.cy]="leaf"
-            rx="22"
-            ry="10"
-            fill="#c99a4e"
-            [attr.transform]="'rotate(38 48 ' + leaf + ')'"></ellipse>
-        }
-      </svg>
-
+    <div class="stage-slide-content">
       <h2 class="stage-slide-event">{{ slide().eventName }}</h2>
-      <div class="stage-slide-ornament" aria-hidden="true"></div>
+      <div class="stage-slide-banner">{{ bannerLabel() }}</div>
 
       @if (slide().mode === 'SOLO') {
         <div class="stage-slide-label">Child Name</div>
@@ -216,7 +44,6 @@
         }
       }
 
-      <div class="stage-slide-label">Position</div>
       <div class="stage-slide-position">{{ positionLabel() }}</div>
 
       @if (slide().subtitle) {
@@ -224,17 +51,20 @@
       }
     </div>
 
-    <!-- Provenance: never pass a manual or demo slide as an official winner -->
-    @if (slide().source === 'DEMO' && demoNotice()) {
+    @if (slide().source === 'DEMO') {
       <div class="stage-slide-badge stage-slide-badge--demo" data-testid="slide-demo-badge">
         {{ demoNotice() }}
       </div>
     } @else if (slide().source === 'MANUAL_ADMIN') {
-      <div class="stage-slide-badge stage-slide-badge--manual" data-testid="slide-manual-badge">
+      <div
+        class="stage-slide-badge stage-slide-badge--manual"
+        data-testid="slide-manual-badge">
         Manually entered &#8212; not an official result
       </div>
-    } @else if (slide().source === 'OFFICIAL_RESULT') {
-      <div class="stage-slide-badge stage-slide-badge--official" data-testid="slide-official-badge">
+    } @else {
+      <div
+        class="stage-slide-badge stage-slide-badge--official"
+        data-testid="slide-official-badge">
         Official result
       </div>
     }

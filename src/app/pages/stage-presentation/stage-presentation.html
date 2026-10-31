@@ -17,6 +17,38 @@
       <div class="stage-notice stage-notice--real" role="status">REAL DATA</div>
     }
 
+    <div class="stage-results" data-testid="results-status">
+      @if (resultsStatus() === 'loading') {
+        <span class="stage-results-line" role="status">Loading official results&hellip;</span>
+      } @else if (resultsStatus() === 'error') {
+        <span class="stage-results-line stage-results-line--error" role="alert">
+          Official results could not be loaded. Check the connection and try again.
+        </span>
+      } @else if (resultsStatus() === 'unloaded') {
+        <span class="stage-results-line" role="status">
+          No official results loaded for this programme/environment yet.
+        </span>
+      } @else if (resultsStatus() === 'empty') {
+        <span class="stage-results-line" role="status">
+          No finalized results yet &mdash; once scores are finalized here, the
+          presentation builds itself from them.
+        </span>
+      } @else {
+        <span class="stage-results-line" role="status">
+          {{ officialCandidates().length }} official result(s) loaded.
+        </span>
+      }
+      @if (skippedOfficialResults()) {
+        <span class="stage-results-line stage-results-line--error" role="alert">
+          {{ skippedOfficialResults() }} result(s) use an unsupported prize position
+          and were not added to the presentation.
+        </span>
+      }
+      @if (lastRefreshedAt()) {
+        <span class="stage-results-line">Last refreshed {{ lastRefreshedAt() }}</span>
+      }
+    </div>
+
     <app-view-only-banner section="DISTRIBUTION"></app-view-only-banner>
 
     <div class="stage-actions">
@@ -26,7 +58,14 @@
           class="primary-button"
           data-testid="add-slide"
           (click)="startAdd()">
-          + Add Slide
+          + Add Manual Slide
+        </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-testid="refresh-results"
+          (click)="refreshOfficialResults()">
+          Refresh Results
         </button>
         <button
           type="button"
@@ -107,7 +146,7 @@
       <form class="stage-editor" data-testid="slide-editor" (submit)="$event.preventDefault(); saveSlide()">
         <h2>{{ editingId() ? 'Edit Slide' : 'New Slide' }}</h2>
 
-        @if (editorErrors().length) {
+        @if (editorSubmitAttempted() && editorErrors().length) {
           <div class="stage-errors" role="alert">
             @for (error of editorErrors(); track error) {
               <p>{{ error }}</p>

@@ -1,354 +1,169 @@
-// Nakshatra Arts '26 ceremony slide. Recreates the reference artwork in
-// CSS/SVG: parchment centre bleeding to terracotta watercolour edges,
-// marigold garland, cream winner panel with gold laurels, maroon prize
-// plaque. Every LAYOUT metric is `cqw` (1cqw = 1% of slide width, the
-// slide's root em) - never `em`, because `em` offsets resolve against the
-// element's OWN font-size and would silently jump when a rule sets one.
-// `em` is kept only for text-relative sizing (font-sizes, text margins).
+/*
+ * One 16:9 ceremony slide (see stage-slide-view.html for the layout).
+ *
+ * Scaling: the frame is a container (`container-type: inline-size`) and
+ * the slide typesets at `font-size: 1cqw`, so 1em equals 1% of the slide
+ * width at ANY size - projector full-screen, preview panel or thumbnail
+ * all render identical proportions with zero distortion (the aspect
+ * ratio is locked to 16:9 and the artwork is fitted, never stretched).
+ *
+ * Artwork fit: the template PNG is 3840x2560 (3:2). In a 16:9 frame a
+ * `cover` fit must crop ~15% of its height - the marigold garland at the
+ * top or the pongal pot / decorated bull at the bottom. Since both are
+ * preserved artwork, the image is fitted with `contain` and the ~8%
+ * side bars fall on a neutral mat; nothing is cropped or distorted.
+ */
 
 .stage-slide-frame {
   container-type: inline-size;
+
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 0.8cqw;
-  background: #e8c9a0;
+
+  /* Neutral letterbox mat (not part of the artwork). */
+  background: #201a16;
 }
 
 .stage-slide {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  font-size: 1cqw;
+  position: absolute;
+  inset: 0;
+
   font-family: Georgia, 'Times New Roman', serif;
-  color: #4a2c14;
-  overflow: hidden;
-  // Parchment centre -> terracotta watercolour edges.
-  background:
-    radial-gradient(ellipse 62% 52% at 50% 46%, rgba(250, 240, 214, 0.98) 0%, rgba(248, 231, 195, 0.9) 46%, rgba(233, 178, 118, 0) 72%),
-    radial-gradient(ellipse 38% 46% at 6% 34%, rgba(188, 92, 46, 0.75), rgba(188, 92, 46, 0) 70%),
-    radial-gradient(ellipse 34% 42% at 96% 30%, rgba(188, 92, 46, 0.7), rgba(188, 92, 46, 0) 70%),
-    radial-gradient(ellipse 46% 30% at 20% 96%, rgba(176, 78, 38, 0.85), rgba(176, 78, 38, 0) 72%),
-    radial-gradient(ellipse 46% 30% at 84% 98%, rgba(176, 78, 38, 0.85), rgba(176, 78, 38, 0) 72%),
-    radial-gradient(ellipse 30% 26% at 50% 2%, rgba(198, 104, 52, 0.6), rgba(198, 104, 52, 0) 72%),
-    linear-gradient(160deg, #d98a52 0%, #e9b985 22%, #f2e2bd 50%, #e6ab74 78%, #c8703c 100%);
+  font-size: 1cqw;
+  line-height: 1.25;
+  color: #3d2415;
 }
 
-// Optional drop-in replacement artwork; never distorted (cover keeps ratio).
 .stage-slide-artwork {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-}
-
-// ---------------------------------------------------------------------------
-// Marigold garland
-// ---------------------------------------------------------------------------
-
-.stage-slide-garland {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 9.2cqw;
-  filter: drop-shadow(0 0.18cqw 0.25cqw rgba(90, 40, 10, 0.35));
-}
-
-// ---------------------------------------------------------------------------
-// Kolam motifs, left and right
-// ---------------------------------------------------------------------------
-
-.stage-slide-kolam {
-  position: absolute;
-  top: 42%;
-  width: 13cqw;
-  height: 13cqw;
-  opacity: 0.5;
-  transform: translateY(-50%);
-}
-
-.stage-slide-kolam--left {
-  left: 3.2cqw;
-}
-
-.stage-slide-kolam--right {
-  right: 3.2cqw;
-}
-
-// ---------------------------------------------------------------------------
-// Logos
-// ---------------------------------------------------------------------------
-
-.stage-slide-logos {
-  position: absolute;
-  top: 8.6cqw;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 1.8cqw;
-  transform: translateX(-50%);
-}
-
-.stage-slide-bhumi {
-  display: flex;
-  align-items: center;
-  gap: 0.5cqw;
-
-  svg {
-    width: 3.6cqw;
-    height: 2.4cqw;
-  }
-
-  span {
-    font-family: 'Trebuchet MS', Verdana, sans-serif;
-    font-size: 2.1em;
-    font-weight: 700;
-    color: #e07b1f;
-  }
-}
-
-.stage-slide-logo-divider {
-  width: 0.12cqw;
-  height: 3.1cqw;
-  background: rgba(90, 50, 20, 0.45);
-}
-
-.stage-slide-nakshatra {
-  width: 4.1cqw;
-  height: 4.1cqw;
   object-fit: contain;
+  object-position: center;
 }
 
-// ---------------------------------------------------------------------------
-// Event branding
-// ---------------------------------------------------------------------------
-
-.stage-slide-title {
+/* Winner information over the open central area of the artwork. The
+   frame is 56.25em tall (16:9 at 1em = 1% width), so the column spans
+   the central band between the title/kolams and the bottom illustrations
+   and the stack (event + banner + labels + names + position ≈ 24.5em)
+   fits whole - a name must never be clipped by the frame edge. */
+.stage-slide-content {
   position: absolute;
-  top: 13.6cqw;
-  left: 0;
-  width: 100%;
-  margin: 0;
-  text-align: center;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-weight: 800;
-  font-size: 6em;
-  letter-spacing: 0.02em;
-  color: #8c1d18;
-  text-shadow:
-    0.04em 0.05em 0 rgba(120, 40, 20, 0.45),
-    0 0.02em 0 #f8ecd2;
-}
+  left: 27em;
+  right: 27em;
+  top: 14em;
+  bottom: 7em;
 
-.stage-slide-tagline {
-  position: absolute;
-  top: 21.1cqw;
-  left: 0;
-  width: 100%;
-  margin: 0;
-  text-align: center;
-  font-size: 2.35em;
-  letter-spacing: 0.06em;
-  color: #5a2d12;
-}
-
-// ---------------------------------------------------------------------------
-// Prize banner: crown + flourishes + maroon plaque
-// ---------------------------------------------------------------------------
-
-.stage-slide-banner {
-  position: absolute;
-  top: 25.7cqw;
-  left: 50%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.6cqw;
-  transform: translateX(-50%);
-}
-
-.stage-slide-crown {
-  position: absolute;
-  top: -2.2cqw;
-  left: 50%;
-  width: 4.6cqw;
-  height: 3cqw;
-  transform: translateX(-50%);
-  filter: drop-shadow(0 0.12cqw 0.2cqw rgba(90, 50, 10, 0.4));
-}
-
-.stage-slide-flourish {
-  width: 8.2cqw;
-  height: 2.75cqw;
-  flex: none;
-}
-
-.stage-slide-banner-plaque {
-  padding: 0.42cqw 2.7cqw;
-  border: 0.16cqw solid #e8b23a;
-  border-radius: 0.55cqw;
-  background: linear-gradient(180deg, #7c2317 0%, #5e170f 100%);
-  box-shadow:
-    0 0 0 0.24cqw rgba(232, 178, 58, 0.35),
-    0 0.35cqw 0.8cqw rgba(80, 25, 10, 0.45);
-
-  span {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-weight: 700;
-    font-size: 2.9em;
-    letter-spacing: 0.06em;
-    white-space: nowrap;
-    color: #f6e3b2;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Winner panel
-// ---------------------------------------------------------------------------
-
-.stage-slide-panel {
-  position: absolute;
-  top: 31.8cqw;
-  left: 50%;
-  width: 58cqw;
-  min-height: 21.2cqw;
-  padding: 1.5cqw 10cqw 1.7cqw;
-  box-sizing: border-box;
-  transform: translateX(-50%);
   text-align: center;
-  border: 0.13cqw solid #b98a45;
-  border-radius: 1.5cqw;
-  background: rgba(246, 235, 206, 0.9);
-  box-shadow: 0 0.4cqw 1.4cqw rgba(110, 55, 20, 0.28);
-}
-
-.stage-slide-laurel {
-  position: absolute;
-  top: 50%;
-  width: 6.6cqw;
-  height: 19cqw;
-  transform: translateY(-50%);
-}
-
-.stage-slide-laurel--left {
-  left: 1.6cqw;
-}
-
-.stage-slide-laurel--right {
-  right: 1.6cqw;
 }
 
 .stage-slide-event {
-  margin: 0 0 0.12em;
-  font-size: 3em;
+  margin: 0;
+  font-size: 3.2em;
+  line-height: 1.15;
   font-weight: 700;
-  color: #4a2410;
-  overflow-wrap: break-word;
+  letter-spacing: 0.02em;
+  color: #5b2d1c;
+  overflow-wrap: anywhere;
 }
 
-.stage-slide-ornament {
-  position: relative;
-  width: 26cqw;
-  height: 1.3cqw;
-  margin: 0.35cqw auto 0.7cqw;
+.stage-slide-banner {
+  margin: 0.25em 0 0.5em;
+  padding: 0.15em 0.75em;
 
-  // Thin rule with a central diamond flourish.
-  &::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: 100%;
-    height: 0.09cqw;
-    transform: translateY(-50%);
-    background: rgba(122, 82, 42, 0.6);
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0.85cqw;
-    height: 0.85cqw;
-    transform: translate(-50%, -50%) rotate(45deg);
-    border: 0.09cqw solid rgba(122, 82, 42, 0.75);
-    background: #f3e6c6;
-  }
+  font-size: 3.6em;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8c2f1b;
+  border-top: 0.06em solid rgba(140, 47, 27, 0.55);
+  border-bottom: 0.06em solid rgba(140, 47, 27, 0.55);
 }
 
 .stage-slide-label {
-  font-family: 'Trebuchet MS', Verdana, sans-serif;
-  font-size: 1.28em;
-  letter-spacing: 0.04em;
-  color: #7a5230;
+  margin-top: 0.55em;
+
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a6a4f;
 }
 
 .stage-slide-winner {
-  margin: 0.06em 0 0.32em;
-  font-size: 2.72em;
+  font-size: 4.2em;
+  line-height: 1.15;
   font-weight: 700;
-  color: #8c1d18;
-  overflow-wrap: break-word;
+  color: #3d2415;
+  overflow-wrap: anywhere;
 }
 
 .stage-slide-home {
-  margin: 0.06em 0 0.32em;
-  font-size: 2.15em;
-  font-weight: 700;
-  color: #4a2410;
-  overflow-wrap: break-word;
+  font-size: 2.4em;
+  line-height: 1.2;
+  color: #5b2d1c;
+  overflow-wrap: anywhere;
 }
 
 .stage-slide-position {
-  margin: 0.06em 0 0.15em;
-  font-size: 2.4em;
+  margin-top: 0.75em;
+
+  font-size: 1.8em;
   font-weight: 700;
-  color: #a4761e;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7a4a2c;
 }
 
 .stage-slide-subtitle {
-  margin: 0.5em auto 0;
-  max-width: 38cqw;
-  font-size: 1.35em;
+  margin-top: 0.5em;
+
+  font-size: 1.8em;
   font-style: italic;
-  color: #6b4a2c;
-  overflow-wrap: break-word;
+  color: #5b4632;
+  overflow-wrap: anywhere;
 }
 
-// ---------------------------------------------------------------------------
-// Provenance badges (demo / manual / official)
-// ---------------------------------------------------------------------------
-
+/* Honesty badges: exactly one is shown per slide and they never mix. */
 .stage-slide-badge {
   position: absolute;
-  right: 1.4cqw;
-  bottom: 1.4cqw;
-  padding: 0.45cqw 1.1cqw;
-  border-radius: 0.5cqw;
-  font-family: 'Trebuchet MS', Verdana, sans-serif;
-  font-size: 1.15em;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  left: 50%;
+  bottom: 1.5em;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  padding: 0.3em 0.9em;
+  font-size: 1.4em;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial,
+    sans-serif;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  border-radius: 0.35em;
 }
 
 .stage-slide-badge--demo {
-  border: 0.14cqw solid #8c1d18;
   background: rgba(140, 29, 24, 0.92);
-  color: #ffe9c9;
+  color: #fff;
 }
 
 .stage-slide-badge--manual {
-  border: 0.14cqw solid #a4761e;
   background: rgba(164, 118, 30, 0.92);
-  color: #fff6e0;
+  color: #fff;
 }
 
 .stage-slide-badge--official {
-  border: 0.14cqw solid #1f6b45;
   background: rgba(31, 107, 69, 0.92);
-  color: #eafcef;
+  color: #fff;
+}
+
+.stage-slide--demo .stage-slide-content {
+  opacity: 0.96;
 }
