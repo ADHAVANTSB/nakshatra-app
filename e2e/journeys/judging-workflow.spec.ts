@@ -499,7 +499,7 @@ test.describe('judging workflow journey', () => {
 
     await page.goto('/#/judging?eventId=event-1');
     await page.goto('/#/scoring?eventId=event-1');
-    await expect(page.getByRole('heading', { name: 'Scoring' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Scores' })).toBeVisible();
 
     // The legacy manual controls are gone from the page…
     await expect(page.getByRole('button', { name: 'Save scores' })).toHaveCount(0);

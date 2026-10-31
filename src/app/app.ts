@@ -116,7 +116,12 @@ export class App implements OnInit {
       icon: '⌂', section: 'DASHBOARD'
     },
     {
-      label: 'Homes',
+      label: 'Events',
+      route: '/events',
+      icon: '✦', section: 'EVENTS'
+    },
+    {
+      label: 'Shelter Homes',
       route: '/homes',
       icon: '⌂', section: 'HOMES'
     },
@@ -124,11 +129,6 @@ export class App implements OnInit {
       label: 'Participants',
       route: '/participants',
       icon: '○', section: 'PARTICIPANTS'
-    },
-    {
-      label: 'Events',
-      route: '/events',
-      icon: '✦', section: 'EVENTS'
     },
     {
       label: 'Attendance',
@@ -141,7 +141,7 @@ export class App implements OnInit {
       icon: '★', section: 'SCORING'
     },
     {
-      label: 'Scoring',
+      label: 'Scores',
       route: '/scoring',
       icon: '★', section: 'SCORING'
     },

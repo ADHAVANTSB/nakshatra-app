@@ -353,7 +353,14 @@
         <option value="150">150%</option>
       </select>
       <button type="button" class="secondary-button" (click)="fitToScreen()">Fit</button>
-      <button type="button" class="secondary-button" (click)="toggleFullscreen()">⛶ Fullscreen</button>
+      <button
+        type="button"
+        class="secondary-button"
+        [attr.aria-pressed]="fullscreenActive()"
+        [title]="fullscreenActive() ? 'Exit fullscreen' : 'Enter fullscreen'"
+        (click)="toggleFullscreen()">
+        {{ fullscreenActive() ? '🗗 Exit Fullscreen' : '⛶ Fullscreen' }}
+      </button>
 
       @if (deck.slides().length) {
         <button
@@ -409,7 +416,13 @@
         {{ playerPlaying() ? '⏸' : '▶' }}
       </button>
       <button type="button" (click)="nextSlide()">▶</button>
-      <button type="button" (click)="toggleFullscreen()">⛶</button>
+      <button
+        type="button"
+        [attr.aria-pressed]="fullscreenActive()"
+        [title]="fullscreenActive() ? 'Exit fullscreen' : 'Enter fullscreen'"
+        (click)="toggleFullscreen()">
+        {{ fullscreenActive() ? '🗗' : '⛶' }}
+      </button>
       <button type="button" data-testid="exit-presentation" (click)="exitPresentation()">
         ✕ Exit
       </button>

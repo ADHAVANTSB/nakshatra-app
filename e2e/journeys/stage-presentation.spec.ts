@@ -200,13 +200,21 @@ test.describe('Stage Presentation - ceremony slide deck', () => {
     await page.keyboard.press('Space');
     await expect(page.getByTestId('projector')).toBeVisible();
 
-    // 10. Fullscreen is best-effort (headless may deny); the click must
-    //     never break the projector.
-    await page.locator('.stage-projector-bar button', { hasText: '⛶' }).click();
+    // 10. Fullscreen is best-effort (headless may deny) and the projector
+    //     may already be fullscreen (presentation enters it). Toggling
+    //     the control must never break the projector; a mouse move wakes
+    //     the auto-hiding bar first (it hides after 3s without movement).
+    await page.getByTestId('projector').hover();
+    await page.locator('.stage-projector-bar button[title*="fullscreen"]').click();
     await expect(page.getByTestId('projector')).toBeVisible();
 
-    // 11. Exit presentation with Escape.
+    // 11. Exit presentation with Escape. If native fullscreen was
+    //     entered, the first Escape only leaves fullscreen (consumed by
+    //     the browser); the next one always exits the projector.
     await page.keyboard.press('Escape');
+    if (await page.getByTestId('projector').count()) {
+      await page.keyboard.press('Escape');
+    }
     await expect(page.getByTestId('projector')).toHaveCount(0);
 
     expect(pageErrors).toEqual([]);

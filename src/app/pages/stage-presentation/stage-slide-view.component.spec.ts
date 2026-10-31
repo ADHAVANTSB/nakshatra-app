@@ -146,6 +146,14 @@ describe('StageSlideView', () => {
     expect(element.querySelector('[data-testid="slide-demo-badge"]')).toBeNull();
   });
 
+  it('uses the approved PNG template as the actual slide background', () => {
+    const root = render(soloSlide);
+    const artwork = root.querySelector('img.stage-slide-artwork') as HTMLImageElement;
+
+    expect(artwork).not.toBeNull();
+    expect(artwork.getAttribute('src')).toBe('logo/adhavan - template for web page .png');
+  });
+
   it('renders the optional subtitle when present', () => {
     expect(render({ ...soloSlide, subtitle: 'A round of applause!' }).textContent ?? '')
       .toContain('A round of applause!');

@@ -127,7 +127,7 @@ export class Dashboard implements OnInit {
 
   readonly quickActions: readonly QuickAction[] = [
     {
-      label: 'Shelter homes',
+      label: 'Shelter Homes',
       path: '/homes',
       description: 'Connect and manage homes',
     },
@@ -152,7 +152,7 @@ export class Dashboard implements OnInit {
       description: 'Configure judges and criteria',
     },
     {
-      label: 'Scoring',
+      label: 'Scores',
       path: '/scoring',
       description: 'Capture and finalize scores',
     },

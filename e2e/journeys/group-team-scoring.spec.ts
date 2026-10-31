@@ -305,7 +305,7 @@ test.describe('group team-scoring journey', () => {
     await signIn(page);
 
     await page.goto('/#/scoring?eventId=group-1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Scoring' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Scores' })).toBeVisible();
 
     // ---- one scoring row per team, with roster counts ----
     const teamARow = page.locator('[data-testid="team-score-row-team-a"]');

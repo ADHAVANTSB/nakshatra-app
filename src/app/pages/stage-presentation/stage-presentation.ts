@@ -79,6 +79,7 @@ export class StagePresentation implements OnDestroy {
   private readonly shelterData = inject(ShelterDataService);
   private readonly winners = inject(WinnersService);
   private readonly notifications = inject(NotificationService);
+  private readonly programContext = inject(ProgramContextService);
 
   readonly deck = inject(StageDeckService);
   readonly notice = DEMO_DATA_NOTICE;
@@ -318,6 +319,11 @@ export class StagePresentation implements OnDestroy {
     // Official results are the initial source of the presentation: the
     // deck is reconciled with them as soon as the read lands.
     void this.loadOfficialResults();
+    // A programme/environment switch must reload that scope's results -
+    // never keep showing the previous scope's winners on stage.
+    this.programContext.onScopeChange(() => {
+      void this.loadOfficialResults();
+    });
     this.syncDeck();
   }
 
@@ -759,12 +765,44 @@ export class StagePresentation implements OnDestroy {
     this.zoomPercent.set(100);
   }
 
+  /** True while the browser is in native fullscreen (synced by events). */
+  readonly fullscreenActive = signal(false);
+
+  @HostListener('document:fullscreenchange')
+  @HostListener('document:webkitfullscreenchange')
+  onFullscreenChange(): void {
+    this.fullscreenActive.set(Boolean(this.fullscreenElement()));
+  }
+
+  /**
+   * Fullscreen toggle for the workspace control and the projector bar.
+   * Uses the unprefixed API first with vendor fallbacks, and never fails
+   * silently - a refused or unsupported request tells the organizer why
+   * (the projector overlay still fills the screen either way).
+   */
   toggleFullscreen(): void {
-    if (document.fullscreenElement) {
+    if (this.fullscreenElement()) {
       this.exitFullscreenSafely();
     } else {
       void this.requestFullscreenSafely();
     }
+  }
+
+  /** Native fullscreen element across unprefixed and vendor APIs. */
+  private fullscreenElement(): Element | null {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      mozFullScreenElement?: Element | null;
+      msFullscreenElement?: Element | null;
+    };
+
+    return (
+      doc.fullscreenElement ??
+      doc.webkitFullscreenElement ??
+      doc.mozFullScreenElement ??
+      doc.msFullscreenElement ??
+      null
+    );
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -969,17 +1007,57 @@ export class StagePresentation implements OnDestroy {
   }
 
   private async requestFullscreenSafely(): Promise<void> {
+    const element = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+      mozRequestFullScreen?: () => Promise<void> | void;
+      msRequestFullscreen?: () => Promise<void> | void;
+    };
+
+    // Vendor fallbacks: browsers without the unprefixed API (e.g. older
+    // WebKit) would otherwise receive a silent no-op from `?.()`.
+    const request =
+      element.requestFullscreen?.bind(element) ??
+      element.webkitRequestFullscreen?.bind(element) ??
+      element.mozRequestFullScreen?.bind(element) ??
+      element.msRequestFullscreen?.bind(element);
+
+    if (!request) {
+      this.notifications.error(
+        'Fullscreen unavailable',
+        'This browser does not support fullscreen - the presentation still fills the screen.',
+      );
+      return;
+    }
+
     try {
-      await document.documentElement.requestFullscreen?.();
+      // Called synchronously from the click so the user gesture is kept.
+      await request();
     } catch {
-      // Fullscreen can be denied (permissions/embedded frame) - the
-      // projector overlay still covers the viewport.
+      // Denied by the browser (permissions/policy/embedded frame): say so
+      // instead of failing silently - the projector overlay still covers
+      // the viewport.
+      this.notifications.error(
+        'Fullscreen blocked',
+        'The browser refused the fullscreen request - the presentation still fills the screen.',
+      );
     }
   }
 
   private exitFullscreenSafely(): void {
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => void;
+      mozCancelFullScreen?: () => void;
+      msExitFullscreen?: () => void;
+    };
+
+    const exit =
+      doc.exitFullscreen?.bind(doc) ??
+      doc.webkitExitFullscreen?.bind(doc) ??
+      doc.mozCancelFullScreen?.bind(doc) ??
+      doc.msExitFullscreen?.bind(doc);
+
     try {
-      void document.exitFullscreen?.();
+      void exit?.();
     } catch {
       // Already out of fullscreen.
     }

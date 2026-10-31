@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 
 import { AuthService } from '../../core/services/auth/auth.service';
-import { WinnersService } from '../../core/services/certificates/winners.service';
+import {
+  WinnersService,
+  type WinnerRow,
+  type WinnersReport,
+} from '../../core/services/certificates/winners.service';
 import { NotificationService } from '../../core/services/notifications/notification.service';
 import { ProgramContextService } from '../../core/services/program/program-context.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
@@ -35,6 +39,7 @@ class FakeStorage implements StageDeckStorage {
 }
 
 function stubServices() {
+  const scopeListeners: (() => void)[] = [];
   const events = signal([
     {
       id: 'E-1',
@@ -108,7 +113,7 @@ function stubServices() {
     winners: {
       loading$: signal(false),
       error$: signal(''),
-      report$: signal({
+      report$: signal<WinnersReport | null>({
         events: [
           {
             eventId: 'E-1',
@@ -137,12 +142,37 @@ function stubServices() {
         totalEvents: 1,
         totalWinners: 1,
       }),
-      load: () => Promise.resolve(null),
+      load: vi.fn(async (_force?: boolean) => null),
     },
     notifications: {
-      success: () => undefined,
-      error: () => undefined,
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn(),
     },
+    scopeListeners,
+    fireScopeChange: () => scopeListeners.forEach((listener) => listener()),
+  };
+}
+
+function winnerRow(
+  position: number,
+  name: string,
+  scoreId: string,
+  extra: Partial<WinnerRow> = {},
+): WinnerRow {
+  return {
+    position,
+    name,
+    age: '9',
+    className: '4',
+    level: 'JUNIOR',
+    shelterHomeName: 'Rainbow Children Home',
+    score: 88,
+    scoreId,
+    participantId: 'P-1',
+    teamId: '',
+    members: [],
+    ...extra,
   };
 }
 
@@ -153,9 +183,10 @@ function storageKey(): string {
 describe('StagePresentation page', () => {
   let fixture: ComponentFixture<StagePresentation>;
   let element: HTMLElement;
+  let stubs: ReturnType<typeof stubServices>;
 
   async function setup(): Promise<void> {
-    const stubs = stubServices();
+    stubs = stubServices();
 
     await TestBed.configureTestingModule({
       imports: [StagePresentation],
@@ -169,7 +200,10 @@ describe('StagePresentation page', () => {
           useValue: {
             program: signal({ id: 'ARTS', label: 'Arts' }),
             zone: signal({ id: 'TEST', label: 'Test' }),
-            onScopeChange: () => () => undefined,
+            onScopeChange: (listener: () => void) => {
+              stubs.scopeListeners.push(listener);
+              return () => undefined;
+            },
           },
         },
         { provide: STAGE_DECK_STORAGE, useValue: new FakeStorage() },
@@ -347,6 +381,28 @@ describe('StagePresentation page', () => {
     expect(playButton.textContent ?? '').toContain('Pause');
   });
 
+  it('uses the vendor fullscreen fallback and reports refusal instead of failing silently', async () => {
+    await setup();
+
+    // jsdom has no unprefixed requestFullscreen - a vendor-prefixed one
+    // must be used, and its refusal must be surfaced to the organizer.
+    const request = vi.fn().mockRejectedValue(new Error('denied'));
+    const elementWithWebkit = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+    elementWithWebkit.webkitRequestFullscreen = request;
+
+    fixture.componentInstance.toggleFullscreen();
+    await fixture.whenStable();
+    delete elementWithWebkit.webkitRequestFullscreen;
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(stubs.notifications.error).toHaveBeenCalledWith(
+      'Fullscreen blocked',
+      expect.any(String),
+    );
+  });
+
   it('enters projector mode and exits with Escape', async () => {
     await setup();
     click('load-demo');
@@ -391,5 +447,204 @@ describe('StagePresentation page', () => {
     expect(element.textContent ?? '').toContain('Ananya');
     expect(element.textContent ?? '').toContain('Rainbow Children Home');
     expect(element.textContent ?? '').toContain('Story Telling');
+  });
+
+  it('auto-loads official results on open and previews the first winner', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the async reconcile land
+    fixture.detectChanges();
+
+    // Nothing clicked: the deck built itself from the official results.
+    expect(element.querySelectorAll('[data-testid="slide-list"] li')).toHaveLength(1);
+    expect(element.textContent ?? '').toContain('1 official result(s) loaded.');
+    expect(element.textContent ?? '').toContain('REAL DATA');
+    expect(element.querySelector('.stage-list-tag--official')).not.toBeNull();
+    expect(fixture.componentInstance.deck.slides()[0].resultKey).toBe('E-1|SC-1');
+
+    // The first valid official result is the initial preview.
+    expect(element.querySelector('[data-testid="slide-preview"]')?.textContent ?? '')
+      .toContain('Story Telling');
+    expect(element.textContent ?? '').toContain('1 / 1');
+  });
+
+  it('keeps every supported position including ties and surfaces unsupported ranks', async () => {
+    await setup();
+    // Two winners share rank 1 (a tie), ranks 2 and 3 follow, and one row
+    // uses an unsupported rank that must be surfaced, never silently dropped.
+    stubs.winners.report$.set({
+      events: [
+        {
+          eventId: 'E-1',
+          eventCode: 'ART-011',
+          eventName: 'Story Telling',
+          category: 'ARTS',
+          mode: 'SOLO',
+          eventStatus: 'ACTIVE',
+          winners: [
+            winnerRow(1, 'Ananya', 'SC-1'),
+            winnerRow(1, 'Karthik', 'SC-2', { shelterHomeName: 'Sunrise Home' }),
+            winnerRow(2, 'Meera', 'SC-3'),
+            winnerRow(3, 'Ravi', 'SC-4'),
+            winnerRow(9, 'Dev', 'SC-9'),
+          ],
+        },
+      ],
+      totalEvents: 1,
+      totalWinners: 5,
+    });
+    await fixture.componentInstance.refreshOfficialResults();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.deck.slides().map((slide) => slide.position)).toEqual([
+      'FIRST',
+      'FIRST',
+      'SECOND',
+      'THIRD',
+    ]);
+    expect(fixture.componentInstance.skippedOfficialResults()).toBe(1);
+    expect(element.textContent ?? '').toContain('1 result(s) use an unsupported prize position');
+  });
+
+  it('tells a failed read apart from empty results and offers a retry', async () => {
+    await setup();
+    stubs.winners.error$.set('Network down');
+    fixture.detectChanges();
+
+    expect(element.textContent ?? '').toContain('Official results could not be loaded');
+    expect(element.querySelector('[data-testid="refresh-results"]')).not.toBeNull();
+    // A failure is never dressed up as "no results yet".
+    expect(element.textContent ?? '').not.toContain('No finalized results yet');
+
+    stubs.winners.error$.set('');
+    stubs.winners.report$.set(null);
+    fixture.detectChanges();
+    expect(element.textContent ?? '').toContain(
+      'No official results loaded for this programme/environment yet.',
+    );
+  });
+
+  it('reloads the official results when the programme/environment scope changes', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stubs.winners.load).toHaveBeenCalledTimes(1);
+
+    stubs.fireScopeChange();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stubs.winners.load).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes without duplicating slides and keeps display-only edits', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+    const first = fixture.componentInstance.deck.slides()[0];
+    fixture.componentInstance.deck.updateSlide(first.id, { ...first, subtitle: 'Host note' });
+
+    await fixture.componentInstance.refreshOfficialResults();
+    await fixture.componentInstance.refreshOfficialResults();
+    fixture.detectChanges();
+
+    const slides = fixture.componentInstance.deck.slides();
+    expect(slides).toHaveLength(1);
+    expect(slides[0].resultKey).toBe('E-1|SC-1');
+    expect(slides[0].subtitle).toBe('Host note');
+  });
+
+  it('removes a slide from the deck only and never resurrects it', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+    const first = fixture.componentInstance.deck.slides()[0];
+
+    fixture.componentInstance.deleteSlide(first.id);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.deck.slides()).toHaveLength(0);
+
+    await fixture.componentInstance.refreshOfficialResults();
+    fixture.detectChanges();
+    // The organizer removed it on purpose: a refresh must not bring it back.
+    expect(fixture.componentInstance.deck.slides()).toHaveLength(0);
+    expect(stubs.notifications.warning).not.toHaveBeenCalled();
+  });
+
+  it('never names group children on a slide - only the home and team', async () => {
+    await setup();
+    // The winners report composes a team's name as "Team (Kid One, Kid Two)".
+    stubs.winners.report$.set({
+      events: [
+        {
+          eventId: 'E-2',
+          eventCode: 'CUL-021',
+          eventName: 'Group Dance',
+          category: 'CULTURAL',
+          mode: 'GROUP',
+          eventStatus: 'ACTIVE',
+          winners: [
+            winnerRow(1, 'Rainbow Stars (Ananya, Karthik)', 'SC-1', {
+              teamId: 'T-1',
+              participantId: '',
+              members: [
+                { participantId: 'P-1', name: 'Ananya', age: '9', className: '4', level: 'JUNIOR' },
+                { participantId: 'P-2', name: 'Karthik', age: '13', className: '7', level: 'SENIOR' },
+              ],
+            }),
+          ],
+        },
+      ],
+      totalEvents: 1,
+      totalWinners: 1,
+    });
+    await fixture.componentInstance.refreshOfficialResults();
+    fixture.detectChanges();
+
+    const slides = fixture.componentInstance.deck.slides();
+    expect(slides).toHaveLength(1);
+    expect(slides[0].teamName).toBe('Rainbow Stars'); // member suffix stripped
+    expect(slides[0].childName).toBe('');
+    const listText = element.querySelector('[data-testid="slide-list"]')?.textContent ?? '';
+    expect(listText).toContain('Rainbow Stars');
+    expect(listText).not.toContain('Karthik');
+    expect(listText).not.toContain('Ananya');
+  });
+
+  it('does not validate before an explicit save attempt', async () => {
+    await setup();
+    expect(element.textContent ?? '').not.toContain('Home name is required');
+
+    click('add-slide');
+    selectOption('editor-event', 'E-1');
+    // Typing/selection alone must never raise validation errors.
+    expect(element.textContent ?? '').not.toContain('Home name is required');
+
+    click('save-slide');
+    expect(element.textContent ?? '').toContain('Home name is required');
+  });
+
+  it('never mixes demo slides with official results', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click('load-demo');
+
+    await fixture.componentInstance.refreshOfficialResults();
+    fixture.detectChanges();
+
+    // An explicit demo preview keeps exactly the sample set.
+    expect(element.querySelectorAll('[data-testid="slide-list"] li')).toHaveLength(5);
+    expect(element.querySelector('.stage-list-tag--official')).toBeNull();
+    expect(element.textContent ?? '').toContain(DEMO_DATA_NOTICE);
+  });
+
+  it('renders the same slide in the preview and the projector', async () => {
+    await setup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+    click('start-presentation');
+
+    const previewText =
+      element.querySelector('[data-testid="slide-preview"] [data-testid="stage-slide"]')?.textContent ?? '';
+    const projectorText =
+      element.querySelector('[data-testid="projector"] [data-testid="stage-slide"]')?.textContent ?? '';
+    expect(projectorText).toContain('Story Telling');
+    expect(projectorText.trim()).toBe(previewText.trim());
   });
 });

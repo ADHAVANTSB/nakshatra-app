@@ -127,7 +127,7 @@ test.describe('responsive emulation sweep', () => {
 
     // The mobile drawer opens from the header menu button.
     await page.getByRole('button', { name: 'Open navigation' }).click();
-    const drawerLink = page.locator('aside.nk-mobile-drawer').getByRole('link', { name: 'Homes' });
+    const drawerLink = page.locator('aside.nk-mobile-drawer').getByRole('link', { name: 'Shelter Homes' });
     await drawerLink.click();
 
     await expect(page).toHaveURL(/#\/homes/);

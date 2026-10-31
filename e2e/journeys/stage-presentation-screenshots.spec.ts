@@ -86,6 +86,12 @@ test.describe('Stage Presentation - screenshots', () => {
     await page.getByTestId('load-demo').click();
     await page.getByTestId('add-slide').click();
     await expect(page.getByTestId('slide-list').locator('li')).toHaveCount(5);
+    // The 2 MB template PNG must finish decoding before the shot.
+    await page.waitForFunction(() =>
+      Array.from(document.querySelectorAll('img.stage-slide-artwork')).every(
+        (img) => (img as HTMLImageElement).complete,
+      ),
+    );
     await page.screenshot({
       path: 'docs/screenshots/stage-presentation-workspace.png',
     });
@@ -96,6 +102,16 @@ test.describe('Stage Presentation - screenshots', () => {
     await page.getByTestId('start-presentation').click();
     await expect(page.getByTestId('projector')).toBeVisible();
     await page.screenshot({ path: 'docs/screenshots/stage-presentation-projector.png' });
+
+    // The PNG template must stay undistorted on the two projector sizes.
+    // The window is in native fullscreen (the projector requested it), and
+    // a fullscreen window cannot be resized - restore it first. The
+    // projector overlay still fills the viewport either way.
+    await page.evaluate(() => document.exitFullscreen?.());
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.screenshot({ path: 'docs/screenshots/stage-presentation-projector-1920x1080.png' });
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.screenshot({ path: 'docs/screenshots/stage-presentation-projector-1366x768.png' });
 
     await page.keyboard.press('Escape');
   });

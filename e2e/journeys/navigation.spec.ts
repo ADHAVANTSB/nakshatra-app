@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
  * checks alone are UX, not security).
  */
 
-const ADMIN_NAV = ['Dashboard', 'Homes', 'Participants', 'Events', 'Attendance', 'Scoring', 'Judging', 'Results', 'Certificates', 'Reports'];
+const ADMIN_NAV = ['Dashboard', 'Events', 'Shelter Homes', 'Participants', 'Attendance', 'Judging', 'Scores', 'Results', 'Certificates', 'Reports'];
 
 /**
  * One section link in the role-driven navigation. The accessible name carries
@@ -62,7 +62,7 @@ test.describe('navigation and role gating', () => {
     await sectionLink(page, 'Participants').click();
     await expect(page).toHaveURL(/#\/participants/);
 
-    await navigateViaNav(page, 'Homes');
+    await navigateViaNav(page, 'Shelter Homes');
     await expect(page).toHaveURL(/#\/homes/);
     expect(pageErrors).toEqual([]);
   });
@@ -106,7 +106,7 @@ test.describe('navigation and role gating', () => {
     }
     await expect(sectionLink(page, 'Certificates')).toHaveCount(1);
     await expect(sectionLink(page, 'Results')).toHaveCount(1);
-    await expect(sectionLink(page, 'Homes')).toHaveCount(0);
+    await expect(sectionLink(page, 'Shelter Homes')).toHaveCount(0);
     await expect(sectionLink(page, 'Participants')).toHaveCount(0);
     expect(pageErrors).toEqual([]);
   });
