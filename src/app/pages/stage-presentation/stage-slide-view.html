@@ -40,11 +40,12 @@
         <div class="stage-slide-winner">{{ slide().childName }}</div>
       }
 
-      <div class="stage-slide-label">Home / Team</div>
+      <div class="stage-slide-label">{{ homeTeam().label }}</div>
       <div
         class="stage-slide-home"
+        data-testid="slide-home-team"
         [class.stage-slide-home--lead]="slide().mode === 'GROUP'">
-        {{ homeTeamLabel() }}
+        {{ homeTeam().text }}
       </div>
 
       @if (slide().subtitle) {

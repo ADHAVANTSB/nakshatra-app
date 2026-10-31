@@ -1,7 +1,12 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
+  inject,
+  Injector,
   input,
   signal,
 } from '@angular/core';
@@ -9,6 +14,8 @@ import {
 import {
   POSITION_BANNER_LABELS,
   StageSlide,
+  homeFitScale,
+  homeTeamDisplay,
 } from './stage-slide';
 
 /**
@@ -26,7 +33,11 @@ import {
  * Winner rules enforced here (and in validateSlide):
  *   - SOLO slides show Child Name, then the combined Home / Team line;
  *   - GROUP slides show Home / Team only - a group child list must never
- *     reach the stage screen;
+ *     reach the stage screen. When home and team are the same name
+ *     (compared trimmed, whitespace-collapsed, case-insensitively) or the
+ *     team is empty, the home is shown ONCE with a SHELTER HOME label -
+ *     never 'X · X'. Individual slides keep the committed Home / Team
+ *     label (see homeTeamDisplay for the full rule matrix);
  *   - the prize position is shown exactly once (the banner row);
  *   - DEMO slides carry the DEMO DATA notice, MANUAL_ADMIN slides carry a
  *     "not an official result" badge, and only OFFICIAL_RESULT slides are
@@ -40,6 +51,9 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StageSlideView {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+
   /** The slide to render. */
   readonly slide = input.required<StageSlide>();
 
@@ -58,13 +72,18 @@ export class StageSlideView {
   );
 
   /**
-   * Home / team as one logical field: joined with ' · ' when both
-   * exist, just the single value otherwise (never a leftover separator).
+   * Home / team as one logical field, with the label that describes it:
+   * see homeTeamDisplay for the full mode-aware rule matrix (GROUP
+   * collapses a repeated/empty team to 'SHELTER HOME', individual slides
+   * keep the committed 'Home / Team' label). The stored names are never
+   * edited.
    */
-  readonly homeTeamLabel = computed(() =>
-    [this.slide().homeName, this.slide().teamName]
-      .filter((part) => part.trim() !== '')
-      .join(' · '),
+  readonly homeTeam = computed(() =>
+    homeTeamDisplay(
+      this.slide().homeName,
+      this.slide().teamName,
+      this.slide().mode,
+    ),
   );
 
   /** Event category from the catalogue; '' when the slide carries none. */
@@ -102,4 +121,33 @@ export class StageSlideView {
 
     return path;
   })();
+
+  constructor() {
+    // Refit the home line to the content box after every render in which
+    // the displayed value changed. (Widths scale with the cqw-based em,
+    // so the ratio is size-invariant: no resize handling is needed.)
+    effect(() => {
+      this.homeTeam().text;
+      afterNextRender(() => this.fitHomeLine(), { injector: this.injector });
+    });
+  }
+
+  /**
+   * Shrink the single-line home/team value to the content box by setting
+   * the --home-fit CSS variable (scale = available / measured, clamped to
+   * homeFitScale's floor). One pass suffices: rendered width scales
+   * linearly with font-size. Never truncates - see homeFitScale.
+   */
+  private fitHomeLine(): void {
+    const el = this.host.nativeElement.querySelector<HTMLElement>(
+      '.stage-slide-home',
+    );
+    if (!el) {
+      return;
+    }
+
+    const available = el.parentElement?.clientWidth ?? 0;
+    const measured = el.getBoundingClientRect().width;
+    el.style.setProperty('--home-fit', String(homeFitScale(available, measured)));
+  }
 }

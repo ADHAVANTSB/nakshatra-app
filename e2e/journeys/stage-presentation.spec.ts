@@ -6,7 +6,7 @@ import {
   signIn,
   test,
 } from '../fixtures';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /**
  * Stage Presentation ceremony journey: sign in, open Certificates, then
@@ -101,6 +101,47 @@ const WINNERS = {
   totalWinners: 1,
 };
 
+const LONG_HOME_NAME =
+  'The Very Long Shelter Home Name For Underprivileged Children Welfare';
+
+/**
+ * One GROUP winner whose home name is identical to the team name. The
+ * winners report carries the team name in `name` (no member roster, so
+ * nothing is stripped), and the slide maps shelterHomeName -> homeName -
+ * home and team are the SAME string, the geometry regression case.
+ */
+function groupWinnerWithHome(homeName: string) {
+  return {
+    events: [
+      {
+        eventId: 'E-2',
+        eventCode: 'CUL-021',
+        eventName: 'Group Dance',
+        category: 'CULTURAL',
+        mode: 'GROUP',
+        eventStatus: 'ACTIVE',
+        winners: [
+          {
+            position: 1,
+            name: homeName,
+            age: '',
+            className: '',
+            level: 'SENIOR',
+            shelterHomeName: homeName,
+            score: 91,
+            scoreId: 'SC-9',
+            participantId: '',
+            teamId: 'T-9',
+            members: [],
+          },
+        ],
+      },
+    ],
+    totalEvents: 1,
+    totalWinners: 1,
+  };
+}
+
 function stubStageData(backend: import('../stubs/backend').BackendStub): void {
   backend.on('listEvents', () => ({
     body: { success: true, data: { events: EVENTS, totalEvents: EVENTS.length } },
@@ -131,6 +172,51 @@ async function openNav(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'Open navigation' }).click();
     await expect(page.locator('aside.nk-mobile-drawer')).toBeVisible();
   }
+}
+
+/** The preview panel's slide frame (thumbnails carry their own frames). */
+function previewFrame(page: Page): Locator {
+  return page.getByTestId('slide-preview').locator('[data-testid="stage-slide"]');
+}
+
+/**
+ * A line sits fully inside the slide frame (1px subpixel tolerance) on
+ * both axes: the vertical pair mirrors the bounds approach of the
+ * geometry test above, and the horizontal pair catches a no-wrap value
+ * wider than the frame.
+ */
+async function expectInsideFrame(
+  line: Locator,
+  frameBox: { x: number; y: number; width: number; height: number },
+  label: string,
+): Promise<void> {
+  const box = await line.boundingBox();
+  expect(box, label + ' bounding box').not.toBeNull();
+  expect(box!.y, label + ' top').toBeGreaterThanOrEqual(frameBox.y - 1);
+  expect(box!.y + box!.height, label + ' bottom').toBeLessThanOrEqual(
+    frameBox.y + frameBox.height + 1,
+  );
+  expect(box!.x, label + ' left').toBeGreaterThanOrEqual(frameBox.x - 1);
+  expect(box!.x + box!.width, label + ' right').toBeLessThanOrEqual(
+    frameBox.x + frameBox.width + 1,
+  );
+}
+
+/**
+ * One rendered line: the box height stays within 1.6x its computed
+ * line-height (font-size when line-height is 'normal'). A wrapped value
+ * doubles the height and fails; dynamic font shrink keeps it one line.
+ */
+async function expectSingleLine(line: Locator, label: string): Promise<void> {
+  const box = await line.boundingBox();
+  expect(box, label + ' bounding box').not.toBeNull();
+  const lineStep = await line.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return parseFloat(cs.lineHeight) || parseFloat(cs.fontSize);
+  });
+  expect(box!.height, label + ' renders on ONE line (no wrap)').toBeLessThanOrEqual(
+    lineStep * 1.6,
+  );
 }
 
 test.describe('Stage Presentation - ceremony slide deck', () => {
@@ -316,6 +402,109 @@ test.describe('Stage Presentation - ceremony slide deck', () => {
           resizedFrameBox!.y + resizedFrameBox!.height + 1,
         );
       }
+    }
+
+    expect(pageErrors).toEqual([]);
+  });
+});
+
+test.describe('Stage Presentation - home/team value geometry regressions', () => {
+  const GEOMETRY_CASES = [
+    { name: 'home name identical to the team name', homeName: 'Rainbow Children Home' },
+    { name: 'very long home name', homeName: LONG_HOME_NAME },
+  ];
+
+  for (const geometryCase of GEOMETRY_CASES) {
+    for (const viewport of [
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+      { width: 1920, height: 1080 },
+    ]) {
+      test(`GROUP slide with ${geometryCase.name} fits one line at ${viewport.width}x${viewport.height}`, async ({
+        page,
+        backend,
+      }) => {
+        const pageErrors = monitorPageErrors(page);
+        stubStageData(backend);
+        backend.on('listWinners', () => ({
+          body: { success: true, data: groupWinnerWithHome(geometryCase.homeName) },
+        }));
+
+        await page.setViewportSize(viewport);
+        await signIn(page, { user: adminUser, backend });
+        await page.goto('/#/stage-presentation');
+        await expect(page.getByTestId('slide-preview')).toBeVisible();
+
+        const frame = previewFrame(page);
+        const home = frame.locator('.stage-slide-home');
+        await expect(home).toBeVisible();
+
+        // Single line (no wrap) and fully inside the 16:9 frame.
+        await expectSingleLine(home, '.stage-slide-home');
+        const frameBox = await frame.boundingBox();
+        expect(frameBox).not.toBeNull();
+        await expectInsideFrame(home, frameBox!, '.stage-slide-home');
+
+        expect(pageErrors).toEqual([]);
+      });
+    }
+  }
+
+  test('GROUP home == team shows the value once — no duplicated "Home · Home"', async ({
+    page,
+    backend,
+  }) => {
+    const pageErrors = monitorPageErrors(page);
+    stubStageData(backend);
+    backend.on('listWinners', () => ({
+      body: { success: true, data: groupWinnerWithHome('Rainbow Children Home') },
+    }));
+
+    await signIn(page, { user: adminUser, backend });
+    await page.goto('/#/stage-presentation');
+    await expect(page.getByTestId('slide-preview')).toBeVisible();
+
+    const frame = previewFrame(page);
+
+    // The value is the home name exactly once - never "Home · Home" and
+    // never with a '·' separator inside the value. Soft so a run reports
+    // every contracted state at once while the renderer fix is in flight.
+    await expect
+      .soft(frame.locator('.stage-slide-home'))
+      .toHaveText('Rainbow Children Home');
+    const slideText = (await frame.innerText()) ?? '';
+    expect
+      .soft(slideText.split('Rainbow Children Home').length - 1, 'value occurrences in slide')
+      .toBe(1);
+
+    // Contracted label for this value (SHELTER HOME). A failure here with
+    // the label still reading "Home / Team" is pending-implementation:
+    // the slide renderer fix lives in src/ and is owned elsewhere.
+    await expect(frame.locator('.stage-slide-label')).toHaveText(/shelter home/i);
+
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('individual-event slide keeps the child and home lines rendered in bounds', async ({
+    page,
+    backend,
+  }) => {
+    const pageErrors = monitorPageErrors(page);
+    stubStageData(backend);
+    backend.on('listWinners', () => ({ body: { success: true, data: WINNERS } }));
+
+    await signIn(page, { user: adminUser, backend });
+    await page.goto('/#/stage-presentation');
+    await expect(page.getByTestId('slide-preview')).toBeVisible();
+
+    const frame = previewFrame(page);
+    await expect(frame.locator('.stage-slide-winner')).toHaveText('Ananya');
+    await expect(frame.locator('.stage-slide-home')).toHaveText('Rainbow Children Home');
+
+    const frameBox = await frame.boundingBox();
+    expect(frameBox).not.toBeNull();
+    for (const selector of ['.stage-slide-winner', '.stage-slide-home']) {
+      await expectInsideFrame(frame.locator(selector), frameBox!, selector);
     }
 
     expect(pageErrors).toEqual([]);

@@ -52,11 +52,14 @@
    starts below the tagline (top: 24.5em) and keeps ~7.5em clear at the
    bottom. The narrower 30em side margins keep long home/team lines off
    the side artwork, and the stack is vertically centred in the open band
-   so it stays balanced whatever the name lengths. Names wrap
-   (overflow-wrap: anywhere) - never truncated or shrunk. Shortcut: a
-   stack taller than the band (~24em, e.g. 3-line names plus a subtitle)
-   grows toward the tagline; upgrade to a dynamic font scale if
-   organizers use such names. */
+   so it stays balanced whatever the name lengths. The home/team line
+   never wraps: the component shrinks its font to the content box via
+   the --home-fit variable (dynamic fit, see homeFitScale in
+   stage-slide.ts). shortcut: the rows that still wrap (event name,
+   child name, subtitle) can grow the stack taller than the band
+   (~24em) toward the tagline, and a home/team name that must shrink
+   past the 55% fit floor reaches into the side margins; upgrade with a
+   vertical fit or a lower floor if organizers use such values. */
 .stage-slide-content {
   position: absolute;
   left: 30em;
@@ -132,18 +135,22 @@
   overflow-wrap: anywhere;
 }
 
-/* Home / team as one logical line: wraps freely across lines, never
-   truncated, clipped or shrunk. Group winners ARE the home/team, so
+/* Home / team as one logical line, centred and never wrapped: the value
+   stays on ONE line and the component sets --home-fit (see homeFitScale
+   in stage-slide.ts) so long names shrink to the content box instead of
+   wrapping, truncating or clipping. Group winners ARE the home/team, so
    that line leads (winner scale) on GROUP slides. */
 .stage-slide-home {
-  font-size: 2.4em;
+  --home-fit: 1;
+
+  font-size: calc(2.4em * var(--home-fit));
   line-height: 1.2;
   color: #5b2d1c;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .stage-slide-home--lead {
-  font-size: 3.8em;
+  font-size: calc(3.8em * var(--home-fit));
   line-height: 1.15;
   font-weight: 700;
   color: #3d2415;

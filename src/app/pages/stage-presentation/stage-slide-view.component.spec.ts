@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { StageSlideView } from './stage-slide-view.component';
 import { DEMO_DATA_NOTICE, DEMO_SLIDES } from './demo-slides';
-import { StageSlide } from './stage-slide';
+import { HOME_FIT_FLOOR, StageSlide } from './stage-slide';
 
 /**
  * Stage slide visual rules: individual slides show Child Name then the
@@ -70,6 +70,21 @@ describe('StageSlideView', () => {
     expect(text.indexOf('Ananya')).toBeLessThan(text.indexOf('Rainbow Children Home'));
   });
 
+  it('keeps the individual (SOLO) home label as Home / Team, never SHELTER HOME', () => {
+    // Requirement pin: SHELTER HOME is the GROUP single-name case only;
+    // individual slides keep the committed Home / Team label (rendered
+    // "HOME / TEAM" by the slide CSS text-transform).
+    const element = render(soloSlide);
+    // SOLO slides carry two labels ("Child Name" and the home line); pin
+    // the home line's label, the last one.
+    const labels = element.querySelectorAll('.stage-slide-label');
+    const label = labels[labels.length - 1];
+
+    expect(label?.textContent?.trim()).toBe('Home / Team');
+    expect(label?.textContent?.trim().toUpperCase()).toBe('HOME / TEAM');
+    expect(element.textContent ?? '').not.toContain('SHELTER HOME');
+  });
+
   it('renders group slides as one Home / Team line (never a child)', () => {
     const element = render(groupSlide);
     const text = element.textContent ?? '';
@@ -93,6 +108,8 @@ describe('StageSlideView', () => {
 
     expect(home?.textContent?.trim()).toBe('Rainbow Children Home');
     expect(home?.textContent ?? '').not.toContain('·');
+    expect(element.querySelector('.stage-slide-label')?.textContent?.trim())
+      .toBe('SHELTER HOME');
   });
 
   it('shows child name plus home/team for individuals, home/team only for groups', () => {
@@ -114,6 +131,8 @@ describe('StageSlideView', () => {
 
     expect(home).toHaveLength(1);
     expect(home[0].textContent?.trim()).toBe('Rainbow Children Home · Rainbow Stars');
+    expect(element.querySelector('.stage-slide-label')?.textContent?.trim())
+      .toBe('HOME / TEAM');
   });
 
   it('renders the event category above the event name', () => {
@@ -207,5 +226,89 @@ describe('StageSlideView', () => {
     expect(render({ ...soloSlide, subtitle: 'A round of applause!' }).textContent ?? '')
       .toContain('A round of applause!');
     expect(render(soloSlide).textContent ?? '').not.toContain('A round of applause!');
+  });
+
+  it('shows the home once (label SHELTER HOME) when home and team are the identical name', () => {
+    const element = render({
+      ...groupSlide,
+      homeName: 'HOME FOR POOR BOYS',
+      teamName: 'HOME FOR POOR BOYS',
+    });
+    const home = element.querySelector('.stage-slide-home');
+
+    expect(home?.textContent?.trim()).toBe('HOME FOR POOR BOYS');
+    expect(home?.textContent ?? '').not.toContain('·');
+    // The home name appears exactly once on the whole slide.
+    expect((element.textContent?.match(/HOME FOR POOR BOYS/g) ?? [])).toHaveLength(1);
+    expect(element.querySelector('.stage-slide-label')?.textContent?.trim())
+      .toBe('SHELTER HOME');
+  });
+
+  it('dedupes home and team names that differ only in case', () => {
+    const element = render({ ...groupSlide, homeName: 'Rainbow Home', teamName: 'rainbow home' });
+    const home = element.querySelector('.stage-slide-home');
+
+    expect(home?.textContent?.trim()).toBe('Rainbow Home');
+    expect(home?.textContent ?? '').not.toContain('·');
+    expect(element.querySelector('.stage-slide-label')?.textContent?.trim())
+      .toBe('SHELTER HOME');
+  });
+
+  it('dedupes home and team names that differ only in whitespace', () => {
+    const element = render({
+      ...groupSlide,
+      homeName: '  Rainbow   Home ',
+      teamName: 'rainbow home',
+    });
+    const home = element.querySelector('.stage-slide-home');
+
+    expect(home?.textContent?.trim().replace(/\s+/g, ' ')).toBe('Rainbow Home');
+    expect(home?.textContent ?? '').not.toContain('·');
+    expect(element.querySelector('.stage-slide-label')?.textContent?.trim())
+      .toBe('SHELTER HOME');
+  });
+
+  it('keeps a long home name on one line (nowrap + inline fit sizing)', () => {
+    const name = 'St. Joseph\'s Charitable Shelter Home for Children, Chennai';
+    const element = render({ ...soloSlide, homeName: name });
+    const home = element.querySelector('.stage-slide-home') as HTMLElement;
+
+    expect(home.textContent?.trim()).toBe(name);
+    expect(getComputedStyle(home).whiteSpace).toBe('nowrap');
+    // Inline sizing hook is applied (the fit scale rides on it).
+    expect(home.style.getPropertyValue('--home-fit')).not.toBe('');
+  });
+
+  it('shrinks the home line for over-long text but never below the fit floor', () => {
+    // jsdom has no layout: fake the content box (800px) and the text width.
+    const clientWidth = vi
+      .spyOn(Element.prototype, 'clientWidth', 'get')
+      .mockReturnValue(800);
+    const rect = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 4000 } as DOMRect);
+
+    try {
+      const element = render({ ...groupSlide, homeName: 'A'.repeat(80), teamName: '' });
+      const home = element.querySelector('.stage-slide-home') as HTMLElement;
+      const scale = Number(home.style.getPropertyValue('--home-fit'));
+
+      // 800 / 4000 = 0.2 -> clamped up to the floor, still below 1.
+      expect(scale).toBeLessThan(1);
+      expect(scale).toBeGreaterThanOrEqual(HOME_FIT_FLOOR);
+      expect(scale).toBe(HOME_FIT_FLOOR);
+
+      rect.mockReturnValue({ width: 1000 } as DOMRect);
+      const fitted = render({ ...groupSlide, homeName: 'A'.repeat(20), teamName: '' })
+        .querySelector('.stage-slide-home') as HTMLElement;
+      const fittedScale = Number(fitted.style.getPropertyValue('--home-fit'));
+
+      expect(fittedScale).toBeLessThan(1);
+      expect(fittedScale).toBeGreaterThanOrEqual(HOME_FIT_FLOOR);
+      expect(fittedScale).toBeCloseTo(800 / 1000);
+    } finally {
+      clientWidth.mockRestore();
+      rect.mockRestore();
+    }
   });
 });
