@@ -74,6 +74,19 @@ function installCatalogue(backend: BackendStub): void {
     },
   }));
   backend.on('listAttendance', () => ({ body: { success: true, data: { attendance: [] } } }));
+  // D-Day (home-level) attendance: the sweep expects a usable attendance
+  // page, so the participant is checked in for the event day.
+  backend.on('listEventDayRegistrations', () => ({
+    body: {
+      success: true,
+      data: {
+        eventDayRegistrations: [{
+          participantId: 'p-1', shelterHomeId: 'home-1', checkInStatus: 'CHECKED_IN',
+          checkedInAt: '2026-09-01T08:00:00.000Z', checkedInBy: 'e2e-stub', version: 1,
+        }],
+      },
+    },
+  }));
 }
 
 /** No unintended horizontal overflow: content must not exceed the viewport. */

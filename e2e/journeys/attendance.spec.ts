@@ -87,7 +87,10 @@ const rowStatus = (page: import('@playwright/test').Page) =>
   row(page).locator('.status');
 
 /** Standard catalogue + one SOLO event with one registered participant. */
-function installCatalogue(backend: BackendStub): void {
+function installCatalogue(
+  backend: BackendStub,
+  options: { eventDay?: Record<string, unknown> } = {},
+): void {
   backend.on('listEvents', () => ({ body: { success: true, data: { events: [EVENT] } } }));
   backend.on('listShelterHomes', () => ({
     body: {
@@ -104,6 +107,32 @@ function installCatalogue(backend: BackendStub): void {
   backend.on('listParticipants', () => ({ body: { success: true, data: { participants: [PARTICIPANT] } } }));
   backend.on('listEventRegistrations', () => ({
     body: { success: true, data: { participantEvents: [REGISTRATION] } },
+  }));
+  // D-Day (home-level) attendance: Present marking is enabled only for a
+  // CHECKED_IN participant. Journeys override `eventDay` to exercise the
+  // disabled states (explicitly ABSENT, or no record at all).
+  backend.on('listEventDayRegistrations', () => ({
+    body: {
+      success: true,
+      data: {
+        eventDayRegistrations: [options.eventDay ?? {
+          participantId: 'p-1',
+          participantCode: 'P-001',
+          fullName: 'Arun Kumar',
+          level: 'SUB_JUNIOR',
+          shelterHomeId: 'home-1',
+          homeName: 'Sunshine Childrens Home',
+          homeCode: 'SH-001',
+          homeSheetStatus: 'LOCKED',
+          checkInStatus: 'CHECKED_IN',
+          checkedInAt: '2026-09-01T08:00:00.000Z',
+          checkedInBy: 'e2e-stub',
+          registeredEvents: [],
+          competitionAttendance: [],
+          version: 1,
+        }],
+      },
+    },
   }));
 }
 
@@ -297,6 +326,86 @@ test.describe('attendance', () => {
     await expect(page.getByText('Attendance for Arun Kumar was not saved.').first()).toBeVisible();
     await expect(rowStatus(page)).toHaveText('Not marked');
     await expect(row(page).getByRole('button', { name: 'Present' })).toBeEnabled();
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('D-Day ABSENT disables Present and explains it on the row', async ({ page, backend }) => {
+    const pageErrors = monitorPageErrors(page);
+
+    await signIn(page);
+    installCatalogue(backend, {
+      eventDay: {
+        participantId: 'p-1', shelterHomeId: 'home-1', checkInStatus: 'NOT_REGISTERED', version: 2,
+      },
+    });
+    backend.on('listAttendance', () => ({ body: { success: true, data: { attendance: [] } } }));
+
+    await page.goto('/#/attendance');
+    await selectEvent(page);
+
+    // The participant row stays visible; only the marking is disabled.
+    await expect(row(page)).toBeVisible();
+    await expect(row(page).locator('.day-status'))
+      .toHaveText('ABSENT FOR D-DAY — EVENT ATTENDANCE DISABLED');
+    await expect(row(page).getByRole('button', { name: 'Present' })).toBeDisabled();
+    // Absent corrections stay possible so records remain correctable.
+    await expect(row(page).getByRole('button', { name: 'Absent' })).toBeEnabled();
+    // No misleading present-looking state.
+    await expect(rowStatus(page)).toHaveText('Not marked');
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('D-Day NOT MARKED disables Present with the pending text', async ({ page, backend }) => {
+    const pageErrors = monitorPageErrors(page);
+
+    await signIn(page);
+    // version 0 is the queue's representation of "no D-Day record yet".
+    installCatalogue(backend, {
+      eventDay: {
+        participantId: 'p-1', shelterHomeId: 'home-1', checkInStatus: 'NOT_REGISTERED', version: 0,
+      },
+    });
+    backend.on('listAttendance', () => ({ body: { success: true, data: { attendance: [] } } }));
+
+    await page.goto('/#/attendance');
+    await selectEvent(page);
+
+    await expect(row(page).locator('.day-status'))
+      .toHaveText('D-DAY ATTENDANCE PENDING — EVENT ATTENDANCE DISABLED');
+    await expect(row(page).getByRole('button', { name: 'Present' })).toBeDisabled();
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('a backend D-Day rejection (stale eligibility) surfaces the error and marks nothing', async ({ page, backend }) => {
+    const pageErrors = monitorPageErrors(page);
+
+    // The queue said CHECKED_IN at load time, but the D-Day record was
+    // corrected to ABSENT before the save: the backend (source of truth)
+    // rejects the mark with the new error code and nothing is written.
+    await signIn(page);
+    installCatalogue(backend);
+    backend.on('listAttendance', () => ({ body: { success: true, data: { attendance: [] } } }));
+    backend.on('markAttendance', () => ({
+      body: {
+        success: false,
+        error: {
+          code: 'EVENT_DAY_ATTENDANCE_ABSENT',
+          message: 'Arun Kumar is marked ABSENT for D-Day (home-level) attendance, so event attendance is disabled for them.',
+          participantId: 'p-1',
+          eventId: 'event-1',
+          eventDayStatus: 'NOT_REGISTERED',
+        },
+      },
+    }));
+
+    await page.goto('/#/attendance');
+    await selectEvent(page);
+
+    await row(page).getByRole('button', { name: 'Present' }).click();
+    await page.getByRole('button', { name: 'Save Attendance' }).click();
+
+    await expect(page.getByText('is marked ABSENT for D-Day').first()).toBeVisible();
+    await expect(rowStatus(page)).toHaveText('Not marked');
     expect(pageErrors).toEqual([]);
   });
 });

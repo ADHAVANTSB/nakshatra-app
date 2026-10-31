@@ -19,6 +19,7 @@ import {
   EventCategory,
   EventDayCheckInStatus,
   EventDayRegisteredEvent,
+  EventAttendanceConflict,
   EventDayRegistrationEntry,
   SaveEventDayAttendanceBatchItem,
   EventMode,
@@ -225,6 +226,13 @@ export class Participants implements OnInit {
 
   /** Backend reason per participant whose staged record failed to save. */
   readonly eventDayFailures = signal<Record<string, string>>({});
+
+  /**
+   * Additive consistency report from the save response: event-level
+   * PRESENT rows whose participant is no longer CHECKED IN for D-Day.
+   * Nothing is auto-corrected - the admin resolves each explicitly.
+   */
+  readonly eventDayConflicts = signal<EventAttendanceConflict[]>([]);
 
   readonly eventDaySaving = signal(false);
 
@@ -579,6 +587,7 @@ export class Participants implements OnInit {
     this.eventDaySaving.set(true);
     this.eventDayError.set('');
     this.eventDaySuccess.set('');
+    this.eventDayConflicts.set([]);
 
     try {
       const result = await this.participantEventService.saveEventDayAttendanceBatch(items);
@@ -590,6 +599,8 @@ export class Participants implements OnInit {
         );
         return;
       }
+
+      this.eventDayConflicts.set(result.eventAttendanceConflicts ?? []);
 
       const failures: Record<string, string> = {};
       let savedCount = 0;

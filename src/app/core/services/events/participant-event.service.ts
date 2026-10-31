@@ -9,6 +9,7 @@ import {
 import {
   Participant,
   Event,
+  EventAttendanceConflict,
   EventDayCheckInStatus,
   EventDayRegistrationEntry,
   ParticipantEvent,
@@ -46,6 +47,11 @@ export interface EventDayBatchSaveResult {
   /** Per-record backend results (empty on a batch-level failure). */
   results: SaveEventDayAttendanceBatchResult[];
   summary: SaveEventDayAttendanceBatchSummary | null;
+  /**
+   * Additive consistency report from the backend: event-level PRESENT
+   * rows whose participant's D-Day attendance is not CHECKED_IN.
+   */
+  eventAttendanceConflicts?: EventAttendanceConflict[];
 }
 
 /**
@@ -454,7 +460,13 @@ export class ParticipantEventService {
     // staged outside this state, so they survive the refresh untouched.
     void this.loadEventDayRegistrations(undefined, true);
 
-    return { success: true, errors: [], results, summary };
+    return {
+      success: true,
+      errors: [],
+      results,
+      summary,
+      eventAttendanceConflicts: response.data.eventAttendanceConflicts,
+    };
   }
 
   // ==========================================

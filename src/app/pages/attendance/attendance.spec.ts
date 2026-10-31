@@ -4,6 +4,7 @@ import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AttendanceService } from '../../core/services/attendance/attendance.service';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { ParticipantEventService } from '../../core/services/events/participant-event.service';
 import { ShelterDataService } from '../../core/services/shelter-homes/shelter-data.service';
 import { Attendance } from './attendance';
 
@@ -35,6 +36,34 @@ const PARTICIPANT = {
   lockStatus: 'UNLOCKED',
   validationStatus: 'PASSED',
 } as never;
+
+/**
+ * D-Day (fixture precondition): Present marking now requires the
+ * participant to be CHECKED IN for the event day. The gate itself is
+ * pinned by the "D-Day eligibility gating" block below and by the
+ * backend suites; these conflict-report tests seed the eligible state.
+ */
+const CHECKED_IN_ENTRY = {
+  participantId: 'participant-1',
+  participantCode: 'P-0001',
+  fullName: 'Test Participant',
+  level: 'JUNIOR',
+  shelterHomeId: 'home-1',
+  homeName: 'Sunrise Home',
+  homeCode: 'H-01',
+  homeSheetStatus: 'LOCKED',
+  checkInStatus: 'CHECKED_IN',
+  checkedInAt: '',
+  checkedInBy: '',
+  registeredEvents: [],
+  competitionAttendance: [],
+  version: 1,
+} as never;
+
+function seedCheckedInForEventDay(): void {
+  vi.spyOn(TestBed.inject(ParticipantEventService), 'eventDayEntryFor')
+    .mockReturnValue(CHECKED_IN_ENTRY);
+}
 
 describe('Attendance — mark conflict reporting', () => {
   let component: Attendance;
@@ -94,6 +123,7 @@ describe('Attendance — mark conflict reporting', () => {
       errorCode: 'VERSION_CONFLICT',
     } as never);
 
+    seedCheckedInForEventDay();
     component.stageAttendance(PARTICIPANT, 'PRESENT');
     await component.saveAttendance();
 
@@ -190,6 +220,7 @@ describe('Attendance — mark conflict reporting', () => {
     component.selectedEventId.set('event-1');
 
     // Mark accepted → local record v1. Retry under conflict → conflict again.
+    seedCheckedInForEventDay();
     component.stageAttendance(PARTICIPANT, 'PRESENT');
     await component.saveAttendance();
     component.stageAttendance(PARTICIPANT, 'ABSENT');
@@ -556,5 +587,252 @@ describe('Attendance — finalization lock', () => {
     expect(labels).toContain('Absent');
     expect(labels).toContain('Save Attendance');
     expect(labels).toContain('Reset Changes');
+  });
+});
+
+/**
+ * D-Day (home-level) attendance is the parent eligibility condition for
+ * event attendance: Present marking is enabled ONLY for participants
+ * CHECKED IN for the event day. The disabled states are spelled out on
+ * the row (never hidden), Absent corrections stay possible, and the
+ * backend rejects every bypass.
+ */
+describe('Attendance — D-Day (home-level) eligibility gating', () => {
+  let fixture: ComponentFixture<Attendance>;
+  let component: Attendance;
+
+  const EVENT = {
+    id: 'event-1',
+    eventCode: 'E-01',
+    name: 'Vocal',
+    category: 'ARTS',
+    mode: 'SOLO',
+    status: 'ACTIVE',
+    eligibleLevels: ['JUNIOR'],
+  };
+
+  const GROUP_EVENT = { ...EVENT, mode: 'GROUP' };
+
+  const PARTICIPANT = {
+    id: 'participant-1',
+    participantCode: 'P-0001',
+    shelterHomeId: 'home-1',
+    fullName: 'Test Participant',
+    gender: 'MALE',
+    age: 10,
+    standard: 5,
+    level: 'JUNIOR',
+    eligibilityStatus: 'ELIGIBLE',
+    validationStatus: 'PASSED',
+    approvalStatus: 'APPROVED',
+    lockStatus: 'UNLOCKED',
+    version: 1,
+  } as never;
+
+  const HOME = {
+    id: 'home-1',
+    homeCode: 'H-01',
+    homeName: 'Sunrise Home',
+    address: '',
+    contactName: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    version: 1,
+  };
+
+  function dayEntry(checkInStatus: 'CHECKED_IN' | 'NOT_REGISTERED', version: number): unknown {
+    return {
+      participantId: 'participant-1',
+      participantCode: 'P-0001',
+      fullName: 'Test Participant',
+      level: 'JUNIOR',
+      shelterHomeId: 'home-1',
+      homeName: 'Sunrise Home',
+      homeCode: 'H-01',
+      homeSheetStatus: 'LOCKED',
+      checkInStatus,
+      checkedInAt: '',
+      checkedInBy: '',
+      registeredEvents: [],
+      competitionAttendance: [],
+      version,
+    };
+  }
+
+  interface DayOptions {
+    /** Entries returned by the D-Day queue read (the row's D-Day state). */
+    dayEntries?: unknown[];
+    /** Simulate a failed D-Day queue read. */
+    dayReadFails?: boolean;
+    /** Render a GROUP event (same rule as individual events). */
+    group?: boolean;
+  }
+
+  function stubBackend(options: DayOptions = {}): void {
+    const event = options.group ? GROUP_EVENT : EVENT;
+    vi.stubGlobal('fetch', (_url: unknown, init: { body: string }) => {
+      const request = JSON.parse(init.body) as { action: string };
+      const ok = (data: unknown) => Promise.resolve(new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+
+      if (request.action === 'listEvents') return ok({ events: [event] });
+      if (request.action === 'listParticipants') return ok({ participants: [PARTICIPANT] });
+      if (request.action === 'listShelterHomes') return ok({ shelterHomes: [HOME] });
+      if (request.action === 'listEventRegistrations') {
+        return ok({
+          participantEvents: [{
+            id: 'reg-1',
+            participantId: 'participant-1',
+            eventId: 'event-1',
+            registrationStatus: 'REGISTERED',
+            version: 1,
+          }],
+        });
+      }
+      if (request.action === 'listAttendance') return ok({ attendance: [] });
+      if (request.action === 'listScores') return ok({ scores: [] });
+      if (request.action === 'listTeams') return ok({ teams: [], members: [] });
+      if (request.action === 'listEventDayRegistrations') {
+        if (options.dayReadFails) {
+          return Promise.resolve(new Response(
+            JSON.stringify({ success: false, error: { code: 'READ_FAILED', message: 'Failed.' } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ));
+        }
+        return ok({ eventDayRegistrations: options.dayEntries ?? [] });
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: false, error: { code: 'UNKNOWN_ACTION', message: request.action } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    });
+  }
+
+  async function render(options: DayOptions = {}): Promise<void> {
+    stubBackend(options);
+
+    const store = TestBed.inject(ShelterDataService);
+    await store.loadEvents();
+    await store.loadParticipants('home-1');
+    await store.loadEventRegistrations('event-1');
+
+    fixture = TestBed.createComponent(Attendance);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await component.setEvent('event-1');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  function rowEl(): HTMLElement {
+    return (fixture.nativeElement as HTMLElement).querySelector('tbody tr') as HTMLElement;
+  }
+
+  function dayBadge(): string {
+    return (rowEl().querySelector('.day-status')?.textContent ?? '').trim();
+  }
+
+  function buttonEl(name: string): HTMLButtonElement {
+    const match = Array.from(rowEl().querySelectorAll('button'))
+      .find(button => (button.textContent ?? '').trim() === name);
+    if (!match) throw new Error(`button ${name} not found`);
+    return match;
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Attendance],
+      providers: [provideRouter([])],
+    }).compileComponents();
+
+    const auth = TestBed.inject(AuthService);
+    auth.setGoogleAuthenticatedUser({
+      id: 'spec-user',
+      googleId: 'spec-google-id',
+      email: 'tester@nakshatra.local',
+      displayName: 'Test User',
+      role: 'ADMIN',
+      accessStatus: 'APPROVED',
+      version: 1,
+    });
+    auth.setApplicationSession({
+      id: 'spec-session',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    TestBed.inject(AuthService).logout();
+  });
+
+  it('D-Day CHECKED_IN: the badge confirms it and Present stays fully enabled', async () => {
+    await render({ dayEntries: [dayEntry('CHECKED_IN', 1)] });
+
+    expect(dayBadge()).toBe('D-DAY: CHECKED IN');
+    expect(buttonEl('Present').disabled).toBe(false);
+
+    component.stageAttendance(PARTICIPANT, 'PRESENT');
+    expect(component.pendingCount()).toBe(1);
+  });
+
+  it('D-Day ABSENT: Present is disabled and the row says ABSENT FOR D-DAY — EVENT ATTENDANCE DISABLED', async () => {
+    await render({ dayEntries: [dayEntry('NOT_REGISTERED', 2)] });
+
+    // The participant row stays fully visible - never hidden or dropped.
+    expect(rowEl().textContent).toContain('Test Participant');
+    expect(dayBadge()).toBe('ABSENT FOR D-DAY — EVENT ATTENDANCE DISABLED');
+    expect(buttonEl('Present').disabled).toBe(true);
+    // Absent corrections stay possible so records remain correctable.
+    expect(buttonEl('Absent').disabled).toBe(false);
+    // The tooltip explains WHY marking is disabled.
+    expect(rowEl().querySelector('.day-status')?.getAttribute('title') ?? '')
+      .toContain('marked ABSENT for D-Day');
+    // No misleading checked-in/present-looking state.
+    expect(rowEl().textContent).not.toContain('CHECKED IN');
+    expect(rowEl().querySelector('.status')?.textContent?.trim()).toBe('Not marked');
+  });
+
+  it('D-Day NOT MARKED: Present is disabled with the PENDING text', async () => {
+    await render({ dayEntries: [] });
+
+    expect(dayBadge()).toBe('D-DAY ATTENDANCE PENDING — EVENT ATTENDANCE DISABLED');
+    expect(buttonEl('Present').disabled).toBe(true);
+    expect(rowEl().querySelector('.day-status')?.getAttribute('title') ?? '')
+      .toContain('until D-Day');
+  });
+
+  it('a failed D-Day read disables Present and never claims a check-in', async () => {
+    await render({ dayReadFails: true });
+
+    expect(dayBadge()).toBe('D-DAY STATUS UNAVAILABLE — EVENT ATTENDANCE DISABLED');
+    expect(buttonEl('Present').disabled).toBe(true);
+    expect(dayBadge()).not.toContain('CHECKED IN');
+  });
+
+  it('staging Present is refused for an ineligible row (programmatic backstop)', async () => {
+    await render({ dayEntries: [dayEntry('NOT_REGISTERED', 2)] });
+
+    component.stageAttendance(PARTICIPANT, 'PRESENT');
+    expect(component.pendingCount()).toBe(0);
+    expect(component.hasUnsavedChanges()).toBe(false);
+
+    // Absent stays stageable: records remain correctable.
+    component.stageAttendance(PARTICIPANT, 'ABSENT');
+    expect(component.pendingCount()).toBe(1);
+  });
+
+  it('group events follow the same rule as individual events', async () => {
+    await render({ group: true, dayEntries: [dayEntry('NOT_REGISTERED', 2)] });
+
+    expect(dayBadge()).toBe('ABSENT FOR D-DAY — EVENT ATTENDANCE DISABLED');
+    expect(buttonEl('Present').disabled).toBe(true);
+    expect(buttonEl('Absent').disabled).toBe(false);
   });
 });

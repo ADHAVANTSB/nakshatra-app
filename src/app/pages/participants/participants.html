@@ -740,6 +740,17 @@
             <span>{{ eventDayError() }}</span>
           </div>
         }
+        @if (eventDayConflicts().length > 0) {
+          <div class="alert error" role="alert">
+            <strong>Event attendance conflicts need review.</strong>
+            <span>These participants are not checked in for D-Day but still hold a saved PRESENT mark for an event. Nothing was changed automatically — correct each event attendance record explicitly.</span>
+            <ul>
+              @for (conflict of eventDayConflicts(); track conflict.participantId + ':' + conflict.eventId) {
+                <li>{{ conflict.participantName || conflict.participantId }} — {{ conflict.eventName || conflict.eventId }}: event attendance is {{ conflict.status }} while D-Day attendance is not CHECKED IN.</li>
+              }
+            </ul>
+          </div>
+        }
 
         <div class="filter-grid">
           <div class="form-group">

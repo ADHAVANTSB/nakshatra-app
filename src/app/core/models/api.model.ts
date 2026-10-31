@@ -756,6 +756,27 @@ export interface SaveEventDayAttendanceBatchSummary {
 export interface SaveEventDayAttendanceBatchData {
   results: SaveEventDayAttendanceBatchResult[];
   summary: SaveEventDayAttendanceBatchSummary;
+  /**
+   * Additive consistency report: event-level PRESENT rows whose
+   * participant's D-Day attendance is not CHECKED_IN. Never
+   * auto-corrected - the admin runs an explicit correction.
+   */
+  eventAttendanceConflicts?: EventAttendanceConflict[];
+}
+
+/**
+ * One stale event-level PRESENT attendance row whose participant's D-Day
+ * (home-level) attendance is not CHECKED_IN (flaggedRecords-style report;
+ * nothing is deleted or modified automatically).
+ */
+export interface EventAttendanceConflict {
+  participantId: string;
+  participantName: string;
+  eventId: string;
+  eventCode?: string;
+  eventName?: string;
+  /** The event-level attendance status of the flagged row ('PRESENT'). */
+  status: string;
 }
 
 export type AttendanceBatchOutcome =
@@ -782,6 +803,8 @@ export interface SaveAttendanceBatchPayload {
 
 export interface SaveAttendanceBatchResult {
   participantId: string;
+  /** Present on INVALID results (the error payload names the event). */
+  eventId?: string;
   outcome: AttendanceBatchOutcome;
   code?: string;
   message?: string;
@@ -854,6 +877,11 @@ export interface ListAttendancePayload {
 /** The backend enriches rows with event/participant/home names (Code.gs 15895+). */
 export interface ListAttendanceData {
   attendance: Attendance[];
+  /**
+   * Additive consistency report: event-level PRESENT rows whose
+   * participant's D-Day attendance is not CHECKED_IN.
+   */
+  eventAttendanceConflicts?: EventAttendanceConflict[];
 }
 
 /* ================================================================

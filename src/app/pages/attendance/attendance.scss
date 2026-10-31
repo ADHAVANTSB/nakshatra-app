@@ -7,6 +7,9 @@ select { width: min(560px, 100%); margin-top: 7px; padding: 10px; border: 1px so
 .event-summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }.event-summary strong { display: block; margin-top: 5px; }
 .table-wrapper { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padding: 12px; border-bottom: 1px solid #eee9e5; text-align: left; } th { color: #6e6158; font-size: 10px; text-transform: uppercase; } td small { margin-top: 3px; }
 .status { padding: 4px 7px; border-radius: 999px; background: #f0ece9; font-size: 10px; font-weight: 700; }.status.present { background: #e5f1e6; color: #46614c; }.status.absent { background: #f6e7e7; color: #7d4d4d; }
+.day-status { display: inline-block; padding: 4px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; letter-spacing: 0.03em; max-width: 180px; }
+.day-status.day-ok { background: #e5f1e6; color: #46614c; }
+.day-status.day-off { background: #f6e7e7; color: #7d4d4d; }
 .actions { white-space: nowrap; } button { margin-right: 6px; padding: 7px 10px; border: 0; border-radius: 7px; font-weight: 700; cursor: pointer; }.present { background: #e5f1e6; color: #46614c; }.absent { background: #f6e7e7; color: #7d4d4d; }
 .alert.error { border-color: #eadada; color: #825959; }.alert.success { border-color: #d8e5da; color: #527057; }.alert ul { margin: 6px 0 0; }.empty-state { text-align: center; }.empty-state strong { display: block; }.empty-state span { color: #6e6158; font-size: 12px; }
 @media (max-width: 700px) { .attendance-page { padding: 18px 14px; }.event-summary { grid-template-columns: repeat(2, 1fr); } }

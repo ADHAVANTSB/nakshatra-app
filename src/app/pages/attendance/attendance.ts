@@ -25,6 +25,20 @@ import { TeamService } from '../../core/services/teams/team.service';
  */
 type RegistrationsState = 'IDLE' | 'LOADING' | 'LOADED' | 'FAILED';
 
+/**
+ * D-Day (home-level) attendance eligibility for one attendee, derived
+ * from the backend's EventDayRegistrations queue:
+ *   CHECKED_IN - checked in for the event day: event attendance may be
+ *                marked.
+ *   ABSENT     - an explicit NOT_REGISTERED D-Day record exists: event
+ *                attendance is disabled for this participant.
+ *   PENDING    - no D-Day record at all: event attendance is disabled
+ *                until the D-Day attendance is resolved.
+ *   UNKNOWN    - the D-Day queue itself could not be read: nothing is
+ *                claimed and Present marking stays disabled.
+ */
+export type EventDayEligibility = 'CHECKED_IN' | 'ABSENT' | 'PENDING' | 'UNKNOWN';
+
 /** One registered participant resolved into a renderable attendance row. */
 interface Attendee {
   readonly participant: Participant;
@@ -95,6 +109,13 @@ export class Attendance implements OnInit {
    */
   readonly attendanceState = signal<RegistrationsState>('IDLE');
   readonly attendanceError = signal('');
+
+  /**
+   * True when the D-Day (home-level) attendance queue could not be read.
+   * The eligibility then reports UNKNOWN instead of pretending the
+   * participant is unmarked.
+   */
+  readonly eventDayReadFailed = signal(false);
 
   /** Ensures backend homes, participants and events are available on direct navigation. */
   ngOnInit(): void {
@@ -254,12 +275,26 @@ export class Attendance implements OnInit {
     const event = eventId ? this.eventService.getById(eventId) : undefined;
 
     await Promise.all([
+      // D-Day (home-level) attendance is the parent eligibility condition
+      // for event attendance; always re-read so a D-Day correction made on
+      // the check-in workflow is reflected immediately.
+      this.loadEventDayEligibility(),
       this.loadRegistrations(eventId),
       event?.mode === 'GROUP' ? this.teamService.loadTeams(event.id, forceTeams) : Promise.resolve(true),
       this.loadEventAttendanceState(eventId, forceTeams),
       // Scores decide the finalization lock, so they are read with the roster.
       this.scoringService.loadScores(eventId),
     ]);
+  }
+
+  /**
+   * Re-reads the D-Day (home-level) attendance queue. A failed read is
+   * reported through `eventDayReadFailed` so rows show the honest
+   * UNKNOWN state instead of a misleading one.
+   */
+  private async loadEventDayEligibility(): Promise<void> {
+    const entries = await this.registrationService.loadEventDayRegistrations(undefined, true);
+    this.eventDayReadFailed.set(entries === null);
   }
 
   private async loadEventAttendanceState(eventId: string, force = false): Promise<void> {
@@ -309,6 +344,54 @@ export class Attendance implements OnInit {
     return 'Not marked';
   }
 
+  /**
+   * D-Day (home-level) attendance eligibility for one participant. The
+   * backend stays authoritative (it rejects a Present mark without a
+   * CHECKED_IN D-Day record); this mirrors the same rule so the controls
+   * are disabled before a rejected save can happen.
+   */
+  eventDayEligibility(participantId: string): EventDayEligibility {
+    if (this.eventDayReadFailed()) return 'UNKNOWN';
+
+    const entry = this.registrationService.eventDayEntryFor(participantId);
+
+    if (entry?.checkInStatus === 'CHECKED_IN') return 'CHECKED_IN';
+    // An explicit NOT_REGISTERED row (version > 0) means the participant
+    // was marked ABSENT for the D-Day; version 0 (or no queue row) means
+    // the D-Day attendance is simply not resolved yet.
+    if (entry && entry.version > 0) return 'ABSENT';
+    return 'PENDING';
+  }
+
+  /** Prominent badge text; the disabled states are spelled out in full. */
+  eventDayBadge(item: Attendee): string {
+    switch (this.eventDayEligibility(item.participant.id)) {
+      case 'CHECKED_IN': return 'D-DAY: CHECKED IN';
+      case 'ABSENT': return 'ABSENT FOR D-DAY — EVENT ATTENDANCE DISABLED';
+      case 'PENDING': return 'D-DAY ATTENDANCE PENDING — EVENT ATTENDANCE DISABLED';
+      default: return 'D-DAY STATUS UNAVAILABLE — EVENT ATTENDANCE DISABLED';
+    }
+  }
+
+  /** Short explanation (tooltip) of why event attendance is or is not enabled. */
+  eventDayExplanation(item: Attendee): string {
+    switch (this.eventDayEligibility(item.participant.id)) {
+      case 'CHECKED_IN':
+        return 'D-Day (home-level) attendance is confirmed: event attendance may be marked.';
+      case 'ABSENT':
+        return 'Event attendance is disabled because this participant is marked ABSENT for D-Day (home-level) attendance. Their registration and participation details stay visible; only Present marking is disabled.';
+      case 'PENDING':
+        return 'Event attendance is disabled until D-Day (home-level) attendance is resolved for this participant: it is not marked yet.';
+      default:
+        return 'D-Day (home-level) attendance could not be read, so Present marking is disabled until it is confirmed.';
+    }
+  }
+
+  /** Present marking is enabled only for D-Day CHECKED_IN participants. */
+  canMarkPresent(item: Attendee): boolean {
+    return this.eventDayEligibility(item.participant.id) === 'CHECKED_IN';
+  }
+
   /** Participant ids whose attendance write is currently in flight. */
   readonly markingIds = signal<ReadonlySet<string>>(new Set<string>());
 
@@ -342,6 +425,11 @@ export class Attendance implements OnInit {
   /** Stages one Present/Absent choice — nothing is written to the backend yet. */
   stageAttendance(participant: Participant, status: AttendanceStatus, teamId?: string): void {
     if (!this.selectedEvent() || this.eventFinalized()) return;
+    // Present marking is disabled until D-Day attendance allows it. The
+    // buttons are disabled too; this is the programmatic backstop (the
+    // backend rejects the same request authoritatively). ABSENT marks are
+    // always stageable so records stay correctable.
+    if (status === 'PRESENT' && this.eventDayEligibility(participant.id) !== 'CHECKED_IN') return;
     this.errors.set([]);
     this.pendingChanges.update(current => ({
       ...current,
