@@ -1054,6 +1054,12 @@
                     {{ item.name }}
                   </strong>
 
+                  @if (item.sourceRemoved) {
+                    <span class="registered-badge">
+                      Removed from source
+                    </span>
+                  }
+
                   <span>
                     {{ item.code }}
                   </span>

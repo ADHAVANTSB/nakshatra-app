@@ -1505,6 +1505,12 @@ export class ApiClientService {
     this.copyIfString(registration, value, 'eventName');
     this.copyIfString(registration, value, 'eventCode');
 
+    const participantRowStatus = this.readString(value, 'participantRowStatus');
+
+    if (participantRowStatus === 'ACTIVE' || participantRowStatus === 'SOURCE_REMOVED') {
+      registration.participantRowStatus = participantRowStatus;
+    }
+
     const category = this.readString(value, 'category');
 
     if (category === 'ARTS' || category === 'LITERARY' || category === 'CULTURAL') {

@@ -177,6 +177,42 @@ describe('ApiClientService — response contract alignment', () => {
     }
   });
 
+  it('keeps the inlined participant row status on normalized registrations (historical indication)', async () => {
+    stubFetchOnce(jsonResponse({
+      success: true,
+      data: {
+        participantEvents: [
+          {
+            id: 'reg-1',
+            eventId: 'event-1',
+            participantId: 'participant-1',
+            registrationStatus: 'REGISTERED',
+            participantName: 'CHANDRAN V B',
+            participantRowStatus: 'SOURCE_REMOVED',
+            version: 1,
+          },
+          {
+            id: 'reg-2',
+            eventId: 'event-1',
+            participantId: 'participant-2',
+            registrationStatus: 'REGISTERED',
+            participantName: 'Asha',
+            version: 1,
+          },
+        ],
+      },
+    }));
+
+    const result = await client.listEventRegistrations('event-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const registrations = result.data.participantEvents;
+      expect(registrations?.[0]?.participantRowStatus).toBe('SOURCE_REMOVED');
+      expect(registrations?.[1]?.participantRowStatus).toBeUndefined();
+    }
+  });
+
   it('reports a non-JSON (HTML) server page as SERVER_RESPONSE_MALFORMED, not a network error', async () => {
     stubFetchOnce(new Response('<html>Quota exceeded</html>', {
       status: 302,

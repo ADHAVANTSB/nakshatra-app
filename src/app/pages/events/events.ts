@@ -493,6 +493,12 @@ export class Events implements OnInit {
           levelText: level
             ? this.levelLabel(level)
             : 'No level',
+          // Historical indication: a participant whose source row was
+          // removed stays visible in registration history, marked.
+          sourceRemoved:
+            (registration.participantRowStatus ??
+              participant?.rowStatus ??
+              'ACTIVE') === 'SOURCE_REMOVED',
           initial:
             name.charAt(0).toUpperCase() || '?'
         };

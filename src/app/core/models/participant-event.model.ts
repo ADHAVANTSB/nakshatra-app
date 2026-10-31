@@ -1,6 +1,6 @@
 import { DataSource } from './common.model';
 import { EventCategory, EventMode } from './event.model';
-import { Gender, ParticipantLevel } from './participant.model';
+import { Gender, ParticipantLevel, ParticipantRowStatus } from './participant.model';
 
 export type RegistrationStatus = 'REGISTERED' | 'CANCELLED' | 'WAITLISTED';
 
@@ -29,6 +29,12 @@ export interface ParticipantEvent {
   participantName?: string;
   participantCode?: string;
   shelterHomeId?: string;
+  /**
+   * Source-row lifecycle of the registration's participant, when the
+   * backend inlines it: `SOURCE_REMOVED` marks history of a participant
+   * who is no longer on the active roster.
+   */
+  participantRowStatus?: ParticipantRowStatus;
 
   /** Denormalized event fields, when supplied by the backend. */
   eventName?: string;

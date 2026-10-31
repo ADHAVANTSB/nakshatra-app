@@ -525,12 +525,16 @@ export function rosterToHtml(roster: MasterRoster): string {
           '<p class="note">Participating homes only. Child names, codes and ' +
             'team rosters are listed in the CSV export.</p>',
         );
+        body.push('<p class="count">Total teams: ' + subEvent.teamAllocations.length + '</p>');
         body.push(
-          '<table class="group-table"><thead><tr><th>Home Name</th></tr></thead><tbody>',
+          '<table class="group-table"><thead><tr><th>S.No</th><th>Home Name</th></tr></thead><tbody>',
         );
 
-        homes.forEach((homeName) => {
-          body.push('<tr><td class="home">' + escapeHtml(homeName) + '</td></tr>');
+        homes.forEach((homeName, index) => {
+          body.push(
+            '<tr><td class="sno">' + (index + 1) + '</td><td class="home">' +
+              escapeHtml(homeName) + '</td></tr>',
+          );
         });
 
         body.push('</tbody></table>');
@@ -564,6 +568,8 @@ export function rosterToHtml(roster: MasterRoster): string {
     'tr { break-inside: avoid; }' +
     'h2, h3, h4 { break-after: avoid; }' +
     '.home { font-weight: 600; }' +
+    '.sno { width: 4em; text-align: center; }' +
+    '.count { font-weight: 600; margin: 2px 0 6px; }' +
     '</style></head><body>' +
     body.join('') +
     '</body></html>'
